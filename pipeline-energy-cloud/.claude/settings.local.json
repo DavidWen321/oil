@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mvn clean:*)",
+      "WebSearch",
+      "Bash(jar:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

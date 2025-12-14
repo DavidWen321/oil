@@ -1,0 +1,14 @@
+server:
+  port: 9500
+
+spring:
+  application:
+    name: pipeline-calculation
+  cloud:
+    nacos:
+      discovery:
+        server-addr: localhost:8848
+
+logging:
+  level:
+    com.pipeline.calculation: debug
