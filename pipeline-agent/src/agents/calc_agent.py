@@ -3,11 +3,12 @@ Calc Agent
 负责水力学计算
 """
 
+import json
 from typing import Optional, Dict, Any
 
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
-from langchain.agents import create_tool_calling_agent, AgentExecutor
+from langchain_classic.agents import AgentExecutor, create_tool_calling_agent
 
 from src.config import settings
 from src.utils import logger
@@ -41,7 +42,8 @@ class CalcAgent:
                 api_key=settings.OPENAI_API_KEY,
                 base_url=settings.OPENAI_API_BASE,
                 model=settings.LLM_MODEL,
-                temperature=0
+                temperature=0,
+                max_tokens=4096,
             )
         return self._llm
 
@@ -88,7 +90,7 @@ class CalcAgent:
             # 构建输入
             data_str = ""
             if available_data:
-                data_str = "\n".join([f"- {k}: {v}" for k, v in available_data.items()])
+                data_str = json.dumps(available_data, ensure_ascii=False, indent=2, default=str)
             else:
                 data_str = "无预置数据，需要从用户输入中提取参数"
 
@@ -153,10 +155,11 @@ class CalcAgent:
     def call_java_hydraulics(
         self,
         flow_rate: float,
-        pipe_diameter: float,
-        pipe_length: float,
-        oil_density: float,
-        oil_viscosity: float,
+        density: float,
+        viscosity: float,
+        length: float,
+        diameter: float,
+        thickness: float,
         **kwargs
     ) -> str:
         """调用Java水力分析服务"""
@@ -164,10 +167,11 @@ class CalcAgent:
 
         return call_hydraulic_analysis.invoke({
             "flow_rate": flow_rate,
-            "pipe_diameter": pipe_diameter,
-            "pipe_length": pipe_length,
-            "oil_density": oil_density,
-            "oil_viscosity": oil_viscosity,
+            "density": density,
+            "viscosity": viscosity,
+            "length": length,
+            "diameter": diameter,
+            "thickness": thickness,
             **kwargs
         })
 

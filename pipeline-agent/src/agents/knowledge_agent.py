@@ -39,7 +39,8 @@ class KnowledgeAgent:
                 api_key=settings.OPENAI_API_KEY,
                 base_url=settings.OPENAI_API_BASE,
                 model=settings.LLM_MODEL,
-                temperature=0.3
+                temperature=0.3,
+                max_tokens=4096,
             )
         return self._llm
 

@@ -4,7 +4,7 @@ Supervisor Agent
 """
 
 import json
-from typing import List, Dict, Any, Optional
+from typing import Callable, Generator, List, Dict, Any, Optional
 
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
@@ -232,6 +232,65 @@ class SupervisorAgent:
             return "\n\n".join([
                 str(t.get("result", "")) for t in completed_tasks if t.get("result")
             ])
+
+    def synthesize_response_stream(
+        self,
+        user_input: str,
+        completed_tasks: List[Dict],
+        intent: str,
+        on_chunk: Optional[Callable[[str], None]] = None,
+    ) -> str:
+        """流式汇总各 Agent 结果，每个 token 通过 on_chunk 回调发出。"""
+
+        if not completed_tasks:
+            text = "抱歉，无法处理您的请求。"
+            if on_chunk:
+                on_chunk(text)
+            return text
+
+        # 单任务直接流式返回结果
+        if len(completed_tasks) == 1:
+            result = completed_tasks[0].get("result", "")
+            if result:
+                if on_chunk:
+                    on_chunk(result)
+                return result
+
+        # 复杂任务用 LLM 流式合成
+        try:
+            results_text = []
+            for task in completed_tasks:
+                agent = task.get("agent", "unknown")
+                task_desc = task.get("task", "")
+                result = task.get("result", "无结果")
+                results_text.append(f"[{agent}] {task_desc}\n结果: {result}")
+
+            agent_results = "\n\n".join(results_text)
+
+            prompt = ChatPromptTemplate.from_template(SYNTHESIS_PROMPT)
+            chain = prompt | self.llm
+
+            full_text = ""
+            for chunk in chain.stream({
+                "user_input": user_input,
+                "agent_results": agent_results,
+            }):
+                token = chunk.content if hasattr(chunk, "content") else str(chunk)
+                if token:
+                    full_text += token
+                    if on_chunk:
+                        on_chunk(token)
+
+            return full_text.strip()
+
+        except Exception as e:
+            logger.error(f"流式汇总失败: {e}")
+            fallback = "\n\n".join([
+                str(t.get("result", "")) for t in completed_tasks if t.get("result")
+            ])
+            if on_chunk:
+                on_chunk(fallback)
+            return fallback
 
     def handle_chat(self, user_input: str) -> str:
         """
