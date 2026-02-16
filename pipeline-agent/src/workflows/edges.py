@@ -1,134 +1,87 @@
-"""
-LangGraph 边条件函数
-定义工作流中的路由逻辑
-"""
+﻿"""Conditional edges for plan-and-execute workflow."""
+
+from __future__ import annotations
 
 from typing import Literal
 
 from src.models.state import AgentState
-from src.utils import logger
 
 
-def route_after_intent(state: AgentState) -> Literal["supervisor", "end", "error_handler"]:
-    """
-    意图路由后的分支
+def route_to_agent(
+    state: AgentState,
+) -> Literal[
+    "data_agent",
+    "calc_agent",
+    "knowledge_agent",
+    "graph_agent",
+    "report_agent",
+    "synthesizer",
+]:
+    """Route executor to target agent for current step."""
 
-    根据意图分析结果决定下一步
-    """
-    intent = state.get("intent")
-    final_response = state.get("final_response")
-    error_message = state.get("error_message")
+    plan = state.get("plan", [])
+    index = state.get("current_step_index", 0)
 
-    logger.debug(f"路由决策: intent={intent}, has_response={bool(final_response)}")
+    if index >= len(plan):
+        return "synthesizer"
 
-    # 如果有错误
-    if error_message:
-        return "error_handler"
+    step = plan[index]
+    agent = step.get("agent")
 
-    # 如果已有最终响应（如闲聊）
-    if final_response:
-        return "end"
-
-    # 否则进入Supervisor调度
-    return "supervisor"
-
-
-def route_after_supervisor(
-    state: AgentState
-) -> Literal["data_agent", "calc_agent", "knowledge_agent", "end", "error_handler"]:
-    """
-    Supervisor后的分支
-
-    根据next_agent决定调用哪个Agent
-    """
-    next_agent = state.get("next_agent")
-    error_message = state.get("error_message")
-    final_response = state.get("final_response")
-
-    logger.debug(f"Supervisor路由: next_agent={next_agent}")
-
-    # 如果有错误
-    if error_message:
-        return "error_handler"
-
-    # 如果已有最终响应
-    if final_response:
-        return "end"
-
-    # 根据next_agent路由
-    if next_agent == "data_agent":
+    if agent == "data_agent":
         return "data_agent"
-    elif next_agent == "calc_agent":
+    if agent == "calc_agent":
         return "calc_agent"
-    elif next_agent == "knowledge_agent":
+    if agent == "knowledge_agent":
         return "knowledge_agent"
-    else:
-        # 没有更多任务
-        return "end"
+    if agent == "graph_agent":
+        return "graph_agent"
+    if agent == "report_agent":
+        return "report_agent"
+
+    return "synthesizer"
 
 
-def route_after_agent(
-    state: AgentState
-) -> Literal["supervisor", "end", "error_handler"]:
-    """
-    Agent执行后的分支
+def route_after_step(state: AgentState) -> Literal["reflexion", "hitl_check", "synthesizer"]:
+    """Route after one step execution."""
 
-    检查是否需要继续执行其他任务
-    """
-    sub_tasks = state.get("sub_tasks", [])
-    current_index = state.get("current_task_index", 0)
-    error_count = state.get("error_count", 0)
-    final_response = state.get("final_response")
+    plan = state.get("plan", [])
+    index = state.get("current_step_index", 0)
 
-    logger.debug(f"Agent后路由: index={current_index}, total={len(sub_tasks)}")
+    if index >= len(plan):
+        return "synthesizer"
 
-    # 如果已有最终响应
-    if final_response:
-        return "end"
+    step = plan[index]
+    if step.get("status") == "failed":
+        return "reflexion"
 
-    # 如果错误次数过多
-    if error_count >= 3:
-        return "error_handler"
-
-    # 如果还有任务未完成
-    if current_index < len(sub_tasks):
-        return "supervisor"
-
-    # 所有任务完成，回到Supervisor汇总
-    return "supervisor"
+    return "hitl_check"
 
 
-def route_after_error(
-    state: AgentState
-) -> Literal["knowledge_agent", "end"]:
-    """
-    错误处理后的分支
-    """
-    final_response = state.get("final_response")
-    error_count = state.get("error_count", 0)
+def route_after_reflexion(state: AgentState) -> Literal["executor", "planner", "synthesizer"]:
+    """Route after reflexion decision."""
 
-    if final_response or error_count >= 3:
-        return "end"
+    if state.get("needs_replan"):
+        return "planner"
 
-    # 降级到知识问答
-    return "knowledge_agent"
+    plan = state.get("plan", [])
+    index = state.get("current_step_index", 0)
+
+    if index >= len(plan):
+        return "synthesizer"
+
+    # Steps remaining to execute
+    return "executor"
 
 
-def should_continue(state: AgentState) -> bool:
-    """
-    检查是否应该继续执行
+def route_after_hitl(state: AgentState) -> Literal["executor", "planner", "synthesizer"]:
+    """Route after HITL confirmation gate."""
 
-    防止无限循环
-    """
-    iteration = state.get("iteration", 0)
-    max_iterations = state.get("max_iterations", 10)
-    final_response = state.get("final_response")
+    if state.get("needs_replan"):
+        return "planner"
 
-    if final_response:
-        return False
+    index = state.get("current_step_index", 0)
+    if index >= len(state.get("plan", [])):
+        return "synthesizer"
 
-    if iteration >= max_iterations:
-        logger.warning(f"达到最大迭代次数: {max_iterations}")
-        return False
-
-    return True
+    return "executor"

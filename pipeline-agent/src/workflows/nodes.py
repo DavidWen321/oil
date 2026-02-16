@@ -1,375 +1,748 @@
-"""
-LangGraph 节点函数
-定义工作流中的各个处理节点
-"""
+﻿"""LangGraph nodes for plan-and-execute workflow."""
 
+from __future__ import annotations
+
+import json
 import time
-from typing import Dict, Any
+from typing import Any, Callable, Dict, List, Optional
 
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import AIMessage
+from langgraph.types import interrupt
 
-from src.utils import logger, generate_task_id
-from src.models.state import AgentState, ExecutionStep
-from src.models.enums import IntentType
 from src.agents import (
-    get_supervisor,
-    get_data_agent,
     get_calc_agent,
-    get_knowledge_agent
+    get_data_agent,
+    get_graph_agent,
+    get_knowledge_agent,
+    get_planner,
+    get_reflexion_agent,
+    get_report_agent,
+    get_supervisor,
 )
+from src.models.state import AgentState, PlanStep, ReflexionMemory
+from src.observability import TraceEventType, emit_trace_event, get_tracer
+from src.utils import generate_task_id, now_iso
+from .hitl import HITLRequest, HITLResponse, HITLType, get_hitl_manager
 
 
-def intent_router_node(state: AgentState) -> Dict[str, Any]:
-    """
-    意图路由节点
+def planner_node(state: AgentState) -> Dict[str, Any]:
+    """Generate initial plan or replan after failure."""
 
-    分析用户意图，决定后续流程
-    """
-    start_time = time.perf_counter()
-
+    planner = get_planner()
     user_input = state.get("user_input", "")
-    logger.info(f"意图路由: {user_input[:50]}...")
 
-    try:
-        supervisor = get_supervisor()
-        decision = supervisor.analyze_intent(user_input)
+    context = {
+        "project_data": state.get("project_data"),
+        "pipeline_data": state.get("pipeline_data"),
+        "calculation_result": state.get("calculation_result"),
+        "optimization_result": state.get("optimization_result"),
+    }
 
-        intent = decision.get("intent", "knowledge")
-        sub_tasks = supervisor.create_sub_tasks(decision)
+    old_plan = state.get("plan", [])
+    current_index = state.get("current_step_index", 0)
+    completed = [step for step in old_plan if step.get("status") == "completed"]
 
-        # 记录执行步骤
-        step = ExecutionStep(
-            step=len(state.get("execution_trace", [])) + 1,
-            agent="intent_router",
-            action="analyze_intent",
-            input=user_input,
-            output={"intent": intent, "tasks": len(sub_tasks)},
-            duration_ms=int((time.perf_counter() - start_time) * 1000)
+    if state.get("needs_replan") and old_plan and current_index < len(old_plan):
+        failed_step = old_plan[current_index]
+        reflexion = ""
+        memories = state.get("reflexion_memories", [])
+        if memories:
+            reflexion = memories[-1].get("revised_approach", "")
+
+        result = planner.replan(
+            user_input=user_input,
+            completed_steps=completed,
+            failed_step=failed_step,
+            reflexion=reflexion,
         )
+        event_type = TraceEventType.PLAN_UPDATED
+    else:
+        result = planner.create_plan(user_input, context=context)
+        event_type = TraceEventType.PLAN_CREATED
 
-        # 处理闲聊
-        if intent == "chat":
-            chat_response = supervisor.handle_chat(user_input)
-            return {
-                "intent": intent,
-                "sub_tasks": [],
-                "final_response": chat_response,
-                "execution_trace": state.get("execution_trace", []) + [step],
-                "next_agent": None
-            }
-
-        # 确定第一个Agent
-        next_agent = sub_tasks[0]["agent"] if sub_tasks else None
-
+    # Direct response for chat/greeting intent — skip all agents
+    if result.get("direct_response"):
+        greeting = (
+            "你好！我是管道能耗分析智能助手，可以帮你完成以下任务：\n\n"
+            "- **管道水力计算**：摩阻、压降、雷诺数等\n"
+            "- **泵站优化**：最优泵组合方案\n"
+            "- **数据查询**：项目、管道、油品参数\n"
+            "- **故障诊断**：异常工况分析\n"
+            "- **知识问答**：管道运输领域专业知识\n\n"
+            "请描述你的分析需求，我会制定计划并逐步执行。"
+        )
+        trace_id = state.get("trace_id", "")
+        emit_trace_event(
+            trace_id,
+            TraceEventType.PLAN_CREATED,
+            {"plan": [], "reasoning": "chat-direct"},
+        )
         return {
-            "intent": intent,
-            "sub_tasks": sub_tasks,
-            "current_task_index": 0,
-            "next_agent": next_agent,
-            "execution_trace": state.get("execution_trace", []) + [step]
+            "plan": [],
+            "plan_reasoning": "chat-direct",
+            "current_step_index": 0,
+            "needs_replan": False,
+            "replan_reason": None,
+            "final_response": greeting,
         }
 
-    except Exception as e:
-        logger.error(f"意图路由失败: {e}")
-        return {
-            "intent": "knowledge",
-            "error_message": str(e),
-            "error_count": state.get("error_count", 0) + 1
-        }
+    rebuilt_steps = _build_plan_steps(result.get("plan", []))
 
+    # keep completed history when replan happens
+    if completed and state.get("needs_replan"):
+        offset = len(completed)
+        for i, step in enumerate(rebuilt_steps, start=1):
+            step["step_number"] = offset + i
+        plan_steps = completed + rebuilt_steps
+        next_index = len(completed)
+    else:
+        plan_steps = rebuilt_steps
+        next_index = 0
 
-def supervisor_node(state: AgentState) -> Dict[str, Any]:
-    """
-    Supervisor节点
-
-    任务调度和结果汇总
-    """
-    start_time = time.perf_counter()
-
-    sub_tasks = state.get("sub_tasks", [])
-    completed_tasks = state.get("completed_tasks", [])
-    current_index = state.get("current_task_index", 0)
-
-    # 检查是否所有任务完成
-    if current_index >= len(sub_tasks):
-        # 汇总结果
-        supervisor = get_supervisor()
-        final_response = supervisor.synthesize_response(
-            user_input=state.get("user_input", ""),
-            completed_tasks=completed_tasks,
-            intent=state.get("intent", "")
-        )
-
-        step = ExecutionStep(
-            step=len(state.get("execution_trace", [])) + 1,
-            agent="supervisor",
-            action="synthesize",
-            input={"completed_tasks": len(completed_tasks)},
-            output={"response_length": len(final_response)},
-            duration_ms=int((time.perf_counter() - start_time) * 1000)
-        )
-
-        return {
-            "final_response": final_response,
-            "next_agent": None,
-            "execution_trace": state.get("execution_trace", []) + [step]
-        }
-
-    # 确定下一个Agent
-    current_task = sub_tasks[current_index]
-    next_agent = current_task.get("agent")
+    trace_id = state.get("trace_id", "")
+    emit_trace_event(
+        trace_id,
+        event_type,
+        {
+            "plan": [
+                {
+                    "step_number": step["step_number"],
+                    "description": step["description"],
+                    "agent": step["agent"],
+                    "status": step["status"],
+                }
+                for step in plan_steps
+            ],
+            "reasoning": result.get("reasoning", ""),
+        },
+    )
 
     return {
-        "next_agent": next_agent
+        "plan": plan_steps,
+        "plan_reasoning": result.get("reasoning", ""),
+        "current_step_index": next_index,
+        "needs_replan": False,
+        "replan_reason": None,
+    }
+
+
+def executor_node(state: AgentState) -> Dict[str, Any]:
+    """Pick current step and route to mapped agent node."""
+
+    plan = state.get("plan", [])
+    index = state.get("current_step_index", 0)
+
+    if index >= len(plan):
+        return {"next_agent": None}
+
+    step = plan[index]
+    step["status"] = "in_progress"
+    step["error"] = None
+
+    emit_trace_event(
+        state.get("trace_id", ""),
+        TraceEventType.STEP_STARTED,
+        {
+            "description": step.get("description", ""),
+            "retry_count": step.get("retry_count", 0),
+        },
+        step_number=step.get("step_number"),
+        agent=step.get("agent"),
+    )
+
+    return {
+        "plan": plan,
+        "next_agent": step.get("agent"),
     }
 
 
 def data_agent_node(state: AgentState) -> Dict[str, Any]:
-    """
-    Data Agent节点
+    """Execute current step using data agent."""
 
-    执行数据库查询
-    """
-    start_time = time.perf_counter()
-
-    sub_tasks = state.get("sub_tasks", [])
-    current_index = state.get("current_task_index", 0)
-    completed_tasks = state.get("completed_tasks", [])
-
-    if current_index >= len(sub_tasks):
-        return {}
-
-    current_task = sub_tasks[current_index]
-    task_desc = current_task.get("task", state.get("user_input", ""))
-
-    logger.info(f"Data Agent执行: {task_desc[:50]}...")
-
-    try:
-        agent = get_data_agent()
-        result = agent.execute(task_desc)
-
-        # 标记任务完成
-        current_task["status"] = "completed"
-        current_task["result"] = result
-        completed_tasks.append(current_task)
-
-        step = ExecutionStep(
-            step=len(state.get("execution_trace", [])) + 1,
-            agent="data_agent",
-            action="query",
-            input=task_desc,
-            output=result[:200] + "..." if len(result) > 200 else result,
-            duration_ms=int((time.perf_counter() - start_time) * 1000)
-        )
-
-        # 解析结果存储到state（简化处理）
-        pipeline_data = None
-        if "管道" in result and "长度" in result:
-            pipeline_data = {"raw": result}
-
-        return {
-            "completed_tasks": completed_tasks,
-            "current_task_index": current_index + 1,
-            "pipeline_data": pipeline_data,
-            "execution_trace": state.get("execution_trace", []) + [step]
-        }
-
-    except Exception as e:
-        logger.error(f"Data Agent失败: {e}")
-        current_task["status"] = "failed"
-        current_task["result"] = f"查询失败: {str(e)}"
-
-        return {
-            "completed_tasks": completed_tasks + [current_task],
-            "current_task_index": current_index + 1,
-            "error_message": str(e),
-            "error_count": state.get("error_count", 0) + 1
-        }
+    return _run_step_with_agent(
+        state=state,
+        agent_name="data_agent",
+        execute=lambda desc, _state: get_data_agent().execute(desc),
+    )
 
 
 def calc_agent_node(state: AgentState) -> Dict[str, Any]:
-    """
-    Calc Agent节点
+    """Execute current step using calc agent."""
 
-    执行水力计算
-    """
-    start_time = time.perf_counter()
+    def _execute(desc: str, current_state: AgentState) -> Any:
+        pipeline_data = current_state.get("pipeline_data") or {}
 
-    sub_tasks = state.get("sub_tasks", [])
-    current_index = state.get("current_task_index", 0)
-    completed_tasks = state.get("completed_tasks", [])
+        available: Dict[str, Any] = {}
+        if isinstance(pipeline_data, dict):
+            if "pipeline" in pipeline_data:
+                available["pipeline"] = pipeline_data["pipeline"]
+            elif "raw" not in pipeline_data:
+                available["pipeline"] = pipeline_data
 
-    if current_index >= len(sub_tasks):
-        return {}
+            if "oil" in pipeline_data:
+                available["oil"] = pipeline_data["oil"]
 
-    current_task = sub_tasks[current_index]
-    task_desc = current_task.get("task", state.get("user_input", ""))
+            if "pump_station" in pipeline_data:
+                available["pump_station"] = pipeline_data["pump_station"]
 
-    logger.info(f"Calc Agent执行: {task_desc[:50]}...")
+        available["project"] = current_state.get("project_data")
 
-    try:
-        agent = get_calc_agent()
+        return get_calc_agent().execute(desc, available_data=available)
 
-        # 收集已有数据
-        available_data = {}
-        if state.get("pipeline_data"):
-            available_data["pipeline"] = state["pipeline_data"]
-        if state.get("oil_property_data"):
-            available_data["oil"] = state["oil_property_data"]
-
-        result = agent.execute(task_desc, available_data)
-
-        # 标记任务完成
-        current_task["status"] = "completed"
-        current_task["result"] = result
-        completed_tasks.append(current_task)
-
-        step = ExecutionStep(
-            step=len(state.get("execution_trace", [])) + 1,
-            agent="calc_agent",
-            action="calculate",
-            input=task_desc,
-            output=result[:200] + "..." if len(result) > 200 else result,
-            duration_ms=int((time.perf_counter() - start_time) * 1000)
-        )
-
-        return {
-            "completed_tasks": completed_tasks,
-            "current_task_index": current_index + 1,
-            "calculation_result": {"raw": result},
-            "execution_trace": state.get("execution_trace", []) + [step]
-        }
-
-    except Exception as e:
-        logger.error(f"Calc Agent失败: {e}")
-        current_task["status"] = "failed"
-        current_task["result"] = f"计算失败: {str(e)}"
-
-        return {
-            "completed_tasks": completed_tasks + [current_task],
-            "current_task_index": current_index + 1,
-            "error_message": str(e),
-            "error_count": state.get("error_count", 0) + 1
-        }
+    return _run_step_with_agent(
+        state=state,
+        agent_name="calc_agent",
+        execute=_execute,
+    )
 
 
 def knowledge_agent_node(state: AgentState) -> Dict[str, Any]:
-    """
-    Knowledge Agent节点
+    """Execute current step using knowledge agent."""
 
-    执行知识检索和问答
-    """
-    start_time = time.perf_counter()
+    return _run_step_with_agent(
+        state=state,
+        agent_name="knowledge_agent",
+        execute=lambda desc, _state: get_knowledge_agent().execute(desc),
+    )
 
-    sub_tasks = state.get("sub_tasks", [])
-    current_index = state.get("current_task_index", 0)
-    completed_tasks = state.get("completed_tasks", [])
 
-    if current_index >= len(sub_tasks):
-        # 没有任务时，直接处理用户输入
-        task_desc = state.get("user_input", "")
-    else:
-        current_task = sub_tasks[current_index]
-        task_desc = current_task.get("task", state.get("user_input", ""))
+def graph_agent_node(state: AgentState) -> Dict[str, Any]:
+    """Execute current step using graph agent."""
 
-    logger.info(f"Knowledge Agent执行: {task_desc[:50]}...")
+    return _run_step_with_agent(
+        state=state,
+        agent_name="graph_agent",
+        execute=lambda desc, _state: get_graph_agent().execute(desc),
+    )
 
-    try:
-        agent = get_knowledge_agent()
-        result = agent.execute(task_desc)
 
-        step = ExecutionStep(
-            step=len(state.get("execution_trace", [])) + 1,
-            agent="knowledge_agent",
-            action="retrieve_and_answer",
-            input=task_desc,
-            output=result[:200] + "..." if len(result) > 200 else result,
-            duration_ms=int((time.perf_counter() - start_time) * 1000)
+def report_agent_node(state: AgentState) -> Dict[str, Any]:
+    """Execute current step using report agent."""
+
+    def _execute(desc: str, current_state: AgentState) -> dict:
+        report_agent = get_report_agent()
+        outline = report_agent.generate_outline(
+            user_request=desc,
+            available_data={
+                "pipeline_data": current_state.get("pipeline_data"),
+                "calc": current_state.get("calculation_result"),
+                "knowledge": current_state.get("knowledge_context"),
+            },
         )
 
-        if current_index < len(sub_tasks):
-            current_task = sub_tasks[current_index]
-            current_task["status"] = "completed"
-            current_task["result"] = result
-            completed_tasks.append(current_task)
+        sections = []
+        for section in outline.get("sections", []):
+            title = section.get("title", "章节")
+            sections.append(
+                report_agent.generate_section(
+                    section_title=title,
+                    data=current_state.get("pipeline_data") or {},
+                    calc_results=current_state.get("calculation_result") or {},
+                    standards=str(current_state.get("knowledge_context") or ""),
+                )
+            )
 
-            return {
-                "completed_tasks": completed_tasks,
-                "current_task_index": current_index + 1,
-                "knowledge_context": result,
-                "execution_trace": state.get("execution_trace", []) + [step]
-            }
-        else:
-            # 直接作为最终响应
-            return {
-                "final_response": result,
-                "knowledge_context": result,
-                "execution_trace": state.get("execution_trace", []) + [step],
-                "next_agent": None
-            }
+        return report_agent.generate_full_report(outline=outline, section_results=sections)
 
-    except Exception as e:
-        logger.error(f"Knowledge Agent失败: {e}")
-        if current_index < len(sub_tasks):
-            current_task = sub_tasks[current_index]
-            current_task["status"] = "failed"
-            current_task["result"] = f"检索失败: {str(e)}"
-            completed_tasks.append(current_task)
+    return _run_step_with_agent(
+        state=state,
+        agent_name="report_agent",
+        execute=_execute,
+    )
 
+
+def step_evaluator_node(state: AgentState) -> Dict[str, Any]:
+    """Evaluate current step execution outcome."""
+
+    plan = state.get("plan", [])
+    index = state.get("current_step_index", 0)
+
+    if index >= len(plan):
+        return {}
+
+    step = plan[index]
+    status = step.get("status")
+
+    if status == "completed":
+        return {"error_message": None, "last_error_agent": None}
+
+    if status == "failed":
         return {
-            "completed_tasks": completed_tasks,
-            "current_task_index": current_index + 1,
-            "error_message": str(e),
-            "error_count": state.get("error_count", 0) + 1
+            "error_message": step.get("error") or "step failed",
+            "last_error_agent": step.get("agent"),
         }
 
+    return {}
 
-def error_handler_node(state: AgentState) -> Dict[str, Any]:
-    """
-    错误处理节点
-    """
-    error_message = state.get("error_message", "未知错误")
-    error_count = state.get("error_count", 0)
 
-    logger.warning(f"错误处理: {error_message}, 错误次数: {error_count}")
+def reflexion_node(state: AgentState) -> Dict[str, Any]:
+    """Analyze failed step and decide retry/replan strategy."""
 
-    if error_count >= 3:
-        # 错误次数过多，终止
+    plan = state.get("plan", [])
+    index = state.get("current_step_index", 0)
+    if index >= len(plan):
+        return {}
+
+    step = plan[index]
+    error = step.get("error") or state.get("error_message") or "unknown"
+
+    reflexion = get_reflexion_agent().reflect(
+        failed_step=step,
+        error=error,
+        context={
+            "pipeline_data": state.get("pipeline_data"),
+            "calc_result": state.get("calculation_result"),
+            "knowledge_context": state.get("knowledge_context"),
+        },
+        history=state.get("reflexion_memories", []),
+    )
+
+    memory = ReflexionMemory(
+        step_id=step.get("step_id", ""),
+        failure_reason=reflexion.get("failure_reason", ""),
+        lesson_learned=reflexion.get("lesson_learned", ""),
+        revised_approach=reflexion.get("revised_approach", ""),
+        timestamp=now_iso(),
+    )
+
+    memories = state.get("reflexion_memories", []) + [memory]
+
+    emit_trace_event(
+        state.get("trace_id", ""),
+        TraceEventType.REFLEXION,
+        {
+            "failure_reason": reflexion.get("failure_reason", ""),
+            "revised_approach": reflexion.get("revised_approach", ""),
+            "should_retry": reflexion.get("should_retry", False),
+            "should_replan": reflexion.get("should_replan", False),
+        },
+        step_number=step.get("step_number"),
+        agent=step.get("agent"),
+    )
+
+    retry_count = int(step.get("retry_count", 0))
+    max_retries = int(state.get("max_retries_per_step", 2))
+
+    should_retry = bool(reflexion.get("should_retry")) and retry_count < max_retries
+    should_replan = bool(reflexion.get("should_replan")) and not should_retry
+
+    if should_retry:
+        step["retry_count"] = retry_count + 1
+        step["status"] = "pending"
+        step["error"] = None
         return {
-            "final_response": f"抱歉，处理过程中遇到问题：{error_message}。请稍后重试或换一种方式提问。",
-            "next_agent": None
+            "plan": plan,
+            "reflexion_memories": memories,
+            "needs_replan": False,
+            "replan_reason": None,
+            "error_message": None,
         }
 
-    # 尝试降级处理
+    if should_replan:
+        return {
+            "reflexion_memories": memories,
+            "needs_replan": True,
+            "replan_reason": reflexion.get("revised_approach", ""),
+        }
+
+    # give up current step and move forward
     return {
-        "error_message": None,  # 清除错误
-        "next_agent": "knowledge_agent"  # 降级到知识问答
+        "plan": plan,
+        "reflexion_memories": memories,
+        "current_step_index": index + 1,
+        "needs_replan": False,
+        "replan_reason": None,
+        "error_message": None,
     }
 
 
-def end_node(state: AgentState) -> Dict[str, Any]:
-    """
-    结束节点
+def hitl_check_node(state: AgentState) -> Dict[str, Any]:
+    """Pause for human confirmation on risky/ambiguous decisions."""
 
-    添加最终处理
-    """
-    final_response = state.get("final_response", "")
+    plan = state.get("plan", [])
+    index = state.get("current_step_index", 0)
 
-    if not final_response:
-        completed_tasks = state.get("completed_tasks", [])
-        if completed_tasks:
-            # 拼接所有结果
-            results = [t.get("result", "") for t in completed_tasks if t.get("result")]
-            final_response = "\n\n".join(results)
-        else:
-            final_response = "抱歉，无法处理您的请求。"
+    if index >= len(plan):
+        return {}
 
-    # 添加消息到历史
-    messages = state.get("messages", [])
-    messages.append(AIMessage(content=final_response))
+    current_step = plan[index]
+
+    schemes = _extract_schemes(current_step.get("result"))
+    if current_step.get("agent") == "calc_agent" and schemes:
+        has_risk = any(float(item.get("end_pressure", 1)) < 0.1 for item in schemes)
+        if len(schemes) > 1 or has_risk:
+            request_id = generate_task_id()
+            hitl_request = {
+                "request_id": request_id,
+                "type": "scheme_selection",
+                "title": "请选择优化方案",
+                "description": "系统计算出多个方案，请确认后继续。",
+                "options": [
+                    {
+                        "id": f"scheme_{i}",
+                        "label": item.get("config") or f"方案{i + 1}",
+                        "energy": item.get("energy_consumption"),
+                        "end_pressure": item.get("end_pressure"),
+                        "saving_rate": item.get("saving_rate", 0),
+                        "risk_level": "high" if float(item.get("end_pressure", 1)) < 0.1 else "normal",
+                    }
+                    for i, item in enumerate(schemes)
+                ],
+                "data": {"schemes_detail": schemes},
+            }
+            manager = get_hitl_manager()
+            manager.create_request(
+                session_id=state.get("session_id", ""),
+                trace_id=state.get("trace_id", ""),
+                request=HITLRequest(
+                    request_id=request_id,
+                    type=HITLType.SCHEME_SELECTION,
+                    title=hitl_request["title"],
+                    description=hitl_request["description"],
+                    options=hitl_request["options"],
+                    data=hitl_request["data"],
+                    timeout_seconds=300,
+                ),
+            )
+
+            emit_trace_event(
+                state.get("trace_id", ""),
+                TraceEventType.HITL_WAITING,
+                hitl_request,
+                step_number=current_step.get("step_number"),
+                agent=current_step.get("agent"),
+            )
+
+            user_choice = interrupt(hitl_request)
+            user_choice["request_id"] = request_id
+            selected_option = str(user_choice.get("selected_option", "scheme_0"))
+            selected_index = 0
+            if "_" in selected_option:
+                try:
+                    selected_index = int(selected_option.split("_")[-1])
+                except Exception:
+                    selected_index = 0
+            selected_scheme = schemes[selected_index] if selected_index < len(schemes) else schemes[0]
+
+            emit_trace_event(
+                state.get("trace_id", ""),
+                TraceEventType.HITL_RESUMED,
+                {
+                    "selected_option": selected_option,
+                    "comment": user_choice.get("comment"),
+                },
+                step_number=current_step.get("step_number"),
+                agent=current_step.get("agent"),
+            )
+            manager.submit_response(
+                session_id=state.get("session_id", ""),
+                response=HITLResponse(
+                    request_id=request_id,
+                    selected_option=selected_option,
+                    modified_data=user_choice.get("modified_data"),
+                    comment=user_choice.get("comment"),
+                ),
+            )
+
+            return {
+                "hitl_pending": False,
+                "hitl_request": hitl_request,
+                "hitl_response": user_choice,
+                "optimization_result": selected_scheme,
+                "current_step_index": index + 1,
+            }
+
+    # default continue to next step
+    return {
+        "hitl_pending": False,
+        "hitl_request": None,
+        "current_step_index": index + 1,
+    }
+
+
+def synthesizer_node(state: AgentState) -> Dict[str, Any]:
+    """Synthesize all completed step results as final response (streaming)."""
+
+    completed_steps = [
+        {
+            "agent": step.get("agent"),
+            "task": step.get("description"),
+            "result": _to_result_text(step.get("result")),
+        }
+        for step in state.get("plan", [])
+        if step.get("status") == "completed"
+    ]
+
+    trace_id = state.get("trace_id", "")
+
+    if not completed_steps and state.get("final_response"):
+        final_response = state.get("final_response", "")
+        # 直接回复也发一个 response_chunk，让前端能流式展示
+        emit_trace_event(
+            trace_id,
+            TraceEventType.RESPONSE_CHUNK,
+            {"chunk": final_response},
+        )
+    elif not completed_steps:
+        final_response = "抱歉，未能获得有效执行结果。"
+        emit_trace_event(
+            trace_id,
+            TraceEventType.RESPONSE_CHUNK,
+            {"chunk": final_response},
+        )
+    else:
+        def on_chunk(chunk: str) -> None:
+            emit_trace_event(
+                trace_id,
+                TraceEventType.RESPONSE_CHUNK,
+                {"chunk": chunk},
+            )
+
+        final_response = get_supervisor().synthesize_response_stream(
+            user_input=state.get("user_input", ""),
+            completed_tasks=completed_steps,
+            intent=state.get("intent", "complex") or "complex",
+            on_chunk=on_chunk,
+        )
+
+    messages = state.get("messages", []) + [AIMessage(content=final_response)]
+
+    tracer = get_tracer(state.get("trace_id", ""))
+    metrics = tracer.metrics if tracer else {}
+    emit_trace_event(
+        state.get("trace_id", ""),
+        TraceEventType.WORKFLOW_COMPLETED,
+        {
+            "final_response_preview": final_response[:200],
+            "metrics": metrics,
+        },
+    )
 
     return {
         "final_response": final_response,
         "messages": messages,
-        "confidence_score": 0.8  # 可以根据实际情况计算
+        "confidence_score": 0.85,
     }
+
+
+def _build_plan_steps(raw_steps: List[dict]) -> List[PlanStep]:
+    steps: List[PlanStep] = []
+
+    for index, step in enumerate(raw_steps, start=1):
+        depends_raw = step.get("depends_on", [])
+        depends = [str(item) for item in depends_raw] if isinstance(depends_raw, list) else []
+
+        steps.append(
+            PlanStep(
+                step_id=generate_task_id(),
+                step_number=int(step.get("step_number") or index),
+                description=str(step.get("description") or f"执行步骤{index}"),
+                agent=str(step.get("agent") or "knowledge_agent"),
+                expected_output=str(step.get("expected_output") or ""),
+                depends_on=depends,
+                status="pending",
+                result=None,
+                error=None,
+                duration_ms=None,
+                retry_count=0,
+            )
+        )
+
+    return steps
+
+
+def _run_step_with_agent(
+    state: AgentState,
+    agent_name: str,
+    execute: Callable[[str, AgentState], Any],
+) -> Dict[str, Any]:
+    plan = state.get("plan", [])
+    index = state.get("current_step_index", 0)
+
+    if index >= len(plan):
+        return {}
+
+    step = plan[index]
+    step_number = step.get("step_number")
+    trace_id = state.get("trace_id", "")
+    description = step.get("description", "")
+
+    start_time = time.perf_counter()
+
+    emit_trace_event(
+        trace_id,
+        TraceEventType.AGENT_THINKING,
+        {"description": description},
+        step_number=step_number,
+        agent=agent_name,
+    )
+    emit_trace_event(
+        trace_id,
+        TraceEventType.TOOL_CALLED,
+        {"tool": f"{agent_name}.execute", "task": description},
+        step_number=step_number,
+        agent=agent_name,
+    )
+
+    try:
+        result = execute(description, state)
+        duration = int((time.perf_counter() - start_time) * 1000)
+
+        if _looks_like_error_text(result):
+            raise RuntimeError(_to_result_text(result))
+
+        step["status"] = "completed"
+        step["result"] = result
+        step["duration_ms"] = duration
+        step["error"] = None
+
+        emit_trace_event(
+            trace_id,
+            TraceEventType.STEP_COMPLETED,
+            {"result_preview": _to_result_text(result)[:300]},
+            step_number=step_number,
+            agent=agent_name,
+            duration_ms=duration,
+        )
+        emit_trace_event(
+            trace_id,
+            TraceEventType.TOOL_RESULT,
+            {"tool": f"{agent_name}.execute", "result_preview": _to_result_text(result)[:200]},
+            step_number=step_number,
+            agent=agent_name,
+        )
+
+        update: Dict[str, Any] = {
+            "plan": plan,
+            "error_message": None,
+            "last_error_agent": None,
+        }
+
+        if agent_name == "data_agent":
+            parsed = _to_result_data(result)
+            update["pipeline_data"] = parsed
+            if isinstance(parsed, dict) and "oil" in parsed:
+                update["oil_property_data"] = parsed["oil"]
+        elif agent_name == "calc_agent":
+            update["calculation_result"] = _to_result_data(result)
+        elif agent_name == "knowledge_agent":
+            update["knowledge_context"] = _to_result_text(result)
+        elif agent_name == "report_agent":
+            update["report_result"] = _to_result_data(result)
+
+        return update
+
+    except Exception as exc:
+        duration = int((time.perf_counter() - start_time) * 1000)
+
+        step["status"] = "failed"
+        step["error"] = str(exc)
+        step["duration_ms"] = duration
+
+        emit_trace_event(
+            trace_id,
+            TraceEventType.STEP_FAILED,
+            {"error": str(exc)},
+            step_number=step_number,
+            agent=agent_name,
+            duration_ms=duration,
+        )
+
+        return {
+            "plan": plan,
+            "error_message": str(exc),
+            "error_count": state.get("error_count", 0) + 1,
+            "last_error_agent": agent_name,
+        }
+
+
+def _to_result_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    try:
+        return json.dumps(value, ensure_ascii=False)
+    except Exception:
+        return str(value)
+
+
+def _to_result_data(value: Any) -> dict:
+    """将 agent 执行结果转为结构化 dict。
+
+    优先级:
+    1. 已经是 dict → 直接返回
+    2. 是 JSON 字符串 → 解析后返回
+    3. JSON 字符串中有 "data" 字段 → 提取 data 字段
+    4. 其他 → 包装为 {"raw": value}
+    """
+    if isinstance(value, dict):
+        return value
+
+    if isinstance(value, str):
+        text = value.strip()
+
+        try:
+            parsed = json.loads(text)
+            if isinstance(parsed, dict):
+                if "data" in parsed and parsed.get("success") is True:
+                    return parsed["data"] if isinstance(parsed["data"], dict) else parsed
+                return parsed
+            if isinstance(parsed, list):
+                return {"items": parsed}
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+        start = text.find("{")
+        end = text.rfind("}")
+        if start != -1 and end > start:
+            try:
+                parsed = json.loads(text[start:end + 1])
+                if isinstance(parsed, dict):
+                    if "data" in parsed and parsed.get("success") is True:
+                        return parsed["data"] if isinstance(parsed["data"], dict) else parsed
+                    return parsed
+            except (json.JSONDecodeError, ValueError):
+                pass
+
+        return {"raw": value}
+
+    return {"raw": value}
+
+
+def _extract_schemes(value: Any) -> List[dict]:
+    if value is None:
+        return []
+
+    data: Any = value
+    if isinstance(value, str):
+        text = value.strip()
+        if text.startswith("{") and text.endswith("}"):
+            try:
+                data = json.loads(text)
+            except Exception:
+                return []
+        else:
+            return []
+
+    if isinstance(data, dict):
+        for key in ["schemes", "allSchemes", "all_combinations", "allCombinations"]:
+            items = data.get(key)
+            if isinstance(items, list):
+                return [item for item in items if isinstance(item, dict)]
+
+    return []
+
+
+def _looks_like_error_text(value: Any) -> bool:
+    if not isinstance(value, str):
+        return False
+    text = value.strip()
+    if not text:
+        return False
+    # Only match short texts that start with explicit error prefixes
+    if len(text) > 100:
+        return False
+    lower = text.lower()
+    error_prefixes = ["错误:", "error:", "失败:", "exception:", "调用失败"]
+    return any(lower.startswith(prefix) for prefix in error_prefixes)
