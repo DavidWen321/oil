@@ -1,6 +1,0 @@
-com\pipeline\auth\PipelineAuthApplication.class
-com\pipeline\auth\controller\AuthController.class
-com\pipeline\auth\domain\SysUser.class
-com\pipeline\auth\mapper\SysUserMapper.class
-com\pipeline\auth\service\TokenService.class
-com\pipeline\auth\domain\LoginBody.class
