@@ -13,7 +13,7 @@ from src.utils import logger
 
 from .middleware.logging import LoggingMiddleware
 from .middleware.auth import AuthMiddleware
-from .routes import health, chat, knowledge
+from .routes import health, chat, knowledge, trace, report, graph_query
 
 
 @asynccontextmanager
@@ -34,6 +34,27 @@ async def lifespan(app: FastAPI):
         logger.info("Agent workflow initialized")
     except Exception as e:
         logger.warning(f"Workflow initialization failed: {e}")
+
+    # 初始化知识库索引（增量）
+    try:
+        from src.rag.pipeline import get_rag_pipeline
+
+        rag = get_rag_pipeline()
+        count = rag.index_documents(knowledge_base_path="knowledge_base", recreate=False)
+        logger.info(f"知识库索引完成，共 {count} 个文档")
+    except Exception as e:
+        logger.warning(f"知识库索引失败（非致命）: {e}")
+
+    # 初始化知识图谱并同步数据库
+    try:
+        from src.knowledge_graph import get_knowledge_graph_builder
+
+        kg = get_knowledge_graph_builder()
+        logger.info(
+            f"Knowledge graph initialized: nodes={kg.graph.number_of_nodes()}, edges={kg.graph.number_of_edges()}"
+        )
+    except Exception as e:
+        logger.warning(f"Knowledge graph initialization failed: {e}")
 
     yield
 
@@ -85,6 +106,9 @@ def create_app() -> FastAPI:
     app.include_router(health.router, prefix="/api/v1")
     app.include_router(chat.router, prefix="/api/v1")
     app.include_router(knowledge.router, prefix="/api/v1")
+    app.include_router(trace.router, prefix="/api/v1")
+    app.include_router(report.router, prefix="/api/v1")
+    app.include_router(graph_query.router, prefix="/api/v1")
 
     # 根路由
     @app.get("/")

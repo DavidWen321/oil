@@ -4,7 +4,7 @@ Pydantic 数据模型
 """
 
 from datetime import datetime
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Literal
 from pydantic import BaseModel, Field
 from decimal import Decimal
 
@@ -28,6 +28,8 @@ class ChatResponse(BaseModel):
     intent: Optional[str] = Field(None, description="识别的意图")
     confidence: float = Field(0.0, ge=0.0, le=1.0, description="置信度")
     execution_time_ms: int = Field(0, description="执行耗时(毫秒)")
+    trace_id: Optional[str] = Field(None, description="追踪ID")
+    tool_calls: List[dict] = Field(default_factory=list, description="本轮工具调用记录")
 
 
 class StreamChunk(BaseModel):
@@ -59,20 +61,21 @@ class PipelineInfo(BaseModel):
     thickness: Decimal = Field(..., description="壁厚(mm)")
     roughness: Optional[Decimal] = Field(None, description="粗糙度(mm)")
     throughput: Optional[Decimal] = Field(None, description="设计输量(万吨/年)")
-    start_elevation: Optional[Decimal] = Field(None, description="起点高程(m)")
-    end_elevation: Optional[Decimal] = Field(None, description="终点高程(m)")
+    start_altitude: Optional[Decimal] = Field(None, description="起点高程(m)")
+    end_altitude: Optional[Decimal] = Field(None, description="终点高程(m)")
+    work_time: Optional[Decimal] = Field(None, description="年工作时间(h)")
 
 
 class PumpStationInfo(BaseModel):
     """泵站信息"""
     id: int
-    pipeline_id: int
     name: str
-    station_type: Optional[str] = None
     pump_efficiency: Optional[Decimal] = Field(None, description="泵效率(%)")
-    motor_efficiency: Optional[Decimal] = Field(None, description="电机效率(%)")
+    electric_efficiency: Optional[Decimal] = Field(None, description="电机效率(%)")
     displacement: Optional[Decimal] = Field(None, description="排量(m³/h)")
-    lift: Optional[Decimal] = Field(None, description="扬程(m)")
+    come_power: Optional[Decimal] = Field(None, description="进站压力/功率")
+    zmi480_lift: Optional[Decimal] = Field(None, description="ZMI480扬程(m)")
+    zmi375_lift: Optional[Decimal] = Field(None, description="ZMI375扬程(m)")
 
 
 class OilPropertyInfo(BaseModel):
@@ -81,8 +84,6 @@ class OilPropertyInfo(BaseModel):
     name: str
     density: Decimal = Field(..., description="密度(kg/m³)")
     viscosity: Decimal = Field(..., description="运动粘度(m²/s)")
-    pour_point: Optional[Decimal] = Field(None, description="凝固点(°C)")
-    wax_content: Optional[Decimal] = Field(None, description="含蜡量(%)")
 
 
 # ==================== 计算相关模型 ====================
@@ -166,8 +167,8 @@ class SearchResult(BaseModel):
     match_type: str = Field(..., description="匹配类型: dense/sparse/hybrid")
 
 
-class RAGResponse(BaseModel):
-    """RAG响应"""
+class RAGApiResponse(BaseModel):
+    """RAG API响应"""
     answer: str
     sources: List[SearchResult]
     retrieval_quality: str = Field(..., description="检索质量: high/medium/low")
@@ -192,3 +193,56 @@ class AgentDecision(BaseModel):
     reasoning: str
     sub_tasks: List[dict]
     confidence: float
+
+
+# ==================== Agent v4 扩展模型 ====================
+
+class HITLConfirmRequest(BaseModel):
+    """HITL确认请求"""
+
+    session_id: str = Field(..., description="会话ID")
+    response: Optional[dict] = Field(default=None, description="用户确认内容（兼容旧格式）")
+    selected_option: Optional[str] = Field(default=None, description="选择的方案ID")
+    comment: Optional[str] = Field(default=None, description="用户备注")
+    modified_data: Optional[dict] = Field(default=None, description="用户修改后的数据")
+    request_id: Optional[str] = Field(default=None, description="请求ID")
+
+
+class HITLConfirmResponse(BaseModel):
+    """HITL确认响应"""
+
+    status: Literal["resumed"] = "resumed"
+    result: dict = Field(default_factory=dict)
+
+
+class TraceSummaryResponse(BaseModel):
+    """追踪摘要响应"""
+
+    trace_id: str
+    metrics: dict = Field(default_factory=dict)
+    event_count: int = 0
+    timeline: List[dict] = Field(default_factory=list)
+
+
+class ReportGenerateRequest(BaseModel):
+    """报告生成请求"""
+
+    user_request: str = Field(..., min_length=1, max_length=2000)
+    session_id: Optional[str] = None
+
+
+class ReportGenerateResponse(BaseModel):
+    """报告生成响应"""
+
+    trace_id: str
+    report: dict = Field(default_factory=dict)
+    java_report_id: Optional[int] = None
+    java_download_url: Optional[str] = None
+    java_download_url_pdf: Optional[str] = None
+
+
+class GraphQueryResponse(BaseModel):
+    """知识图谱查询响应"""
+
+    query: str
+    result: dict = Field(default_factory=dict)

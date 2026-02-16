@@ -5,6 +5,7 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import Dict, Any
+from sqlalchemy import text
 
 from src.config import settings
 from src.utils import logger
@@ -33,7 +34,7 @@ async def health_check():
         from src.tools.database_tools import get_engine
         engine = get_engine()
         with engine.connect() as conn:
-            conn.execute("SELECT 1")
+            conn.execute(text("SELECT 1"))
         services["database"] = {"status": "up"}
     except Exception as e:
         services["database"] = {"status": "down", "error": str(e)}

@@ -1,7 +1,4 @@
-"""
-API!W
-FastAPI¡
-"""
+ï»¿"""API package exports."""
 
 from .main import app, create_app
 

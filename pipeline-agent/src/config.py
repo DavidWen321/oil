@@ -7,6 +7,7 @@ from functools import lru_cache
 from typing import Optional, Literal
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+import redis as redis_lib
 
 
 class Settings(BaseSettings):
@@ -20,17 +21,19 @@ class Settings(BaseSettings):
 
     # ===== 应用配置 =====
     APP_NAME: str = "Pipeline Agent"
-    APP_VERSION: str = "3.0.0"
+    APP_VERSION: str = "4.0.0"
     DEBUG: bool = True
 
-    # ===== LLM 配置 =====
+    # ===== LLM 配置 (Claude Opus 4.6) =====
     OPENAI_API_KEY: str = Field(default="sk-xxx")
-    OPENAI_API_BASE: str = Field(default="https://dashscope.aliyuncs.com/compatible-mode/v1")
-    LLM_MODEL: str = Field(default="qwen-turbo")
+    OPENAI_API_BASE: str = Field(default="https://api.penguinsaichat.dpdns.org/v1")
+    LLM_MODEL: str = Field(default="claude-opus-4-6")
     LLM_TEMPERATURE: float = Field(default=0.1)
     LLM_MAX_TOKENS: int = Field(default=4096)
 
-    # ===== Embedding 配置 =====
+    # ===== Embedding 配置 (DashScope) =====
+    EMBEDDING_API_KEY: str = Field(default="sk-xxx")
+    EMBEDDING_API_BASE: str = Field(default="https://dashscope.aliyuncs.com/compatible-mode/v1")
     EMBEDDING_MODEL: str = Field(default="text-embedding-v3")
     EMBEDDING_DIMENSION: int = Field(default=1024)
 
@@ -74,6 +77,7 @@ class Settings(BaseSettings):
 
     # ===== Agent 配置 =====
     AGENT_MAX_ITERATIONS: int = Field(default=10)
+    AGENT_MAX_RETRIES_PER_STEP: int = Field(default=2)
     AGENT_TIMEOUT: int = Field(default=60)
 
     # ===== RAG 配置 (2025最新) =====
@@ -99,8 +103,12 @@ class Settings(BaseSettings):
     HYPE_QUESTIONS_PER_CHUNK: int = Field(default=3)  # 每个chunk生成的假设问题数
 
     # Reranker 配置
-    RERANKER_MODEL: str = Field(default="BAAI/bge-reranker-v2-m3")
+    RERANKER_MODEL: str = Field(default="gte-rerank")
     RERANKER_THRESHOLD: float = Field(default=0.5)
+    RERANKER_MODE: Literal["api", "local", "llm"] = Field(
+        default="api",
+        description="api=DashScope gte-rerank; local=本地BGE模型; llm=用LLM打分"
+    )
 
     # ===== API 配置 =====
     API_HOST: str = Field(default="0.0.0.0")
@@ -182,3 +190,25 @@ def get_rag_config() -> RAGConfig:
 # 全局配置实例
 settings = get_settings()
 rag_config = get_rag_config()
+
+
+# ===== Redis 连接池工厂 =====
+
+_redis_pool: Optional[redis_lib.ConnectionPool] = None
+
+
+def get_redis_pool() -> redis_lib.ConnectionPool:
+    """Return shared Redis connection pool (max 20 connections)."""
+    global _redis_pool
+    if _redis_pool is None:
+        _redis_pool = redis_lib.ConnectionPool.from_url(
+            get_settings().REDIS_URL,
+            max_connections=20,
+            decode_responses=True,
+        )
+    return _redis_pool
+
+
+def get_redis() -> redis_lib.Redis:
+    """Return a Redis client backed by the shared connection pool."""
+    return redis_lib.Redis(connection_pool=get_redis_pool())

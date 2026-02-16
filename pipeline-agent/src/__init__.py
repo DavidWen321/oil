@@ -1,7 +1,4 @@
-"""
-Pipeline Agent
-¡SızıSûß
-"""
+ï»¿"""Pipeline Agent package metadata."""
 
-__version__ = "3.0.0"
+__version__ = "4.0.0"
 __author__ = "Pipeline Team"

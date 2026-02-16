@@ -1,102 +1,157 @@
-"""
-AgentState 统一状态定义
-基于 LangGraph 1.0
-"""
+﻿"""Unified workflow state for pipeline-agent v4.0."""
 
 from typing import TypedDict, Annotated, List, Optional, Any
+
 from langgraph.graph.message import add_messages
 from langchain_core.messages import BaseMessage
 
-from .enums import IntentType, TaskStatus
+from src.utils import generate_trace_id
 
 
 class SubTask(TypedDict):
-    """子任务定义"""
-    id: str                      # 任务ID
-    agent: str                   # 执行的Agent
-    task: str                    # 任务描述
-    depends_on: List[str]        # 依赖的任务ID列表
-    status: str                  # 任务状态
-    result: Optional[Any]        # 执行结果
+    """Legacy sub-task definition kept for compatibility."""
+
+    id: str
+    agent: str
+    task: str
+    depends_on: List[str]
+    status: str
+    result: Optional[Any]
 
 
 class KnowledgeSource(TypedDict):
-    """知识来源引用"""
-    doc_name: str                # 文档名称
-    chunk_id: str                # 分块ID
-    content: str                 # 内容片段
-    score: float                 # 相关性分数
-    category: str                # 知识分类
+    """Knowledge citation source."""
+
+    doc_name: str
+    chunk_id: str
+    content: str
+    score: float
+    category: str
 
 
 class ExecutionStep(TypedDict):
-    """执行轨迹步骤"""
-    step: int                    # 步骤序号
-    agent: str                   # 执行的Agent
-    action: str                  # 执行的动作
-    input: Any                   # 输入
-    output: Any                  # 输出
-    duration_ms: int             # 耗时(毫秒)
+    """Execution trace step."""
+
+    step: int
+    agent: str
+    action: str
+    input: Any
+    output: Any
+    duration_ms: int
+
+
+class PlanStep(TypedDict):
+    """Plan-and-Execute step."""
+
+    step_id: str
+    step_number: int
+    description: str
+    agent: str
+    expected_output: str
+    depends_on: List[str]
+    status: str
+    result: Optional[Any]
+    error: Optional[str]
+    duration_ms: Optional[int]
+    retry_count: int
+
+
+class ReflexionMemory(TypedDict):
+    """Reflexion memory item."""
+
+    step_id: str
+    failure_reason: str
+    lesson_learned: str
+    revised_approach: str
+    timestamp: str
 
 
 class AgentState(TypedDict):
-    """统一的Agent状态定义 - LangGraph 1.0"""
+    """Unified Agent state - v4.0."""
 
-    # ===== 消息管理 =====
-    messages: Annotated[List[BaseMessage], add_messages]  # 对话历史(自动追加)
-    user_input: str                                        # 当前用户输入
+    # ===== Messaging =====
+    messages: Annotated[List[BaseMessage], add_messages]
+    user_input: str
 
-    # ===== 意图与任务 =====
-    intent: Optional[str]                # 识别的意图类型
-    intent_confidence: float             # 意图置信度
-    sub_tasks: List[SubTask]             # 分解的子任务列表
-    current_task_index: int              # 当前执行的任务索引
-    completed_tasks: List[SubTask]       # 已完成的任务
+    # ===== Plan-and-Execute =====
+    plan: List[PlanStep]
+    current_step_index: int
+    plan_reasoning: Optional[str]
+    needs_replan: bool
+    replan_reason: Optional[str]
 
-    # ===== 数据存储 =====
-    project_data: Optional[dict]         # 项目数据
-    pipeline_data: Optional[dict]        # 管道数据
-    pump_station_data: Optional[dict]    # 泵站数据
-    oil_property_data: Optional[dict]    # 油品数据
-    calculation_result: Optional[dict]   # 计算结果
-    optimization_result: Optional[dict]  # 优化结果
+    # ===== Reflexion =====
+    reflexion_memories: List[ReflexionMemory]
+    max_retries_per_step: int
 
-    # ===== 知识检索 =====
-    knowledge_context: Optional[str]     # 知识检索结果(合并后的文本)
-    knowledge_sources: List[KnowledgeSource]  # 引用来源列表
-    retrieval_quality: Optional[str]     # CRAG评估的检索质量
+    # ===== Human-in-the-Loop =====
+    hitl_pending: bool
+    hitl_request: Optional[dict]
+    hitl_response: Optional[dict]
 
-    # ===== 流程控制 =====
-    next_agent: Optional[str]            # 下一个执行的Agent
-    should_retrieve: bool                # Self-RAG: 是否需要检索
-    should_calculate: bool               # 是否需要调用计算服务
-    iteration: int                       # 当前迭代次数
-    max_iterations: int                  # 最大迭代次数(防止死循环)
+    # ===== Observability =====
+    trace_id: str
+    token_usage: dict
+    total_llm_calls: int
+    total_tool_calls: int
 
-    # ===== 错误处理 =====
-    error_message: Optional[str]         # 错误信息
-    error_count: int                     # 错误计数
-    last_error_agent: Optional[str]      # 最后出错的Agent
-
-    # ===== Memory =====
-    session_id: str                      # 会话ID
-    chat_history_summary: Optional[str]  # 历史对话摘要(长对话压缩)
-
-    # ===== 输出 =====
-    final_response: Optional[str]        # 最终响应
-    confidence_score: float              # 回答置信度
-    execution_trace: List[ExecutionStep] # 执行轨迹(用于调试)
+    # ===== Legacy fields kept for compatibility =====
+    intent: Optional[str]
+    intent_confidence: float
+    sub_tasks: List[SubTask]
+    current_task_index: int
+    completed_tasks: List[SubTask]
+    project_data: Optional[dict]
+    pipeline_data: Optional[dict]
+    pump_station_data: Optional[dict]
+    oil_property_data: Optional[dict]
+    calculation_result: Optional[dict]
+    optimization_result: Optional[dict]
+    report_result: Optional[dict]
+    knowledge_context: Optional[str]
+    knowledge_sources: List[KnowledgeSource]
+    retrieval_quality: Optional[str]
+    next_agent: Optional[str]
+    should_retrieve: bool
+    should_calculate: bool
+    iteration: int
+    max_iterations: int
+    error_message: Optional[str]
+    error_count: int
+    last_error_agent: Optional[str]
+    session_id: str
+    chat_history_summary: Optional[str]
+    final_response: Optional[str]
+    confidence_score: float
+    execution_trace: List[ExecutionStep]
 
 
 def create_initial_state(
     user_input: str,
     session_id: str,
-    max_iterations: int = 10
+    max_iterations: int = 10,
+    max_retries_per_step: int = 2,
+    trace_id: Optional[str] = None,
 ) -> AgentState:
-    """创建初始状态"""
+    """Create initial workflow state."""
+
     return AgentState(
         messages=[],
         user_input=user_input,
+        plan=[],
+        current_step_index=0,
+        plan_reasoning=None,
+        needs_replan=False,
+        replan_reason=None,
+        reflexion_memories=[],
+        max_retries_per_step=max_retries_per_step,
+        hitl_pending=False,
+        hitl_request=None,
+        hitl_response=None,
+        trace_id=trace_id or generate_trace_id(),
+        token_usage={"prompt": 0, "completion": 0, "total": 0},
+        total_llm_calls=0,
+        total_tool_calls=0,
         intent=None,
         intent_confidence=0.0,
         sub_tasks=[],
@@ -108,6 +163,7 @@ def create_initial_state(
         oil_property_data=None,
         calculation_result=None,
         optimization_result=None,
+        report_result=None,
         knowledge_context=None,
         knowledge_sources=[],
         retrieval_quality=None,
@@ -123,5 +179,5 @@ def create_initial_state(
         chat_history_summary=None,
         final_response=None,
         confidence_score=0.0,
-        execution_trace=[]
+        execution_trace=[],
     )

@@ -16,10 +16,15 @@ class IntentType(str, Enum):
 
 class AgentType(str, Enum):
     """Agent类型"""
+    PLANNER = "planner"
     SUPERVISOR = "supervisor"
     DATA_AGENT = "data_agent"
     CALC_AGENT = "calc_agent"
     KNOWLEDGE_AGENT = "knowledge_agent"
+    GRAPH_AGENT = "graph_agent"
+    REPORT_AGENT = "report_agent"
+    REFLEXION = "reflexion"
+    SYNTHESIZER = "synthesizer"
 
 
 class TaskStatus(str, Enum):

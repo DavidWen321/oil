@@ -1,9 +1,12 @@
-"""
-APIï1!W
-"""
+ï»¿"""API route package exports."""
 
-from . import health
-from . import chat
-from . import knowledge
+from . import health, chat, knowledge, trace, report, graph_query
 
-__all__ = ["health", "chat", "knowledge"]
+__all__ = [
+    "health",
+    "chat",
+    "knowledge",
+    "trace",
+    "report",
+    "graph_query",
+]

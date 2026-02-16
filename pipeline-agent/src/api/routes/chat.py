@@ -1,188 +1,169 @@
-"""
-对话路由
-处理用户对话请求
-"""
+﻿"""Chat routes with streaming trace and HITL resume support."""
 
+from __future__ import annotations
+
+import json
 import time
-from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Depends
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, HTTPException
 from sse_starlette.sse import EventSourceResponse
 
-from src.config import settings
-from src.utils import logger, generate_session_id
-from src.models.schemas import ChatRequest, ChatResponse, StreamChunk
+from src.models.schemas import (
+    ChatRequest,
+    ChatResponse,
+    HITLConfirmRequest,
+    HITLConfirmResponse,
+)
+from src.utils import generate_session_id, generate_trace_id, logger
 from src.workflows import get_workflow
+from src.workflows.hitl import HITLResponse as HITLSubmitResponse, get_hitl_manager
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
 
 @router.post("", response_model=ChatResponse)
 async def chat(request: ChatRequest):
-    """
-    对话接口
+    """Standard non-stream chat endpoint."""
 
-    处理用户消息并返回AI回复
-    """
-    start_time = time.perf_counter()
-
+    start = time.perf_counter()
     session_id = request.session_id or generate_session_id()
-
-    logger.info(f"收到对话请求: session={session_id}, message={request.message[:50]}...")
+    trace_id = generate_trace_id()
 
     try:
         workflow = get_workflow()
-
-        if request.stream:
-            # 流式响应
-            return await _stream_response(workflow, request.message, session_id)
-
-        # 同步响应
         result = await workflow.ainvoke(
             user_input=request.message,
-            session_id=session_id
+            session_id=session_id,
+            trace_id=trace_id,
         )
-
-        execution_time = int((time.perf_counter() - start_time) * 1000)
 
         return ChatResponse(
             response=result.get("response", ""),
-            session_id=session_id,
+            session_id=result.get("session_id", session_id),
             sources=result.get("sources", []),
-            intent=result.get("intent"),
+            intent=result.get("intent", "chat"),
             confidence=result.get("confidence", 0.0),
-            execution_time_ms=execution_time
+            execution_time_ms=int((time.perf_counter() - start) * 1000),
+            trace_id=result.get("trace_id", trace_id),
+            tool_calls=result.get("tool_calls", []),
         )
-
-    except Exception as e:
-        logger.error(f"对话处理失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        logger.error(f"chat failed: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @router.post("/stream")
 async def chat_stream(request: ChatRequest):
-    """
-    流式对话接口
+    """Stream trace events and final response over SSE."""
 
-    使用Server-Sent Events返回流式响应
-    """
     session_id = request.session_id or generate_session_id()
+    trace_id = generate_trace_id()
+    workflow = get_workflow()
 
-    logger.info(f"收到流式对话请求: session={session_id}")
+    async def generate():
+        yield {
+            "event": "trace_init",
+            "data": json.dumps({"trace_id": trace_id, "session_id": session_id}, ensure_ascii=False),
+        }
+
+        result = await workflow.ainvoke(
+            user_input=request.message,
+            session_id=session_id,
+            trace_id=trace_id,
+        )
+
+        # 分块发送响应文本（模拟流式）
+        response_text = result.get("response", "")
+        chunk_size = 20  # 每次发送的字符数
+        for i in range(0, len(response_text), chunk_size):
+            chunk = response_text[i:i + chunk_size]
+            yield {
+                "event": "response_chunk",
+                "data": json.dumps({"chunk": chunk}, ensure_ascii=False),
+            }
+
+        yield {
+            "event": "final_response",
+            "data": json.dumps(result, ensure_ascii=False, default=str),
+        }
+
+    return EventSourceResponse(generate())
+
+
+@router.post("/confirm", response_model=HITLConfirmResponse)
+async def confirm_hitl(request: HITLConfirmRequest):
+    """Resume HITL-interrupted workflow with user decision."""
 
     try:
-        workflow = get_workflow()
+        response_payload = request.response or {
+            "request_id": request.request_id,
+            "selected_option": request.selected_option,
+            "modified_data": request.modified_data,
+            "comment": request.comment,
+        }
 
-        async def generate():
+        manager = get_hitl_manager()
+        pending = manager.get_pending_request(request.session_id)
+        request_id = str(response_payload.get("request_id") or (pending or {}).get("request_id") or "")
+        if request_id:
             try:
-                async for event in workflow.astream(
-                    user_input=request.message,
-                    session_id=session_id
-                ):
-                    event_type = event.get("event", "")
+                manager.submit_response(
+                    session_id=request.session_id,
+                    response=HITLSubmitResponse(
+                        request_id=request_id,
+                        selected_option=response_payload.get("selected_option"),
+                        modified_data=response_payload.get("modified_data"),
+                        comment=response_payload.get("comment"),
+                    ),
+                )
+            except Exception as persist_error:
+                logger.debug(f"submit HITL response skipped: {persist_error}")
 
-                    # 处理不同类型的事件
-                    if event_type == "on_chat_model_stream":
-                        # LLM输出流
-                        chunk = event.get("data", {}).get("chunk", {})
-                        content = chunk.content if hasattr(chunk, "content") else ""
-                        if content:
-                            yield {
-                                "event": "message",
-                                "data": content
-                            }
+        workflow = get_workflow()
+        result = await workflow.resume_from_hitl(
+            session_id=request.session_id,
+            response=response_payload,
+        )
+        return HITLConfirmResponse(status="resumed", result=result)
+    except Exception as exc:
+        logger.error(f"HITL confirm failed: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
 
-                    elif event_type == "on_chain_end":
-                        # 链完成
-                        output = event.get("data", {}).get("output", {})
-                        if isinstance(output, dict) and output.get("final_response"):
-                            yield {
-                                "event": "done",
-                                "data": output.get("final_response")
-                            }
 
-                    elif event_type == "error":
-                        yield {
-                            "event": "error",
-                            "data": str(event.get("data", "Unknown error"))
-                        }
+@router.get("/pending/{session_id}")
+async def get_pending_hitl(session_id: str):
+    """Get pending HITL request for polling fallback."""
 
-            except Exception as e:
-                logger.error(f"流式生成失败: {e}")
-                yield {
-                    "event": "error",
-                    "data": str(e)
-                }
-
-        return EventSourceResponse(generate())
-
-    except Exception as e:
-        logger.error(f"流式对话失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    manager = get_hitl_manager()
+    pending = manager.get_pending_request(session_id)
+    return {
+        "session_id": session_id,
+        "pending": pending is not None,
+        "request": pending,
+    }
 
 
 @router.get("/history/{session_id}")
 async def get_chat_history(session_id: str):
-    """
-    获取对话历史
+    """Return message history from checkpoint state."""
 
-    Args:
-        session_id: 会话ID
+    workflow = get_workflow()
+    state = workflow.get_state(session_id)
 
-    Returns:
-        对话历史
-    """
-    try:
-        workflow = get_workflow()
-        state = workflow.get_state(session_id)
+    if not state:
+        return {"session_id": session_id, "messages": [], "found": False}
 
-        if not state:
-            return {"session_id": session_id, "messages": [], "found": False}
-
-        messages = state.get("messages", [])
-
-        # 转换消息格式
-        history = []
-        for msg in messages:
-            history.append({
-                "role": "user" if msg.type == "human" else "assistant",
-                "content": msg.content
-            })
-
-        return {
-            "session_id": session_id,
-            "messages": history,
-            "found": True
+    messages = state.get("messages", [])
+    history = [
+        {
+            "role": "user" if getattr(msg, "type", "") == "human" else "assistant",
+            "content": getattr(msg, "content", ""),
         }
+        for msg in messages
+    ]
 
-    except Exception as e:
-        logger.error(f"获取历史失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-async def _stream_response(workflow, message: str, session_id: str):
-    """
-    辅助函数：生成流式响应
-    """
-    async def generate():
-        full_response = ""
-        async for event in workflow.astream(
-            user_input=message,
-            session_id=session_id
-        ):
-            event_type = event.get("event", "")
-            if event_type == "on_chat_model_stream":
-                chunk = event.get("data", {}).get("chunk", {})
-                content = chunk.content if hasattr(chunk, "content") else ""
-                if content:
-                    full_response += content
-                    yield f"data: {content}\n\n"
-
-        yield f"data: [DONE]\n\n"
-
-    return StreamingResponse(
-        generate(),
-        media_type="text/event-stream"
-    )
+    return {
+        "session_id": session_id,
+        "messages": history,
+        "found": True,
+    }

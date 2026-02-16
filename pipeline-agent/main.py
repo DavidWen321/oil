@@ -12,7 +12,7 @@ def main():
     print(f"""
     ╔══════════════════════════════════════════════════════════╗
     ║           Pipeline Agent - 管道能耗智能体系统              ║
-    ║                      Version 3.0.0                        ║
+    ║                      Version 4.0.0                        ║
     ╠══════════════════════════════════════════════════════════╣
     ║  API Server: http://{settings.API_HOST}:{settings.API_PORT}                         ║
     ║  API Docs:   http://{settings.API_HOST}:{settings.API_PORT}/docs                    ║
