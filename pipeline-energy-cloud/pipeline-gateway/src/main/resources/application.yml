@@ -2,25 +2,40 @@ server:
   port: 8080
 
 spring:
+  config:
+    import: "optional:nacos:localhost:8848"
   application:
     name: pipeline-gateway
   cloud:
     nacos:
       discovery:
         server-addr: localhost:8848
+      config:
+        server-addr: localhost:8848
     gateway:
       discovery:
         locator:
           enabled: true
           lower-case-service-id: true
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOriginPatterns: "*"
+            allowedMethods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - OPTIONS
+            allowedHeaders: "*"
+            allowCredentials: true
+            maxAge: 3600
       routes:
-        # 认证服务
+        # 认证服务 (控制器已有 /auth 前缀，不需要 StripPrefix)
         - id: pipeline-auth
           uri: lb://pipeline-auth
           predicates:
             - Path=/auth/**
-          filters:
-            - StripPrefix=1
         # 系统服务
         - id: pipeline-system
           uri: lb://pipeline-system
@@ -28,20 +43,18 @@ spring:
             - Path=/system/**
           filters:
             - StripPrefix=1
-        # 数据服务
+        # 数据服务 (前端发 /data/project/list，需要去掉 /data 前缀)
         - id: pipeline-data
           uri: lb://pipeline-data
           predicates:
             - Path=/data/**
           filters:
             - StripPrefix=1
-        # 计算服务
+        # 计算服务 (控制器已有 /calculation 前缀，不需要 StripPrefix)
         - id: pipeline-calculation
           uri: lb://pipeline-calculation
           predicates:
             - Path=/calculation/**
-          filters:
-            - StripPrefix=1
 
   # Redis配置
   redis:

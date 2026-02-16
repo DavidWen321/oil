@@ -61,7 +61,11 @@ public class TokenService {
 
         Map<String, Object> tokenMap = new HashMap<>();
         tokenMap.put("access_token", tokenInfo.tokenValue);
-        tokenMap.put("expires_in", tokenInfo.tokenTimeout); 
+        tokenMap.put("token", tokenInfo.tokenValue);
+        tokenMap.put("expires_in", tokenInfo.tokenTimeout);
+        tokenMap.put("userId", user.getUserId());
+        tokenMap.put("username", user.getUserName());
+        tokenMap.put("nickname", user.getNickName());
         return tokenMap;
     }
 }
