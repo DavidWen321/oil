@@ -79,7 +79,8 @@ class SelfRAG:
                 api_key=settings.OPENAI_API_KEY,
                 base_url=settings.OPENAI_API_BASE,
                 model=settings.LLM_MODEL,
-                temperature=0
+                temperature=0,
+                max_tokens=256,
             )
         return self._llm
 
@@ -234,7 +235,8 @@ class QueryRewriter:
                 api_key=settings.OPENAI_API_KEY,
                 base_url=settings.OPENAI_API_BASE,
                 model=settings.LLM_MODEL,
-                temperature=0.3
+                temperature=0.3,
+                max_tokens=512,
             )
         return self._llm
 

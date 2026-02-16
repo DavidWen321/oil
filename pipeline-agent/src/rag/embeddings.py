@@ -51,9 +51,10 @@ class HybridEmbeddings:
         """获取Dense Embedding模型（懒加载）"""
         if self._dense_embeddings is None:
             self._dense_embeddings = OpenAIEmbeddings(
-                api_key=settings.OPENAI_API_KEY,
-                base_url=settings.OPENAI_API_BASE,
-                model=self.model
+                api_key=settings.EMBEDDING_API_KEY,
+                base_url=settings.EMBEDDING_API_BASE,
+                model=self.model,
+                check_embedding_ctx_length=False,
             )
         return self._dense_embeddings
 

@@ -190,6 +190,107 @@ class Reranker:
         ]
 
 
+class DashScopeReranker:
+    """
+    基于阿里云 DashScope gte-rerank API 的重排序器
+
+    一次 API 调用完成批量重排序，无需本地模型。
+    """
+
+    def __init__(
+        self,
+        model_name: str = None,
+        threshold: float = None,
+    ):
+        reranker_config = rag_config.reranker
+        self.model_name = model_name or reranker_config["model"]
+        self.threshold = threshold or reranker_config["threshold"]
+
+    def rerank(
+        self,
+        query: str,
+        results: List[RetrievalResult],
+        top_k: int = None,
+    ) -> List[RerankResult]:
+        """调用 DashScope gte-rerank API 重排序。"""
+        import httpx
+
+        if not results:
+            return []
+
+        top_k = top_k or rag_config.retrieval["final_k"]
+
+        documents = [
+            {"content": r.full_text or r.content}
+            for r in results
+        ]
+
+        try:
+            resp = httpx.post(
+                f"{settings.EMBEDDING_API_BASE.rstrip('/').replace('/compatible-mode/v1', '')}/api/v1/services/rerank/text-rerank",
+                headers={
+                    "Authorization": f"Bearer {settings.EMBEDDING_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": self.model_name,
+                    "query": query,
+                    "documents": documents,
+                    "top_n": top_k,
+                },
+                timeout=30,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as e:
+            logger.error(f"DashScope rerank API 调用失败: {e}")
+            return self._fallback(results, top_k)
+
+        rerank_results = []
+        for item in data.get("output", {}).get("results", []):
+            idx = item["index"]
+            score = float(item["relevance_score"])
+            if score < self.threshold:
+                continue
+            r = results[idx]
+            rerank_results.append(
+                RerankResult(
+                    chunk_id=r.chunk_id,
+                    content=r.content,
+                    full_text=r.full_text,
+                    doc_id=r.doc_id,
+                    doc_title=r.doc_title,
+                    source=r.source,
+                    category=r.category,
+                    original_score=r.score,
+                    rerank_score=score,
+                    final_score=score,
+                )
+            )
+
+        rerank_results.sort(key=lambda x: x.rerank_score, reverse=True)
+        logger.info(f"DashScope rerank 完成: {len(results)} -> {len(rerank_results)} 条")
+        return rerank_results[:top_k]
+
+    @staticmethod
+    def _fallback(results: List[RetrievalResult], top_k: int) -> List[RerankResult]:
+        return [
+            RerankResult(
+                chunk_id=r.chunk_id,
+                content=r.content,
+                full_text=r.full_text,
+                doc_id=r.doc_id,
+                doc_title=r.doc_title,
+                source=r.source,
+                category=r.category,
+                original_score=r.score,
+                rerank_score=r.score,
+                final_score=r.score,
+            )
+            for r in results
+        ][:top_k]
+
+
 class LLMReranker:
     """
     基于LLM的重排序器
@@ -216,7 +317,8 @@ class LLMReranker:
             api_key=settings.OPENAI_API_KEY,
             base_url=settings.OPENAI_API_BASE,
             model=settings.LLM_MODEL,
-            temperature=0
+            temperature=0,
+            max_tokens=64,
         )
 
     def rerank(
@@ -273,9 +375,16 @@ class LLMReranker:
 _reranker: Optional[Reranker] = None
 
 
-def get_reranker() -> Reranker:
-    """获取重排序器实例"""
+def get_reranker():
+    """根据 RERANKER_MODE 配置返回对应的重排序器实例。"""
     global _reranker
     if _reranker is None:
-        _reranker = Reranker()
+        mode = getattr(settings, "RERANKER_MODE", "api")
+        if mode == "local":
+            _reranker = Reranker()
+        elif mode == "llm":
+            _reranker = LLMReranker()
+        else:
+            _reranker = DashScopeReranker()
+        logger.info(f"Reranker 初始化: mode={mode}, class={type(_reranker).__name__}")
     return _reranker

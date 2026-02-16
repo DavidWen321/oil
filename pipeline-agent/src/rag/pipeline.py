@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from src.config import settings, rag_config
 from src.utils import logger
 from src.models.enums import RetrievalQuality, KnowledgeCategory
+from src.knowledge_graph import get_knowledge_graph_builder
 
 from .document_processor import DocumentProcessor, Document, create_document_processor
 from .contextual_chunker import ContextualChunker, Chunk, create_contextual_chunker
@@ -17,6 +18,7 @@ from .vector_store import MilvusVectorStore, get_vector_store
 from .hybrid_retriever import HybridRetriever, RetrievalResult, get_retriever
 from .reranker import Reranker, RerankResult, get_reranker
 from .self_rag import SelfRAG, RetrievalDecision, get_self_rag, get_query_rewriter
+from .graph_rag import GraphRAGRetriever
 
 
 @dataclass
@@ -52,7 +54,8 @@ class RAGPipeline:
         vector_store: MilvusVectorStore = None,
         retriever: HybridRetriever = None,
         reranker: Reranker = None,
-        self_rag: SelfRAG = None
+        self_rag: SelfRAG = None,
+        graph_rag: GraphRAGRetriever = None,
     ):
         """初始化RAG Pipeline"""
         self.document_processor = document_processor or create_document_processor()
@@ -63,6 +66,7 @@ class RAGPipeline:
         self.reranker = reranker or get_reranker()
         self.self_rag = self_rag or get_self_rag()
         self.query_rewriter = get_query_rewriter()
+        self.graph_rag = graph_rag or GraphRAGRetriever(get_knowledge_graph_builder())
 
     def index_documents(
         self,
@@ -210,6 +214,9 @@ class RAGPipeline:
             top_k=top_k
         )
 
+        # 4.5 Graph RAG检索
+        graph_results = self.graph_rag.retrieve(query, top_k=3)
+
         # 5. CRAG质量评估
         quality, quality_reason = self.self_rag.evaluate_retrieval_quality(
             query=query,
@@ -219,10 +226,10 @@ class RAGPipeline:
         logger.info(f"CRAG评估: {quality.value} - {quality_reason}")
 
         # 6. 构建上下文
-        context = self._build_context(rerank_results, quality)
+        context = self._build_context(rerank_results, quality, graph_results)
 
         # 7. 构建来源引用
-        sources = self._build_sources(rerank_results)
+        sources = self._build_sources(rerank_results, graph_results)
 
         return RAGResponse(
             context=context,
@@ -234,18 +241,23 @@ class RAGPipeline:
             metadata={
                 "decision_reason": decision_reason,
                 "quality_reason": quality_reason,
-                "num_results": len(rerank_results)
+                "num_results": len(rerank_results),
+                "graph_results": len(graph_results),
             }
         )
 
     def _build_context(
         self,
         results: List[RerankResult],
-        quality: RetrievalQuality
+        quality: RetrievalQuality,
+        graph_results: Optional[List[Dict[str, Any]]] = None,
     ) -> str:
         """构建检索上下文"""
+        graph_results = graph_results or []
+
         if not results:
-            return ""
+            graph_context = "\n\n".join([item.get("content", "") for item in graph_results if item.get("content")])
+            return graph_context
 
         # 根据质量决定处理方式
         if quality == RetrievalQuality.HIGH:
@@ -258,9 +270,16 @@ class RAGPipeline:
             # 低质量，只取最相关的
             parts = [results[0].full_text or results[0].content] if results else []
 
+        # 追加图谱上下文
+        parts.extend([item.get("content", "") for item in graph_results if item.get("content")])
+
         return "\n\n---\n\n".join(parts)
 
-    def _build_sources(self, results: List[RerankResult]) -> List[Dict[str, Any]]:
+    def _build_sources(
+        self,
+        results: List[RerankResult],
+        graph_results: Optional[List[Dict[str, Any]]] = None,
+    ) -> List[Dict[str, Any]]:
         """构建来源引用"""
         sources = []
         seen_docs = set()
@@ -276,6 +295,16 @@ class RAGPipeline:
                     "content_preview": r.content[:200] + "..." if len(r.content) > 200 else r.content
                 })
                 seen_docs.add(r.doc_id)
+
+        for index, graph_item in enumerate(graph_results or [], start=1):
+            sources.append({
+                "doc_id": f"graph_{index}",
+                "doc_title": "知识图谱推理结果",
+                "source": "knowledge_graph",
+                "category": "graph",
+                "score": graph_item.get("confidence", 0.0),
+                "content_preview": graph_item.get("content", "")[:200],
+            })
 
         return sources
 
