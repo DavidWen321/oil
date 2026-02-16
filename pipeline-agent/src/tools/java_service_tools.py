@@ -3,14 +3,16 @@ Java服务调用工具
 通过HTTP调用Java后端的水力计算和优化服务
 """
 
+import json
+import time
 from typing import Optional, Dict, Any
-from decimal import Decimal
+
 import httpx
 from langchain_core.tools import tool
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from src.config import settings
-from src.utils import logger, decimal_to_float
+from src.utils import logger
 
 
 class JavaServiceClient:
@@ -20,10 +22,11 @@ class JavaServiceClient:
         self.base_url = settings.JAVA_GATEWAY_URL
         self.timeout = settings.JAVA_REQUEST_TIMEOUT
         self.token: Optional[str] = None
+        self._token_expires_at: float = 0.0
 
     async def _get_token(self) -> str:
         """获取认证Token"""
-        if self.token:
+        if self.token and time.time() < self._token_expires_at:
             return self.token
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -31,17 +34,24 @@ class JavaServiceClient:
                 f"{self.base_url}/auth/login",
                 json={
                     "username": settings.JAVA_AUTH_USERNAME,
-                    "password": settings.JAVA_AUTH_PASSWORD
-                }
+                    "password": settings.JAVA_AUTH_PASSWORD,
+                },
             )
             response.raise_for_status()
             data = response.json()
-            self.token = data.get("data", {}).get("token") or data.get("token")
+            token_data = data.get("data", {}) if isinstance(data, dict) else {}
+            self.token = (
+                token_data.get("access_token")
+                or token_data.get("token")
+                or data.get("access_token")
+                or data.get("token")
+            )
+            self._token_expires_at = time.time() + 7200
             return self.token
 
     def _get_token_sync(self) -> str:
         """同步获取认证Token"""
-        if self.token:
+        if self.token and time.time() < self._token_expires_at:
             return self.token
 
         with httpx.Client(timeout=self.timeout) as client:
@@ -49,25 +59,40 @@ class JavaServiceClient:
                 f"{self.base_url}/auth/login",
                 json={
                     "username": settings.JAVA_AUTH_USERNAME,
-                    "password": settings.JAVA_AUTH_PASSWORD
-                }
+                    "password": settings.JAVA_AUTH_PASSWORD,
+                },
             )
             response.raise_for_status()
             data = response.json()
-            self.token = data.get("data", {}).get("token") or data.get("token")
+            token_data = data.get("data", {}) if isinstance(data, dict) else {}
+            self.token = (
+                token_data.get("access_token")
+                or token_data.get("token")
+                or data.get("access_token")
+                or data.get("token")
+            )
+            self._token_expires_at = time.time() + 7200
             return self.token
 
     def _get_headers(self) -> Dict[str, str]:
         """获取请求头"""
         token = self._get_token_sync()
+        if not token:
+            raise RuntimeError("Failed to obtain authentication token")
         return {
             "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json"
+            "satoken": token,
+            "Content-Type": "application/json",
         }
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=10))
-    def call_api(self, endpoint: str, method: str = "POST",
-                 data: Dict = None, params: Dict = None) -> Dict[str, Any]:
+    def call_api(
+        self,
+        endpoint: str,
+        method: str = "POST",
+        data: Dict = None,
+        params: Dict = None,
+    ) -> Dict[str, Any]:
         """
         调用Java API
 
@@ -109,216 +134,326 @@ def get_java_client() -> JavaServiceClient:
 
 # ==================== LangChain Tools ====================
 
+
 @tool
 def call_hydraulic_analysis(
     flow_rate: float,
-    pipe_diameter: float,
-    pipe_length: float,
-    oil_density: float,
-    oil_viscosity: float,
+    density: float,
+    viscosity: float,
+    length: float,
+    diameter: float,
+    thickness: float,
     roughness: float = 0.03,
-    start_elevation: float = 0,
-    end_elevation: float = 0
+    start_altitude: float = 0,
+    end_altitude: float = 0,
+    inlet_pressure: float = 0,
+    pump480_num: int = 0,
+    pump375_num: int = 0,
+    pump480_head: float = 0,
+    pump375_head: float = 0,
+    pipeline_id: Optional[int] = None,
+    oil_id: Optional[int] = None,
 ) -> str:
     """
     调用Java服务进行水力特性分析
 
     Args:
         flow_rate: 流量 (m³/h)
-        pipe_diameter: 管道内径 (mm)
-        pipe_length: 管道长度 (km)
-        oil_density: 油品密度 (kg/m³)
-        oil_viscosity: 运动粘度 (m²/s)
-        roughness: 管道粗糙度 (mm)，默认0.03
-        start_elevation: 起点高程 (m)
-        end_elevation: 终点高程 (m)
+        density: 油品密度 (kg/m³)
+        viscosity: 运动粘度 (m²/s)
+        length: 管道长度 (km)
+        diameter: 管道外径 (mm)
+        thickness: 壁厚 (mm)
+        roughness: 当量粗糙度 (m)，默认0.03
+        start_altitude: 起点高程 (m)
+        end_altitude: 终点高程 (m)
+        inlet_pressure: 首站进站压头 (m)，默认0
+        pump480_num: ZMI480泵数量，默认0
+        pump375_num: ZMI375泵数量，默认0
+        pump480_head: ZMI480单泵扬程 (m)，默认0
+        pump375_head: ZMI375单泵扬程 (m)，默认0
+        pipeline_id: 管道ID（可选）
+        oil_id: 油品ID（可选）
 
     Returns:
-        水力分析结果
+        水力分析结果（JSON格式）
     """
     try:
         client = get_java_client()
 
-        # 构造请求参数
         request_data = {
             "flowRate": flow_rate,
-            "pipeDiameter": pipe_diameter,
-            "pipeLength": pipe_length,
-            "oilDensity": oil_density,
-            "oilViscosity": oil_viscosity,
+            "density": density,
+            "viscosity": viscosity,
+            "length": length,
+            "diameter": diameter,
+            "thickness": thickness,
             "roughness": roughness,
-            "startElevation": start_elevation,
-            "endElevation": end_elevation
+            "startAltitude": start_altitude,
+            "endAltitude": end_altitude,
+            "inletPressure": inlet_pressure,
+            "pump480Num": pump480_num,
+            "pump375Num": pump375_num,
+            "pump480Head": pump480_head,
+            "pump375Head": pump375_head,
         }
+        if pipeline_id is not None:
+            request_data["pipelineId"] = pipeline_id
+        if oil_id is not None:
+            request_data["oilId"] = oil_id
 
         logger.info(f"调用水力分析API: {request_data}")
 
-        # 调用API
         response = client.call_api(
-            "/calculation/hydraulic/analysis",
+            "/calculation/hydraulic-analysis",
             method="POST",
-            data=request_data
+            data=request_data,
         )
 
-        # 解析响应
         if response.get("code") != 200:
-            return f"计算失败: {response.get('msg', '未知错误')}"
+            return json.dumps(
+                {"success": False, "message": response.get("msg", "未知错误")},
+                ensure_ascii=False,
+                default=str,
+            )
 
         result = response.get("data", {})
-
-        # 格式化输出
-        return (
-            f"水力分析结果:\n"
-            f"\n【基本参数】\n"
-            f"  - 流量: {flow_rate} m³/h\n"
-            f"  - 管径: {pipe_diameter} mm\n"
-            f"  - 管长: {pipe_length} km\n"
-            f"\n【计算结果】\n"
-            f"  - 流速: {result.get('flowVelocity', 'N/A')} m/s\n"
-            f"  - 雷诺数: {result.get('reynoldsNumber', 'N/A')}\n"
-            f"  - 流态: {result.get('flowRegime', 'N/A')}\n"
-            f"  - 摩擦系数: {result.get('frictionFactor', 'N/A')}\n"
-            f"  - 沿程摩阻损失: {result.get('frictionHeadLoss', 'N/A')} m\n"
-            f"  - 水力坡降: {result.get('hydraulicSlope', 'N/A')} m/km\n"
-            f"  - 高程差压头: {result.get('elevationHead', 'N/A')} m\n"
-            f"  - 总压头损失: {result.get('totalHeadLoss', 'N/A')} m\n"
-            f"  - 计算方法: {result.get('calculationMethod', 'N/A')}"
+        return json.dumps(
+            {"success": True, "data": result, "input_params": request_data},
+            ensure_ascii=False,
+            default=str,
         )
 
     except httpx.ConnectError:
         logger.error("无法连接到Java服务")
-        return "错误: 无法连接到Java计算服务，请确认服务是否启动"
+        return json.dumps(
+            {"success": False, "message": "无法连接到Java计算服务，请确认服务是否启动"},
+            ensure_ascii=False,
+            default=str,
+        )
     except httpx.HTTPStatusError as e:
         logger.error(f"Java服务返回错误: {e}")
-        return f"错误: Java服务返回 {e.response.status_code}"
+        return json.dumps(
+            {"success": False, "message": f"Java服务返回 {e.response.status_code}"},
+            ensure_ascii=False,
+            default=str,
+        )
     except Exception as e:
         logger.error(f"水力分析调用失败: {e}")
-        return f"计算失败: {str(e)}"
+        return json.dumps(
+            {"success": False, "message": f"计算失败: {str(e)}"},
+            ensure_ascii=False,
+            default=str,
+        )
 
 
 @tool
 def call_pump_optimization(
-    pipeline_id: int,
-    target_flow: float,
-    min_end_pressure: float = 0.3
+    flow_rate: float,
+    density: float,
+    viscosity: float,
+    length: float,
+    diameter: float,
+    thickness: float,
+    roughness: float,
+    start_altitude: float,
+    end_altitude: float,
+    inlet_pressure: float,
+    pump480_head: float,
+    pump375_head: float,
+    pump_efficiency: float = 0.80,
+    motor_efficiency: float = 0.95,
+    working_days: float = 350,
+    electricity_price: float = 0.8,
+    project_id: Optional[int] = None,
 ) -> str:
     """
     调用Java服务进行泵站组合优化
 
+    遍历所有 ZMI480 × ZMI375 泵组合，找到最优方案。
+
     Args:
-        pipeline_id: 管道ID
-        target_flow: 目标流量 (m³/h)
-        min_end_pressure: 最小末站压力 (MPa)，默认0.3
+        flow_rate: 流量 (m³/h)
+        density: 油品密度 (kg/m³)
+        viscosity: 运动粘度 (m²/s)
+        length: 管道长度 (km)
+        diameter: 管道外径 (mm)
+        thickness: 壁厚 (mm)
+        roughness: 当量粗糙度 (m)
+        start_altitude: 起点高程 (m)
+        end_altitude: 终点高程 (m)
+        inlet_pressure: 首站进站压头 (m)
+        pump480_head: ZMI480单泵扬程 (m)
+        pump375_head: ZMI375单泵扬程 (m)
+        pump_efficiency: 泵效率 (0-1)，默认0.80
+        motor_efficiency: 电机效率 (0-1)，默认0.95
+        working_days: 年运行天数，默认350
+        electricity_price: 电价 (元/kWh)，默认0.8
+        project_id: 项目ID（可选）
 
     Returns:
-        优化结果
+        优化结果（JSON格式，包含最优方案和所有可行方案）
     """
     try:
         client = get_java_client()
 
         request_data = {
-            "pipelineId": pipeline_id,
-            "targetFlow": target_flow,
-            "minEndPressure": min_end_pressure
+            "flowRate": flow_rate,
+            "density": density,
+            "viscosity": viscosity,
+            "length": length,
+            "diameter": diameter,
+            "thickness": thickness,
+            "roughness": roughness,
+            "startAltitude": start_altitude,
+            "endAltitude": end_altitude,
+            "inletPressure": inlet_pressure,
+            "pump480Head": pump480_head,
+            "pump375Head": pump375_head,
+            "pumpEfficiency": pump_efficiency,
+            "motorEfficiency": motor_efficiency,
+            "workingDays": working_days,
+            "electricityPrice": electricity_price,
         }
+        if project_id is not None:
+            request_data["projectId"] = project_id
 
         logger.info(f"调用泵站优化API: {request_data}")
 
         response = client.call_api(
-            "/calculation/optimization/pump",
+            "/calculation/optimization",
             method="POST",
-            data=request_data
+            data=request_data,
         )
 
         if response.get("code") != 200:
-            return f"优化失败: {response.get('msg', '未知错误')}"
+            return json.dumps(
+                {"success": False, "message": response.get("msg", "未知错误")},
+                ensure_ascii=False,
+                default=str,
+            )
 
         result = response.get("data", {})
-        optimal = result.get("optimalCombination", {})
-        all_combinations = result.get("allCombinations", [])
-
-        output = (
-            f"泵站优化结果:\n"
-            f"\n【优化目标】\n"
-            f"  - 目标流量: {target_flow} m³/h\n"
-            f"  - 最小末站压力: {min_end_pressure} MPa\n"
-            f"\n【最优方案】\n"
-            f"  - 泵型1: {optimal.get('pumpType1', 'N/A')} × {optimal.get('pumpCount1', 0)} 台\n"
-            f"  - 泵型2: {optimal.get('pumpType2', 'N/A')} × {optimal.get('pumpCount2', 0)} 台\n"
-            f"  - 总扬程: {optimal.get('totalHead', 'N/A')} m\n"
-            f"  - 末站压力: {optimal.get('endPressure', 'N/A')} MPa\n"
-            f"  - 功耗: {optimal.get('powerConsumption', 'N/A')} kW\n"
+        return json.dumps(
+            {"success": True, "data": result},
+            ensure_ascii=False,
+            default=str,
         )
-
-        # 显示其他可行方案
-        feasible_count = sum(1 for c in all_combinations if c.get('isFeasible'))
-        output += f"\n【方案统计】\n"
-        output += f"  - 总方案数: {len(all_combinations)}\n"
-        output += f"  - 可行方案数: {feasible_count}\n"
-
-        return output
 
     except httpx.ConnectError:
         logger.error("无法连接到Java服务")
-        return "错误: 无法连接到Java计算服务，请确认服务是否启动"
+        return json.dumps(
+            {"success": False, "message": "无法连接到Java计算服务"},
+            ensure_ascii=False,
+            default=str,
+        )
+    except httpx.HTTPStatusError as e:
+        logger.error(f"Java服务返回错误: {e}")
+        return json.dumps(
+            {"success": False, "message": f"Java服务返回 {e.response.status_code}"},
+            ensure_ascii=False,
+            default=str,
+        )
     except Exception as e:
         logger.error(f"泵站优化调用失败: {e}")
-        return f"优化失败: {str(e)}"
+        return json.dumps(
+            {"success": False, "message": f"优化失败: {str(e)}"},
+            ensure_ascii=False,
+            default=str,
+        )
 
 
 @tool
 def get_pipeline_hydraulics(pipeline_id: int, flow_rate: float) -> str:
     """
-    根据管道ID获取完整的水力计算结果
+    根据管道ID自动获取参数并执行水力计算
+
+    先从Java data服务获取管道和油品参数，然后调用水力分析API。
 
     Args:
         pipeline_id: 管道ID
         flow_rate: 流量 (m³/h)
 
     Returns:
-        完整的水力计算结果
+        完整的水力计算结果（JSON格式）
     """
     try:
         client = get_java_client()
 
+        # 获取管道参数
+        pipeline_resp = client.call_api(f"/data/pipeline/{pipeline_id}", method="GET")
+        if pipeline_resp.get("code") != 200:
+            return json.dumps(
+                {"success": False, "message": f"获取管道参数失败: {pipeline_resp.get('msg')}"},
+                ensure_ascii=False,
+                default=str,
+            )
+
+        pipeline = pipeline_resp.get("data", {}) or {}
+
+        # 获取油品参数
+        oil_resp = client.call_api("/data/oil-property/list", method="GET")
+        oil_data = oil_resp.get("data", []) if isinstance(oil_resp.get("data"), list) else []
+        oil = oil_data[0] if oil_data else {}
+
+        # 获取泵站参数
+        pump_resp = client.call_api("/data/pump-station/list", method="GET")
+        pump_data = pump_resp.get("data", []) if isinstance(pump_resp.get("data"), list) else []
+        pump = pump_data[0] if pump_data else {}
+
+        diameter = float(pipeline.get("diameter") or 0)
+        thickness = float(pipeline.get("thickness") or 0)
+
         request_data = {
             "pipelineId": pipeline_id,
-            "flowRate": flow_rate
+            "flowRate": flow_rate,
+            "density": float(oil.get("density") or 850),
+            "viscosity": float(oil.get("viscosity") or 0.00004),
+            "length": float(pipeline.get("length") or 100),
+            "diameter": diameter,
+            "thickness": thickness,
+            "roughness": float(pipeline.get("roughness") or 0.03),
+            "startAltitude": float(pipeline.get("startAltitude") or pipeline.get("start_altitude") or 0),
+            "endAltitude": float(pipeline.get("endAltitude") or pipeline.get("end_altitude") or 0),
+            "inletPressure": float(pump.get("comePower") or pump.get("come_power") or 0),
+            "pump480Head": float(pump.get("zmi480Lift") or pump.get("zmi480_lift") or 0),
+            "pump375Head": float(pump.get("zmi375Lift") or pump.get("zmi375_lift") or 0),
+            "pump480Num": 0,
+            "pump375Num": 0,
         }
 
         response = client.call_api(
-            "/calculation/pipeline/hydraulics",
+            "/calculation/hydraulic-analysis",
             method="POST",
-            data=request_data
+            data=request_data,
         )
 
         if response.get("code") != 200:
-            return f"计算失败: {response.get('msg', '未知错误')}"
+            return json.dumps(
+                {"success": False, "message": response.get("msg", "未知错误")},
+                ensure_ascii=False,
+                default=str,
+            )
 
         result = response.get("data", {})
-
-        return (
-            f"管道水力计算结果:\n"
-            f"\n【管道信息】\n"
-            f"  - 管道ID: {pipeline_id}\n"
-            f"  - 管道名称: {result.get('pipelineName', 'N/A')}\n"
-            f"  - 计算流量: {flow_rate} m³/h\n"
-            f"\n【水力特性】\n"
-            f"  - 流速: {result.get('flowVelocity', 'N/A')} m/s\n"
-            f"  - 雷诺数: {result.get('reynoldsNumber', 'N/A')}\n"
-            f"  - 流态: {result.get('flowRegime', 'N/A')}\n"
-            f"\n【压降分析】\n"
-            f"  - 沿程损失: {result.get('frictionHeadLoss', 'N/A')} m\n"
-            f"  - 水力坡降: {result.get('hydraulicSlope', 'N/A')} m/km\n"
-            f"  - 高程差压头: {result.get('elevationHead', 'N/A')} m\n"
-            f"\n【泵站需求】\n"
-            f"  - 总压头需求: {result.get('totalHeadRequired', 'N/A')} m\n"
-            f"  - 建议泵型: {result.get('recommendedPump', 'N/A')}"
+        return json.dumps(
+            {
+                "success": True,
+                "data": result,
+                "pipeline_name": pipeline.get("name", ""),
+                "input_params": request_data,
+            },
+            ensure_ascii=False,
+            default=str,
         )
 
     except Exception as e:
         logger.error(f"管道水力计算失败: {e}")
-        return f"计算失败: {str(e)}"
+        return json.dumps(
+            {"success": False, "message": f"计算失败: {str(e)}"},
+            ensure_ascii=False,
+            default=str,
+        )
 
 
 @tool
@@ -327,26 +462,41 @@ def check_java_service_health() -> str:
     检查Java计算服务是否可用
 
     Returns:
-        服务状态信息
+        服务状态信息（JSON格式）
     """
     try:
         client = get_java_client()
 
         response = client.call_api(
             "/actuator/health",
-            method="GET"
+            method="GET",
         )
 
         status = response.get("status", "UNKNOWN")
         if status == "UP":
-            return "Java计算服务运行正常"
-        else:
-            return f"Java计算服务状态异常: {status}"
+            return json.dumps(
+                {"success": True, "message": "Java计算服务运行正常", "data": response},
+                ensure_ascii=False,
+                default=str,
+            )
+        return json.dumps(
+            {"success": False, "message": f"Java计算服务状态异常: {status}", "data": response},
+            ensure_ascii=False,
+            default=str,
+        )
 
     except httpx.ConnectError:
-        return "Java计算服务无法连接，请检查服务是否启动"
+        return json.dumps(
+            {"success": False, "message": "Java计算服务无法连接，请检查服务是否启动"},
+            ensure_ascii=False,
+            default=str,
+        )
     except Exception as e:
-        return f"健康检查失败: {str(e)}"
+        return json.dumps(
+            {"success": False, "message": f"健康检查失败: {str(e)}"},
+            ensure_ascii=False,
+            default=str,
+        )
 
 
 # ==================== 工具集合 ====================
@@ -355,5 +505,5 @@ JAVA_SERVICE_TOOLS = [
     call_hydraulic_analysis,
     call_pump_optimization,
     get_pipeline_hydraulics,
-    check_java_service_health
+    check_java_service_health,
 ]

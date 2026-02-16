@@ -42,7 +42,8 @@ class ConversationSummarizer:
                 api_key=settings.OPENAI_API_KEY,
                 base_url=settings.OPENAI_API_BASE,
                 model=settings.LLM_MODEL,
-                temperature=0
+                temperature=0,
+                max_tokens=1024,
             )
         return self._llm
 

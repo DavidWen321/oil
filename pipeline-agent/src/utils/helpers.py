@@ -20,6 +20,16 @@ def generate_task_id() -> str:
     return f"task_{uuid.uuid4().hex[:8]}"
 
 
+def generate_trace_id() -> str:
+    """生成追踪ID"""
+    return f"trace_{uuid.uuid4().hex[:12]}"
+
+
+def now_iso() -> str:
+    """当前时间ISO字符串"""
+    return datetime.now().isoformat()
+
+
 def timer(func):
     """计时装饰器"""
     @wraps(func)
