@@ -1,0 +1,142 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════
+ *  全局样式入口
+ *  油气管道智能监测系统 - Apple风格浅色设计
+ * ═══════════════════════════════════════════════════════════════════
+ */
+
+/* ═══════════════════════════════════════════════════════════════════
+ * 基础重置
+ * ═══════════════════════════════════════════════════════════════════ */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: 'kern' 1;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text',
+               'PingFang SC', 'Helvetica Neue', 'Microsoft YaHei', sans-serif;
+  line-height: 1.5;
+  color: #1D1D1F;
+  background: #FAFAFA;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ * 链接样式
+ * ═══════════════════════════════════════════════════════════════════ */
+a {
+  color: #007AFF;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+a:hover {
+  color: #0056B3;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ * 按钮重置
+ * ═══════════════════════════════════════════════════════════════════ */
+button {
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+  outline: none;
+}
+
+button:focus-visible {
+  outline: 2px solid #007AFF;
+  outline-offset: 2px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ * 输入框重置
+ * ═══════════════════════════════════════════════════════════════════ */
+input, textarea, select {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  background: transparent;
+  border: none;
+  outline: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ * 列表重置
+ * ═══════════════════════════════════════════════════════════════════ */
+ul, ol {
+  list-style: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ * 图片重置
+ * ═══════════════════════════════════════════════════════════════════ */
+img, video {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ * 滚动条美化 - 浅色主题
+ * ═══════════════════════════════════════════════════════════════════ */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ * 选择文本样式
+ * ═══════════════════════════════════════════════════════════════════ */
+::selection {
+  background: #007AFF;
+  color: white;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ * 无障碍 - 减少动效
+ * ═══════════════════════════════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

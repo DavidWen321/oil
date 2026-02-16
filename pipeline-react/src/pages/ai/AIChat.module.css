@@ -1,0 +1,147 @@
+.aiChatLayout {
+  container-type: inline-size;
+  container-name: ai-layout;
+  display: grid;
+  grid-template-columns: 260px 1fr 320px;
+  height: calc(100vh - var(--header-height));
+  overflow: hidden;
+}
+
+@container ai-layout (max-width: 1024px) {
+  .aiChatLayout {
+    grid-template-columns: 240px 1fr;
+  }
+
+  .tracePanel {
+    display: none;
+  }
+}
+
+@container ai-layout (max-width: 640px) {
+  .aiChatLayout {
+    grid-template-columns: 1fr;
+  }
+
+  .sessionList {
+    display: none;
+  }
+}
+
+.sessionList {
+  border-right: 1px solid var(--border-subtle);
+  overflow-y: auto;
+  background: var(--bg-elevated);
+}
+
+.chatMain {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.chatMessages {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-6);
+}
+
+.chatInput {
+  position: sticky;
+  bottom: 0;
+  padding: var(--space-4);
+  background: var(--bg-glass-strong);
+  backdrop-filter: blur(20px);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.tracePanel {
+  border-left: 1px solid var(--border-subtle);
+  overflow-y: auto;
+  background: var(--bg-elevated);
+  padding: var(--space-4);
+}
+
+.userMsg,
+.assistantMsg {
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.userMsg {
+  background: #e6f4ff;
+  margin-left: 24px;
+}
+
+.assistantMsg {
+  background: #f6ffed;
+  margin-right: 24px;
+}
+
+.assistantMsg table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 8px 0;
+}
+
+.assistantMsg th,
+.assistantMsg td {
+  border: 1px solid #d9d9d9;
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.assistantMsg th {
+  background: #fafafa;
+  font-weight: 600;
+}
+
+.assistantMsg pre {
+  background: #f5f5f5;
+  border-radius: 6px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+
+.assistantMsg code {
+  font-family: 'Menlo', 'Consolas', monospace;
+  font-size: 0.9em;
+}
+
+.assistantMsg p {
+  margin: 4px 0;
+}
+
+.assistantMsg ul,
+.assistantMsg ol {
+  padding-left: 20px;
+  margin: 4px 0;
+}
+
+.assistantMsg h1,
+.assistantMsg h2,
+.assistantMsg h3,
+.assistantMsg h4 {
+  margin: 8px 0 4px;
+}
+
+.assistantMsg blockquote {
+  border-left: 3px solid #91caff;
+  padding-left: 10px;
+  margin: 8px 0;
+  color: #595959;
+}
+
+.cursor {
+  display: inline-block;
+  animation: blink 1s step-end infinite;
+  color: #52c41a;
+  font-weight: bold;
+}
+
+@keyframes blink {
+  50% { opacity: 0; }
+}
