@@ -54,7 +54,10 @@ desktop.ini
 .idea/
 
 # Docker
-data/
+/data/
+/pipeline-energy-cloud/data/
+/pipeline-ai/data/
+/pipeline-agent/data/
 
 # Reports
 reports/
