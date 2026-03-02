@@ -13,7 +13,7 @@ from src.utils import logger
 
 from .middleware.logging import LoggingMiddleware
 from .middleware.auth import AuthMiddleware
-from .routes import health, chat, knowledge, trace, report, graph_query
+from .routes import health, chat, chat_v2, mcp_v2, knowledge, trace, report, graph_query
 
 
 @asynccontextmanager
@@ -55,6 +55,35 @@ async def lifespan(app: FastAPI):
         )
     except Exception as e:
         logger.warning(f"Knowledge graph initialization failed: {e}")
+
+    # 初始化 MCP Hub（增量接入，不阻断主流程）
+    try:
+        from src.mcp import (
+            CalculationMCPServer,
+            DatabaseMCPServer,
+            KnowledgeMCPServer,
+            get_mcp_hub,
+        )
+        from src.tool_search import sync_tool_registry_from_mcp
+
+        mcp_hub = get_mcp_hub()
+        server_factories = [
+            ("database-mcp", DatabaseMCPServer),
+            ("calculation-mcp", CalculationMCPServer),
+            ("knowledge-mcp", KnowledgeMCPServer),
+        ]
+        total_tools = 0
+        for server_name, factory in server_factories:
+            if not mcp_hub.has_server(server_name):
+                await mcp_hub.register(server_name, factory())
+            tool_defs = await mcp_hub.list_tools(server_name)
+            sync_tool_registry_from_mcp(server_name, tool_defs)
+            total_tools += len(tool_defs)
+            logger.info(f"MCP server ready: {server_name}, tools={len(tool_defs)}")
+
+        logger.info(f"MCP hub initialized: servers={mcp_hub.server_names()}, total_tools={total_tools}")
+    except Exception as e:
+        logger.warning(f"MCP hub initialization failed (non-fatal): {e}")
 
     yield
 
@@ -109,6 +138,8 @@ def create_app() -> FastAPI:
     app.include_router(trace.router, prefix="/api/v1")
     app.include_router(report.router, prefix="/api/v1")
     app.include_router(graph_query.router, prefix="/api/v1")
+    app.include_router(chat_v2.router, prefix="/api/v2")
+    app.include_router(mcp_v2.router, prefix="/api/v2")
 
     # 根路由
     @app.get("/")

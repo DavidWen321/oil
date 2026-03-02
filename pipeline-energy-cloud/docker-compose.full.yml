@@ -61,8 +61,8 @@ services:
       SPRING_DATASOURCE_URL: jdbc:mysql://pipeline-mysql:3306/pipeline_cloud?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=false&serverTimezone=GMT%2B8
       SPRING_DATASOURCE_USERNAME: root
       SPRING_DATASOURCE_PASSWORD: root
-      SPRING_REDIS_HOST: pipeline-redis
-      SPRING_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_HOST: pipeline-redis
+      SPRING_DATA_REDIS_PORT: 6379
       JAVA_OPTS: -Xms256m -Xmx512m -Dfile.encoding=UTF-8
     depends_on:
       mysql:
@@ -87,8 +87,8 @@ services:
       SPRING_DATASOURCE_URL: jdbc:mysql://pipeline-mysql:3306/pipeline_cloud?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=false&serverTimezone=GMT%2B8
       SPRING_DATASOURCE_USERNAME: root
       SPRING_DATASOURCE_PASSWORD: root
-      SPRING_REDIS_HOST: pipeline-redis
-      SPRING_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_HOST: pipeline-redis
+      SPRING_DATA_REDIS_PORT: 6379
       JAVA_OPTS: -Xms256m -Xmx512m -Dfile.encoding=UTF-8
     depends_on:
       mysql:
@@ -152,8 +152,8 @@ services:
     environment:
       SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR: pipeline-nacos:8848
       SPRING_CLOUD_NACOS_CONFIG_SERVER_ADDR: pipeline-nacos:8848
-      SPRING_REDIS_HOST: pipeline-redis
-      SPRING_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_HOST: pipeline-redis
+      SPRING_DATA_REDIS_PORT: 6379
       JAVA_OPTS: -Xms256m -Xmx512m -Dfile.encoding=UTF-8
     depends_on:
       redis:
@@ -182,3 +182,71 @@ services:
       - "3000:80"
     depends_on:
       - pipeline-gateway
+
+  # ---------- Milvus (Vector DB for Agent RAG) ----------
+  milvus-etcd:
+    image: quay.io/coreos/etcd:v3.5.5
+    container_name: pipeline-milvus-etcd
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    volumes:
+      - ./data/etcd:/etcd
+    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+
+  milvus-minio:
+    image: minio/minio:RELEASE.2023-03-20T20-16-18Z
+    container_name: pipeline-milvus-minio
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    command: minio server /minio_data --console-address ":9001"
+    volumes:
+      - ./data/milvus_minio:/minio_data
+
+  milvus:
+    image: milvusdb/milvus:v2.3.1
+    container_name: pipeline-milvus
+    command: ["milvus", "run", "standalone"]
+    environment:
+      ETCD_ENDPOINTS: milvus-etcd:2379
+      MINIO_ADDRESS: milvus-minio:9000
+      MINIO_ACCESS_KEY_ID: minioadmin
+      MINIO_SECRET_ACCESS_KEY: minioadmin
+    volumes:
+      - ./data/milvus:/var/lib/milvus
+    ports:
+      - "19530:19530"
+    depends_on:
+      - milvus-etcd
+      - milvus-minio
+
+  # ---------- Python AI Agent ----------
+  pipeline-agent:
+    build:
+      context: ../pipeline-agent
+      dockerfile: Dockerfile
+      args:
+        HTTP_PROXY: ${HTTP_PROXY}
+        HTTPS_PROXY: ${HTTPS_PROXY}
+        NO_PROXY: ${NO_PROXY}
+    container_name: pipeline-agent
+    env_file:
+      - ../pipeline-agent/.env
+    environment:
+      DB_HOST: pipeline-mysql
+      REDIS_HOST: pipeline-redis
+      MILVUS_HOST: pipeline-milvus
+      JAVA_GATEWAY_URL: http://pipeline-gateway:8080
+      API_PORT: "8100"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      milvus:
+        condition: service_started
+      pipeline-gateway:
+        condition: service_started

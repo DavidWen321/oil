@@ -1,0 +1,625 @@
+[INFO] Scanning for projects...
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Build Order:
+[INFO] 
+[INFO] pipeline-energy-cloud                                              [pom]
+[INFO] pipeline-common                                                    [jar]
+[INFO] pipeline-gateway                                                   [jar]
+[INFO] pipeline-auth                                                      [jar]
+[INFO] pipeline-system                                                    [jar]
+[INFO] pipeline-data                                                      [jar]
+[INFO] pipeline-calculation                                               [jar]
+[INFO] 
+[INFO] -----------------< com.pipeline:pipeline-energy-cloud >-----------------
+[INFO] Building pipeline-energy-cloud 1.0.0-SNAPSHOT                      [1/7]
+[INFO]   from pom.xml
+[INFO] --------------------------------[ pom ]---------------------------------
+[INFO] 
+[INFO] --- clean:3.2.0:clean (default-clean) @ pipeline-energy-cloud ---
+[INFO] 
+[INFO] --------------------< com.pipeline:pipeline-common >--------------------
+[INFO] Building pipeline-common 1.0.0-SNAPSHOT                            [2/7]
+[INFO]   from pipeline-common\pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- clean:3.2.0:clean (default-clean) @ pipeline-common ---
+[INFO] Deleting C:\Users\14297\Desktop\oil\pipeline-energy-cloud\pipeline-common\target
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ pipeline-common ---
+[INFO] skip non existing resourceDirectory C:\Users\14297\Desktop\oil\pipeline-energy-cloud\pipeline-common\src\main\resources
+[INFO] 
+[INFO] --- compiler:3.11.0:compile (default-compile) @ pipeline-common ---
+[INFO] Changes detected - recompiling the module! :source
+[INFO] Compiling 9 source files with javac [debug target 21] to target\classes
+[INFO] 由于在类路径中发现了一个或多个处理程序，因此启用了
+  批注处理。未来发行版的 javac 可能会禁用批注处理，
+  除非至少按名称指定了一个处理程序 (-processor)，
+  或指定了搜索路径 (--processor-path, --processor-module-path)，
+  或显式启用了批注处理 (-proc:only, -proc:full)。
+  可使用 -Xlint:-options 隐藏此消息。
+  可使用 -proc:none 禁用批注处理。
+[INFO] 
+[INFO] -------------------< com.pipeline:pipeline-gateway >--------------------
+[INFO] Building pipeline-gateway 1.0.0-SNAPSHOT                           [3/7]
+[INFO]   from pipeline-gateway\pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- clean:3.2.0:clean (default-clean) @ pipeline-gateway ---
+[INFO] Deleting C:\Users\14297\Desktop\oil\pipeline-energy-cloud\pipeline-gateway\target
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ pipeline-gateway ---
+[INFO] Copying 1 resource from src\main\resources to target\classes
+[INFO] 
+[INFO] --- compiler:3.11.0:compile (default-compile) @ pipeline-gateway ---
+[INFO] Changes detected - recompiling the module! :dependency
+[INFO] Compiling 2 source files with javac [debug target 21] to target\classes
+[INFO] 由于在类路径中发现了一个或多个处理程序，因此启用了
+  批注处理。未来发行版的 javac 可能会禁用批注处理，
+  除非至少按名称指定了一个处理程序 (-processor)，
+  或指定了搜索路径 (--processor-path, --processor-module-path)，
+  或显式启用了批注处理 (-proc:only, -proc:full)。
+  可使用 -Xlint:-options 隐藏此消息。
+  可使用 -proc:none 禁用批注处理。
+[INFO] 
+[INFO] ---------------------< com.pipeline:pipeline-auth >---------------------
+[INFO] Building pipeline-auth 1.0.0-SNAPSHOT                              [4/7]
+[INFO]   from pipeline-auth\pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- clean:3.2.0:clean (default-clean) @ pipeline-auth ---
+[INFO] Deleting C:\Users\14297\Desktop\oil\pipeline-energy-cloud\pipeline-auth\target
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ pipeline-auth ---
+[INFO] Copying 1 resource from src\main\resources to target\classes
+[INFO] 
+[INFO] --- compiler:3.11.0:compile (default-compile) @ pipeline-auth ---
+[INFO] Changes detected - recompiling the module! :dependency
+[INFO] Compiling 6 source files with javac [debug target 21] to target\classes
+[INFO] 由于在类路径中发现了一个或多个处理程序，因此启用了
+  批注处理。未来发行版的 javac 可能会禁用批注处理，
+  除非至少按名称指定了一个处理程序 (-processor)，
+  或指定了搜索路径 (--processor-path, --processor-module-path)，
+  或显式启用了批注处理 (-proc:only, -proc:full)。
+  可使用 -Xlint:-options 隐藏此消息。
+  可使用 -proc:none 禁用批注处理。
+[INFO] 
+[INFO] --------------------< com.pipeline:pipeline-system >--------------------
+[INFO] Building pipeline-system 1.0.0-SNAPSHOT                            [5/7]
+[INFO]   from pipeline-system\pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[WARNING] The artifact mysql:mysql-connector-java:jar:8.0.33 has been relocated to com.mysql:mysql-connector-j:jar:8.0.33: MySQL Connector/J artifacts moved to reverse-DNS compliant Maven 2+ coordinates.
+[INFO] 
+[INFO] --- clean:3.2.0:clean (default-clean) @ pipeline-system ---
+[INFO] Deleting C:\Users\14297\Desktop\oil\pipeline-energy-cloud\pipeline-system\target
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ pipeline-system ---
+[INFO] Copying 1 resource from src\main\resources to target\classes
+[INFO] 
+[INFO] --- compiler:3.11.0:compile (default-compile) @ pipeline-system ---
+[INFO] Changes detected - recompiling the module! :dependency
+[INFO] Compiling 1 source file with javac [debug target 21] to target\classes
+[INFO] 由于在类路径中发现了一个或多个处理程序，因此启用了
+  批注处理。未来发行版的 javac 可能会禁用批注处理，
+  除非至少按名称指定了一个处理程序 (-processor)，
+  或指定了搜索路径 (--processor-path, --processor-module-path)，
+  或显式启用了批注处理 (-proc:only, -proc:full)。
+  可使用 -Xlint:-options 隐藏此消息。
+  可使用 -proc:none 禁用批注处理。
+[INFO] 
+[INFO] ---------------------< com.pipeline:pipeline-data >---------------------
+[INFO] Building pipeline-data 1.0.0-SNAPSHOT                              [6/7]
+[INFO]   from pipeline-data\pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[WARNING] The artifact mysql:mysql-connector-java:jar:8.0.33 has been relocated to com.mysql:mysql-connector-j:jar:8.0.33: MySQL Connector/J artifacts moved to reverse-DNS compliant Maven 2+ coordinates.
+[INFO] 
+[INFO] --- clean:3.2.0:clean (default-clean) @ pipeline-data ---
+[INFO] Deleting C:\Users\14297\Desktop\oil\pipeline-energy-cloud\pipeline-data\target
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ pipeline-data ---
+[INFO] Copying 1 resource from src\main\resources to target\classes
+[INFO] 
+[INFO] --- compiler:3.11.0:compile (default-compile) @ pipeline-data ---
+[INFO] Changes detected - recompiling the module! :dependency
+[INFO] Compiling 21 source files with javac [debug target 21] to target\classes
+[INFO] 由于在类路径中发现了一个或多个处理程序，因此启用了
+  批注处理。未来发行版的 javac 可能会禁用批注处理，
+  除非至少按名称指定了一个处理程序 (-processor)，
+  或指定了搜索路径 (--processor-path, --processor-module-path)，
+  或显式启用了批注处理 (-proc:only, -proc:full)。
+  可使用 -Xlint:-options 隐藏此消息。
+  可使用 -proc:none 禁用批注处理。
+[INFO] 
+[INFO] -----------------< com.pipeline:pipeline-calculation >------------------
+[INFO] Building pipeline-calculation 1.0.0-SNAPSHOT                       [7/7]
+[INFO]   from pipeline-calculation\pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[WARNING] The artifact mysql:mysql-connector-java:jar:8.0.33 has been relocated to com.mysql:mysql-connector-j:jar:8.0.33: MySQL Connector/J artifacts moved to reverse-DNS compliant Maven 2+ coordinates.
+[INFO] 
+[INFO] --- clean:3.2.0:clean (default-clean) @ pipeline-calculation ---
+[INFO] Deleting C:\Users\14297\Desktop\oil\pipeline-energy-cloud\pipeline-calculation\target
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ pipeline-calculation ---
+[INFO] Copying 1 resource from src\main\resources to target\classes
+[INFO] 
+[INFO] --- compiler:3.11.0:compile (default-compile) @ pipeline-calculation ---
+[INFO] Changes detected - recompiling the module! :dependency
+[INFO] Compiling 63 source files with javac [debug target 21] to target\classes
+[INFO] 由于在类路径中发现了一个或多个处理程序，因此启用了
+  批注处理。未来发行版的 javac 可能会禁用批注处理，
+  除非至少按名称指定了一个处理程序 (-processor)，
+  或指定了搜索路径 (--processor-path, --processor-module-path)，
+  或显式启用了批注处理 (-proc:only, -proc:full)。
+  可使用 -Xlint:-options 隐藏此消息。
+  可使用 -proc:none 禁用批注处理。
+[INFO] -------------------------------------------------------------
+[ERROR] COMPILATION ERROR : 
+[INFO] -------------------------------------------------------------
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/ReportServiceImpl.java:[81,15] 找不到符号
+  符号:   方法 setTitle(java.lang.String)
+  位置: 类型为com.pipeline.calculation.domain.entity.AnalysisReport的变量 report
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/ReportServiceImpl.java:[83,15] 找不到符号
+  符号:   方法 setUserId(java.lang.Long)
+  位置: 类型为com.pipeline.calculation.domain.entity.AnalysisReport的变量 report
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/ReportServiceImpl.java:[84,15] 找不到符号
+  符号:   方法 setUserName(java.lang.String)
+  位置: 类型为com.pipeline.calculation.domain.entity.AnalysisReport的变量 report
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/ReportServiceImpl.java:[85,15] 找不到符号
+  符号:   方法 setFormat(java.lang.String)
+  位置: 类型为com.pipeline.calculation.domain.entity.AnalysisReport的变量 report
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/ReportServiceImpl.java:[87,15] 找不到符号
+  符号:   方法 setDownloadCount(int)
+  位置: 类型为com.pipeline.calculation.domain.entity.AnalysisReport的变量 report
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/ReportServiceImpl.java:[108,19] 找不到符号
+  符号:   方法 setSummary(java.lang.String)
+  位置: 类型为com.pipeline.calculation.domain.entity.AnalysisReport的变量 report
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/ReportServiceImpl.java:[110,19] 找不到符号
+  符号:   方法 setGenerateDuration(long)
+  位置: 类型为com.pipeline.calculation.domain.entity.AnalysisReport的变量 report
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/ReportServiceImpl.java:[117,27] 找不到符号
+  符号:   方法 getGenerateDuration()
+  位置: 类型为com.pipeline.calculation.domain.entity.AnalysisReport的变量 report
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/ReportServiceImpl.java:[124,19] 找不到符号
+  符号:   方法 setErrorMessage(java.lang.String)
+  位置: 类型为com.pipeline.calculation.domain.entity.AnalysisReport的变量 report
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/ReportServiceImpl.java:[157,19] 找不到符号
+  符号:   方法 incrementDownloadCount(java.lang.Long)
+  位置: 类型为M的变量 baseMapper
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/ReportServiceImpl.java:[176,23] 找不到符号
+  符号:   方法 incrementDownloadCount(java.lang.Long)
+  位置: 类型为M的变量 baseMapper
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/ReportServiceImpl.java:[196,24] 方法引用无效
+  找不到符号
+    符号:   方法 getProjectId()
+    位置: 类 com.pipeline.calculation.domain.entity.AnalysisReport
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/ReportServiceImpl.java:[199,24] 方法引用无效
+  找不到符号
+    符号:   方法 getUserId()
+    位置: 类 com.pipeline.calculation.domain.entity.AnalysisReport
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/ReportServiceImpl.java:[213,26] 找不到符号
+  符号:   方法 selectRecentByUserId(java.lang.Long,int)
+  位置: 类型为M的变量 baseMapper
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/domain/converter/CalculationHistoryConverter.java:[40,31] 找不到符号
+  符号:   方法 getProjectId()
+  位置: 类型为com.pipeline.calculation.domain.entity.CalculationHistory的变量 entity
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/domain/converter/CalculationHistoryConverter.java:[41,33] 找不到符号
+  符号:   方法 getProjectName()
+  位置: 类型为com.pipeline.calculation.domain.entity.CalculationHistory的变量 entity
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/domain/converter/CalculationHistoryConverter.java:[42,28] 找不到符号
+  符号:   方法 getUserId()
+  位置: 类型为com.pipeline.calculation.domain.entity.CalculationHistory的变量 entity
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/domain/converter/CalculationHistoryConverter.java:[43,30] 找不到符号
+  符号:   方法 getUserName()
+  位置: 类型为com.pipeline.calculation.domain.entity.CalculationHistory的变量 entity
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/domain/converter/CalculationHistoryConverter.java:[46,28] 找不到符号
+  符号:   方法 getStatus()
+  位置: 类型为com.pipeline.calculation.domain.entity.CalculationHistory的变量 entity
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/domain/converter/CalculationHistoryConverter.java:[47,67] 找不到符号
+  符号:   方法 getStatus()
+  位置: 类型为com.pipeline.calculation.domain.entity.CalculationHistory的变量 entity
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/domain/converter/CalculationHistoryConverter.java:[48,34] 找不到符号
+  符号:   方法 getErrorMessage()
+  位置: 类型为com.pipeline.calculation.domain.entity.CalculationHistory的变量 entity
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/domain/converter/CalculationHistoryConverter.java:[49,34] 找不到符号
+  符号:   方法 getCalcDuration()
+  位置: 类型为com.pipeline.calculation.domain.entity.CalculationHistory的变量 entity
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/domain/converter/CalculationHistoryConverter.java:[50,79] 找不到符号
+  符号:   方法 getCalcDuration()
+  位置: 类型为com.pipeline.calculation.domain.entity.CalculationHistory的变量 entity
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[61,65] 方法引用无效
+  找不到符号
+    符号:   方法 getIsDeleted()
+    位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[62,53] 找不到符号
+  符号:   方法 countSuccessful()
+  位置: 类型为com.pipeline.calculation.mapper.CalculationHistoryMapper的变量 calculationHistoryMapper
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[63,52] 找不到符号
+  符号:   方法 countFailed()
+  位置: 类型为com.pipeline.calculation.mapper.CalculationHistoryMapper的变量 calculationHistoryMapper
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[72,17] 找不到符号
+  符号:   方法 avgDurationByCalcType(java.lang.String)
+  位置: 类型为com.pipeline.calculation.mapper.CalculationHistoryMapper的变量 calculationHistoryMapper
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[74,17] 找不到符号
+  符号:   方法 avgDurationByCalcType(java.lang.String)
+  位置: 类型为com.pipeline.calculation.mapper.CalculationHistoryMapper的变量 calculationHistoryMapper
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[141,20] 方法引用无效
+  找不到符号
+    符号:   方法 getUserId()
+    位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[142,20] 方法引用无效
+  找不到符号
+    符号:   方法 getIsDeleted()
+    位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[146,69] 找不到符号
+  符号:   变量 STATUS_SUCCESS
+  位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[146,20] 方法引用无效
+  找不到符号
+    符号:   方法 getStatus()
+    位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[165,20] 方法引用无效
+  找不到符号
+    符号:   方法 getProjectId()
+    位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[166,20] 方法引用无效
+  找不到符号
+    符号:   方法 getIsDeleted()
+    位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[170,69] 找不到符号
+  符号:   变量 STATUS_SUCCESS
+  位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[170,20] 方法引用无效
+  找不到符号
+    符号:   方法 getStatus()
+    位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[220,65] 方法引用无效
+  找不到符号
+    符号:   方法 getIsDeleted()
+    位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[224,53] 找不到符号
+  符号:   方法 countSuccessful()
+  位置: 类型为com.pipeline.calculation.mapper.CalculationHistoryMapper的变量 calculationHistoryMapper
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[234,24] 方法引用无效
+  找不到符号
+    符号:   方法 getUserId()
+    位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[236,20] 方法引用无效
+  找不到符号
+    符号:   方法 getIsDeleted()
+    位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[237,25] 方法引用无效
+  找不到符号
+    符号:   方法 getUserId()
+    位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[248,24] 方法引用无效
+  找不到符号
+    符号:   方法 getProjectId()
+    位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[250,20] 方法引用无效
+  找不到符号
+    符号:   方法 getIsDeleted()
+    位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[251,27] 方法引用无效
+  找不到符号
+    符号:   方法 getProjectId()
+    位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[252,25] 方法引用无效
+  找不到符号
+    符号:   方法 getProjectId()
+    位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationHistoryServiceImpl.java:[88,56] 找不到符号
+  符号:   方法 selectRecentByUserId(java.lang.Long,int)
+  位置: 类型为M的变量 baseMapper
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationHistoryServiceImpl.java:[99,54] 找不到符号
+  符号:   方法 selectPageByProjectId(com.baomidou.mybatisplus.extension.plugins.pagination.Page<com.pipeline.calculation.domain.entity.CalculationHistory>,java.lang.Long)
+  位置: 类型为M的变量 baseMapper
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationHistoryServiceImpl.java:[111,16] 找不到符号
+  符号:   方法 setProjectId(java.lang.Long)
+  位置: 类型为com.pipeline.calculation.domain.entity.CalculationHistory的变量 history
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationHistoryServiceImpl.java:[112,16] 找不到符号
+  符号:   方法 setProjectName(java.lang.String)
+  位置: 类型为com.pipeline.calculation.domain.entity.CalculationHistory的变量 history
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationHistoryServiceImpl.java:[113,16] 找不到符号
+  符号:   方法 setUserId(java.lang.Long)
+  位置: 类型为com.pipeline.calculation.domain.entity.CalculationHistory的变量 history
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationHistoryServiceImpl.java:[114,16] 找不到符号
+  符号:   方法 setUserName(java.lang.String)
+  位置: 类型为com.pipeline.calculation.domain.entity.CalculationHistory的变量 history
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationHistoryServiceImpl.java:[116,45] 找不到符号
+  符号:   变量 STATUS_CALCULATING
+  位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationHistoryServiceImpl.java:[138,45] 找不到符号
+  符号:   变量 STATUS_SUCCESS
+  位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationHistoryServiceImpl.java:[139,16] 找不到符号
+  符号:   方法 setCalcDuration(long)
+  位置: 类型为com.pipeline.calculation.domain.entity.CalculationHistory的变量 history
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationHistoryServiceImpl.java:[140,16] 找不到符号
+  符号:   方法 setUpdateTime(java.time.LocalDateTime)
+  位置: 类型为com.pipeline.calculation.domain.entity.CalculationHistory的变量 history
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationHistoryServiceImpl.java:[157,45] 找不到符号
+  符号:   变量 STATUS_FAILED
+  位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationHistoryServiceImpl.java:[158,16] 找不到符号
+  符号:   方法 setErrorMessage(java.lang.String)
+  位置: 类型为com.pipeline.calculation.domain.entity.CalculationHistory的变量 history
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationHistoryServiceImpl.java:[159,16] 找不到符号
+  符号:   方法 setCalcDuration(long)
+  位置: 类型为com.pipeline.calculation.domain.entity.CalculationHistory的变量 history
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationHistoryServiceImpl.java:[160,16] 找不到符号
+  符号:   方法 setUpdateTime(java.time.LocalDateTime)
+  位置: 类型为com.pipeline.calculation.domain.entity.CalculationHistory的变量 history
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationHistoryServiceImpl.java:[205,26] 找不到符号
+  符号:   方法 countByProjectId(java.lang.Long)
+  位置: 类型为M的变量 baseMapper
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationHistoryServiceImpl.java:[213,26] 找不到符号
+  符号:   方法 countByUserId(java.lang.Long)
+  位置: 类型为M的变量 baseMapper
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationHistoryServiceImpl.java:[232,24] 方法引用无效
+  找不到符号
+    符号:   方法 getProjectId()
+    位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationHistoryServiceImpl.java:[237,24] 方法引用无效
+  找不到符号
+    符号:   方法 getUserId()
+    位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationHistoryServiceImpl.java:[242,24] 方法引用无效
+  找不到符号
+    符号:   方法 getStatus()
+    位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationHistoryServiceImpl.java:[256,27] 方法引用无效
+  找不到符号
+    符号:   方法 getProjectName()
+    位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationHistoryServiceImpl.java:[258,27] 方法引用无效
+  找不到符号
+    符号:   方法 getUserName()
+    位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[INFO] 66 errors 
+[INFO] -------------------------------------------------------------
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for pipeline-energy-cloud 1.0.0-SNAPSHOT:
+[INFO] 
+[INFO] pipeline-energy-cloud .............................. SUCCESS [  0.112 s]
+[INFO] pipeline-common .................................... SUCCESS [  1.908 s]
+[INFO] pipeline-gateway ................................... SUCCESS [  0.954 s]
+[INFO] pipeline-auth ...................................... SUCCESS [  0.761 s]
+[INFO] pipeline-system .................................... SUCCESS [  0.587 s]
+[INFO] pipeline-data ...................................... SUCCESS [  0.867 s]
+[INFO] pipeline-calculation ............................... FAILURE [  2.344 s]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  7.816 s
+[INFO] Finished at: 2026-02-09T12:04:41+08:00
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-compiler-plugin:3.11.0:compile (default-compile) on project pipeline-calculation: Compilation failure: Compilation failure: 
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/ReportServiceImpl.java:[81,15] 找不到符号
+[ERROR]   符号:   方法 setTitle(java.lang.String)
+[ERROR]   位置: 类型为com.pipeline.calculation.domain.entity.AnalysisReport的变量 report
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/ReportServiceImpl.java:[83,15] 找不到符号
+[ERROR]   符号:   方法 setUserId(java.lang.Long)
+[ERROR]   位置: 类型为com.pipeline.calculation.domain.entity.AnalysisReport的变量 report
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/ReportServiceImpl.java:[84,15] 找不到符号
+[ERROR]   符号:   方法 setUserName(java.lang.String)
+[ERROR]   位置: 类型为com.pipeline.calculation.domain.entity.AnalysisReport的变量 report
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/ReportServiceImpl.java:[85,15] 找不到符号
+[ERROR]   符号:   方法 setFormat(java.lang.String)
+[ERROR]   位置: 类型为com.pipeline.calculation.domain.entity.AnalysisReport的变量 report
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/ReportServiceImpl.java:[87,15] 找不到符号
+[ERROR]   符号:   方法 setDownloadCount(int)
+[ERROR]   位置: 类型为com.pipeline.calculation.domain.entity.AnalysisReport的变量 report
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/ReportServiceImpl.java:[108,19] 找不到符号
+[ERROR]   符号:   方法 setSummary(java.lang.String)
+[ERROR]   位置: 类型为com.pipeline.calculation.domain.entity.AnalysisReport的变量 report
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/ReportServiceImpl.java:[110,19] 找不到符号
+[ERROR]   符号:   方法 setGenerateDuration(long)
+[ERROR]   位置: 类型为com.pipeline.calculation.domain.entity.AnalysisReport的变量 report
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/ReportServiceImpl.java:[117,27] 找不到符号
+[ERROR]   符号:   方法 getGenerateDuration()
+[ERROR]   位置: 类型为com.pipeline.calculation.domain.entity.AnalysisReport的变量 report
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/ReportServiceImpl.java:[124,19] 找不到符号
+[ERROR]   符号:   方法 setErrorMessage(java.lang.String)
+[ERROR]   位置: 类型为com.pipeline.calculation.domain.entity.AnalysisReport的变量 report
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/ReportServiceImpl.java:[157,19] 找不到符号
+[ERROR]   符号:   方法 incrementDownloadCount(java.lang.Long)
+[ERROR]   位置: 类型为M的变量 baseMapper
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/ReportServiceImpl.java:[176,23] 找不到符号
+[ERROR]   符号:   方法 incrementDownloadCount(java.lang.Long)
+[ERROR]   位置: 类型为M的变量 baseMapper
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/ReportServiceImpl.java:[196,24] 方法引用无效
+[ERROR]   找不到符号
+[ERROR]     符号:   方法 getProjectId()
+[ERROR]     位置: 类 com.pipeline.calculation.domain.entity.AnalysisReport
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/ReportServiceImpl.java:[199,24] 方法引用无效
+[ERROR]   找不到符号
+[ERROR]     符号:   方法 getUserId()
+[ERROR]     位置: 类 com.pipeline.calculation.domain.entity.AnalysisReport
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/ReportServiceImpl.java:[213,26] 找不到符号
+[ERROR]   符号:   方法 selectRecentByUserId(java.lang.Long,int)
+[ERROR]   位置: 类型为M的变量 baseMapper
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/domain/converter/CalculationHistoryConverter.java:[40,31] 找不到符号
+[ERROR]   符号:   方法 getProjectId()
+[ERROR]   位置: 类型为com.pipeline.calculation.domain.entity.CalculationHistory的变量 entity
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/domain/converter/CalculationHistoryConverter.java:[41,33] 找不到符号
+[ERROR]   符号:   方法 getProjectName()
+[ERROR]   位置: 类型为com.pipeline.calculation.domain.entity.CalculationHistory的变量 entity
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/domain/converter/CalculationHistoryConverter.java:[42,28] 找不到符号
+[ERROR]   符号:   方法 getUserId()
+[ERROR]   位置: 类型为com.pipeline.calculation.domain.entity.CalculationHistory的变量 entity
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/domain/converter/CalculationHistoryConverter.java:[43,30] 找不到符号
+[ERROR]   符号:   方法 getUserName()
+[ERROR]   位置: 类型为com.pipeline.calculation.domain.entity.CalculationHistory的变量 entity
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/domain/converter/CalculationHistoryConverter.java:[46,28] 找不到符号
+[ERROR]   符号:   方法 getStatus()
+[ERROR]   位置: 类型为com.pipeline.calculation.domain.entity.CalculationHistory的变量 entity
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/domain/converter/CalculationHistoryConverter.java:[47,67] 找不到符号
+[ERROR]   符号:   方法 getStatus()
+[ERROR]   位置: 类型为com.pipeline.calculation.domain.entity.CalculationHistory的变量 entity
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/domain/converter/CalculationHistoryConverter.java:[48,34] 找不到符号
+[ERROR]   符号:   方法 getErrorMessage()
+[ERROR]   位置: 类型为com.pipeline.calculation.domain.entity.CalculationHistory的变量 entity
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/domain/converter/CalculationHistoryConverter.java:[49,34] 找不到符号
+[ERROR]   符号:   方法 getCalcDuration()
+[ERROR]   位置: 类型为com.pipeline.calculation.domain.entity.CalculationHistory的变量 entity
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/domain/converter/CalculationHistoryConverter.java:[50,79] 找不到符号
+[ERROR]   符号:   方法 getCalcDuration()
+[ERROR]   位置: 类型为com.pipeline.calculation.domain.entity.CalculationHistory的变量 entity
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[61,65] 方法引用无效
+[ERROR]   找不到符号
+[ERROR]     符号:   方法 getIsDeleted()
+[ERROR]     位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[62,53] 找不到符号
+[ERROR]   符号:   方法 countSuccessful()
+[ERROR]   位置: 类型为com.pipeline.calculation.mapper.CalculationHistoryMapper的变量 calculationHistoryMapper
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[63,52] 找不到符号
+[ERROR]   符号:   方法 countFailed()
+[ERROR]   位置: 类型为com.pipeline.calculation.mapper.CalculationHistoryMapper的变量 calculationHistoryMapper
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[72,17] 找不到符号
+[ERROR]   符号:   方法 avgDurationByCalcType(java.lang.String)
+[ERROR]   位置: 类型为com.pipeline.calculation.mapper.CalculationHistoryMapper的变量 calculationHistoryMapper
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[74,17] 找不到符号
+[ERROR]   符号:   方法 avgDurationByCalcType(java.lang.String)
+[ERROR]   位置: 类型为com.pipeline.calculation.mapper.CalculationHistoryMapper的变量 calculationHistoryMapper
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[141,20] 方法引用无效
+[ERROR]   找不到符号
+[ERROR]     符号:   方法 getUserId()
+[ERROR]     位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[142,20] 方法引用无效
+[ERROR]   找不到符号
+[ERROR]     符号:   方法 getIsDeleted()
+[ERROR]     位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[146,69] 找不到符号
+[ERROR]   符号:   变量 STATUS_SUCCESS
+[ERROR]   位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[146,20] 方法引用无效
+[ERROR]   找不到符号
+[ERROR]     符号:   方法 getStatus()
+[ERROR]     位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[165,20] 方法引用无效
+[ERROR]   找不到符号
+[ERROR]     符号:   方法 getProjectId()
+[ERROR]     位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[166,20] 方法引用无效
+[ERROR]   找不到符号
+[ERROR]     符号:   方法 getIsDeleted()
+[ERROR]     位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[170,69] 找不到符号
+[ERROR]   符号:   变量 STATUS_SUCCESS
+[ERROR]   位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[170,20] 方法引用无效
+[ERROR]   找不到符号
+[ERROR]     符号:   方法 getStatus()
+[ERROR]     位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[220,65] 方法引用无效
+[ERROR]   找不到符号
+[ERROR]     符号:   方法 getIsDeleted()
+[ERROR]     位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[224,53] 找不到符号
+[ERROR]   符号:   方法 countSuccessful()
+[ERROR]   位置: 类型为com.pipeline.calculation.mapper.CalculationHistoryMapper的变量 calculationHistoryMapper
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[234,24] 方法引用无效
+[ERROR]   找不到符号
+[ERROR]     符号:   方法 getUserId()
+[ERROR]     位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[236,20] 方法引用无效
+[ERROR]   找不到符号
+[ERROR]     符号:   方法 getIsDeleted()
+[ERROR]     位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[237,25] 方法引用无效
+[ERROR]   找不到符号
+[ERROR]     符号:   方法 getUserId()
+[ERROR]     位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[248,24] 方法引用无效
+[ERROR]   找不到符号
+[ERROR]     符号:   方法 getProjectId()
+[ERROR]     位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[250,20] 方法引用无效
+[ERROR]   找不到符号
+[ERROR]     符号:   方法 getIsDeleted()
+[ERROR]     位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[251,27] 方法引用无效
+[ERROR]   找不到符号
+[ERROR]     符号:   方法 getProjectId()
+[ERROR]     位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationStatisticsServiceImpl.java:[252,25] 方法引用无效
+[ERROR]   找不到符号
+[ERROR]     符号:   方法 getProjectId()
+[ERROR]     位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationHistoryServiceImpl.java:[88,56] 找不到符号
+[ERROR]   符号:   方法 selectRecentByUserId(java.lang.Long,int)
+[ERROR]   位置: 类型为M的变量 baseMapper
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationHistoryServiceImpl.java:[99,54] 找不到符号
+[ERROR]   符号:   方法 selectPageByProjectId(com.baomidou.mybatisplus.extension.plugins.pagination.Page<com.pipeline.calculation.domain.entity.CalculationHistory>,java.lang.Long)
+[ERROR]   位置: 类型为M的变量 baseMapper
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationHistoryServiceImpl.java:[111,16] 找不到符号
+[ERROR]   符号:   方法 setProjectId(java.lang.Long)
+[ERROR]   位置: 类型为com.pipeline.calculation.domain.entity.CalculationHistory的变量 history
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationHistoryServiceImpl.java:[112,16] 找不到符号
+[ERROR]   符号:   方法 setProjectName(java.lang.String)
+[ERROR]   位置: 类型为com.pipeline.calculation.domain.entity.CalculationHistory的变量 history
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationHistoryServiceImpl.java:[113,16] 找不到符号
+[ERROR]   符号:   方法 setUserId(java.lang.Long)
+[ERROR]   位置: 类型为com.pipeline.calculation.domain.entity.CalculationHistory的变量 history
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationHistoryServiceImpl.java:[114,16] 找不到符号
+[ERROR]   符号:   方法 setUserName(java.lang.String)
+[ERROR]   位置: 类型为com.pipeline.calculation.domain.entity.CalculationHistory的变量 history
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationHistoryServiceImpl.java:[116,45] 找不到符号
+[ERROR]   符号:   变量 STATUS_CALCULATING
+[ERROR]   位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationHistoryServiceImpl.java:[138,45] 找不到符号
+[ERROR]   符号:   变量 STATUS_SUCCESS
+[ERROR]   位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationHistoryServiceImpl.java:[139,16] 找不到符号
+[ERROR]   符号:   方法 setCalcDuration(long)
+[ERROR]   位置: 类型为com.pipeline.calculation.domain.entity.CalculationHistory的变量 history
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationHistoryServiceImpl.java:[140,16] 找不到符号
+[ERROR]   符号:   方法 setUpdateTime(java.time.LocalDateTime)
+[ERROR]   位置: 类型为com.pipeline.calculation.domain.entity.CalculationHistory的变量 history
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationHistoryServiceImpl.java:[157,45] 找不到符号
+[ERROR]   符号:   变量 STATUS_FAILED
+[ERROR]   位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationHistoryServiceImpl.java:[158,16] 找不到符号
+[ERROR]   符号:   方法 setErrorMessage(java.lang.String)
+[ERROR]   位置: 类型为com.pipeline.calculation.domain.entity.CalculationHistory的变量 history
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationHistoryServiceImpl.java:[159,16] 找不到符号
+[ERROR]   符号:   方法 setCalcDuration(long)
+[ERROR]   位置: 类型为com.pipeline.calculation.domain.entity.CalculationHistory的变量 history
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationHistoryServiceImpl.java:[160,16] 找不到符号
+[ERROR]   符号:   方法 setUpdateTime(java.time.LocalDateTime)
+[ERROR]   位置: 类型为com.pipeline.calculation.domain.entity.CalculationHistory的变量 history
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationHistoryServiceImpl.java:[205,26] 找不到符号
+[ERROR]   符号:   方法 countByProjectId(java.lang.Long)
+[ERROR]   位置: 类型为M的变量 baseMapper
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationHistoryServiceImpl.java:[213,26] 找不到符号
+[ERROR]   符号:   方法 countByUserId(java.lang.Long)
+[ERROR]   位置: 类型为M的变量 baseMapper
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationHistoryServiceImpl.java:[232,24] 方法引用无效
+[ERROR]   找不到符号
+[ERROR]     符号:   方法 getProjectId()
+[ERROR]     位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationHistoryServiceImpl.java:[237,24] 方法引用无效
+[ERROR]   找不到符号
+[ERROR]     符号:   方法 getUserId()
+[ERROR]     位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationHistoryServiceImpl.java:[242,24] 方法引用无效
+[ERROR]   找不到符号
+[ERROR]     符号:   方法 getStatus()
+[ERROR]     位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationHistoryServiceImpl.java:[256,27] 方法引用无效
+[ERROR]   找不到符号
+[ERROR]     符号:   方法 getProjectName()
+[ERROR]     位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] /C:/Users/14297/Desktop/oil/pipeline-energy-cloud/pipeline-calculation/src/main/java/com/pipeline/calculation/service/impl/CalculationHistoryServiceImpl.java:[258,27] 方法引用无效
+[ERROR]   找不到符号
+[ERROR]     符号:   方法 getUserName()
+[ERROR]     位置: 类 com.pipeline.calculation.domain.entity.CalculationHistory
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :pipeline-calculation

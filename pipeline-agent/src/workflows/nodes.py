@@ -60,32 +60,6 @@ def planner_node(state: AgentState) -> Dict[str, Any]:
         result = planner.create_plan(user_input, context=context)
         event_type = TraceEventType.PLAN_CREATED
 
-    # Direct response for chat/greeting intent — skip all agents
-    if result.get("direct_response"):
-        greeting = (
-            "你好！我是管道能耗分析智能助手，可以帮你完成以下任务：\n\n"
-            "- **管道水力计算**：摩阻、压降、雷诺数等\n"
-            "- **泵站优化**：最优泵组合方案\n"
-            "- **数据查询**：项目、管道、油品参数\n"
-            "- **故障诊断**：异常工况分析\n"
-            "- **知识问答**：管道运输领域专业知识\n\n"
-            "请描述你的分析需求，我会制定计划并逐步执行。"
-        )
-        trace_id = state.get("trace_id", "")
-        emit_trace_event(
-            trace_id,
-            TraceEventType.PLAN_CREATED,
-            {"plan": [], "reasoning": "chat-direct"},
-        )
-        return {
-            "plan": [],
-            "plan_reasoning": "chat-direct",
-            "current_step_index": 0,
-            "needs_replan": False,
-            "replan_reason": None,
-            "final_response": greeting,
-        }
-
     rebuilt_steps = _build_plan_steps(result.get("plan", []))
 
     # keep completed history when replan happens

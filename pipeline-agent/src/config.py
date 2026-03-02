@@ -80,6 +80,19 @@ class Settings(BaseSettings):
     AGENT_MAX_RETRIES_PER_STEP: int = Field(default=2)
     AGENT_TIMEOUT: int = Field(default=60)
 
+    # ===== Tool Search 配置 =====
+    TOOL_SEARCH_ENABLED: bool = Field(default=True)
+    TOOL_SEARCH_TOP_K: int = Field(default=3)
+    TOOL_SEARCH_MIN_SCORE: float = Field(default=0.05)
+    TOOL_SEARCH_ALLOWED_CATEGORIES: str = Field(
+        default="",
+        description="Comma-separated tool categories allowed in dynamic search",
+    )
+    TOOL_SEARCH_ALLOWED_SOURCES: str = Field(
+        default="",
+        description="Comma-separated tool sources allowed in dynamic search",
+    )
+
     # ===== RAG 配置 (2025最新) =====
     # 分块配置
     RAG_CHUNK_SIZE: int = Field(default=512)

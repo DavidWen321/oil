@@ -68,16 +68,41 @@ export interface TraceEvent {
   data: Record<string, unknown>;
 }
 
+export interface ToolSearchScore {
+  name: string;
+  score: number;
+  forced?: boolean;
+}
+
+export interface ToolSearchFilters {
+  categories?: string[];
+  sources?: string[];
+}
+
+export interface ToolSearchSnapshot {
+  query: string;
+  selected_tools: string[];
+  selected_scores: ToolSearchScore[];
+  total_tools: number;
+  duration_ms: number;
+  mode: string;
+  filters?: ToolSearchFilters;
+  timestamp: string;
+}
+
 export interface AgentTraceState {
   traceId: string | null;
   plan: PlanStep[];
   currentStep: number;
+  thinking: string;
   logs: TraceLog[];
   metrics: TraceMetrics;
   hitlRequest: HITLRequest | null;
   status: TraceStatus;
   finalResponse: string;
   sessionId: string;
+  activeTools: ToolExecutionEvent[];
+  lastToolSearch: ToolSearchSnapshot | null;
 }
 
 export interface ReportSection {
@@ -102,4 +127,24 @@ export interface ReportGeneratePayload {
   java_report_id?: number | null;
   java_download_url?: string | null;
   java_download_url_pdf?: string | null;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 新增：工具执行事件类型（配合真流式）
+// ═══════════════════════════════════════════════════════════════
+
+export interface ToolExecutionEvent {
+  tool: string;
+  call_id?: string;
+  input?: Record<string, unknown>;
+  output?: string;
+  timestamp?: string;
+  status: 'running' | 'completed' | 'failed';
+}
+
+export interface ChatMessageItem {
+  role: 'user' | 'assistant';
+  content: string;
+  streaming?: boolean;
+  tools?: ToolExecutionEvent[];
 }

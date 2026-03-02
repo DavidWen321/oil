@@ -1,169 +1,238 @@
-﻿"""Chat routes with streaming trace and HITL resume support."""
+"""
+聊天 API 路由 — 真流式实现。
+使用 LangGraph astream_events 实现 token 级 SSE 流式输出。
+"""
 
 from __future__ import annotations
 
 import json
 import time
+from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
+from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
-from src.models.schemas import (
-    ChatRequest,
-    ChatResponse,
-    HITLConfirmRequest,
-    HITLConfirmResponse,
-)
 from src.utils import generate_session_id, generate_trace_id, logger
-from src.workflows import get_workflow
-from src.workflows.hitl import HITLResponse as HITLSubmitResponse, get_hitl_manager
+from src.workflows.graph import get_workflow
 
-router = APIRouter(prefix="/chat", tags=["Chat"])
+router = APIRouter(prefix="/chat", tags=["chat"])
 
 
-@router.post("", response_model=ChatResponse)
+# ═══════════════════════════════════════════════════════════════
+# 请求/响应模型
+# ═══════════════════════════════════════════════════════════════
+
+
+class ChatRequest(BaseModel):
+    message: str
+    session_id: Optional[str] = None
+    stream: bool = True
+
+
+class HITLConfirmRequest(BaseModel):
+    session_id: str
+    selected_option: Optional[str] = None
+    comment: Optional[str] = None
+    modified_data: Optional[dict] = None
+    request_id: Optional[str] = None
+
+
+# ═══════════════════════════════════════════════════════════════
+# POST /chat — 非流式（保留兼容）
+# ═══════════════════════════════════════════════════════════════
+
+
+@router.post("")
 async def chat(request: ChatRequest):
-    """Standard non-stream chat endpoint."""
-
-    start = time.perf_counter()
+    """非流式聊天接口。所有输入都经过 LLM，无硬编码路由。"""
     session_id = request.session_id or generate_session_id()
     trace_id = generate_trace_id()
+    workflow = get_workflow()
 
-    try:
-        workflow = get_workflow()
-        result = await workflow.ainvoke(
-            user_input=request.message,
-            session_id=session_id,
-            trace_id=trace_id,
-        )
+    start_time = time.time()
+    result = await workflow.ainvoke(
+        user_input=request.message,
+        session_id=session_id,
+        trace_id=trace_id,
+    )
+    elapsed = int((time.time() - start_time) * 1000)
 
-        return ChatResponse(
-            response=result.get("response", ""),
-            session_id=result.get("session_id", session_id),
-            sources=result.get("sources", []),
-            intent=result.get("intent", "chat"),
-            confidence=result.get("confidence", 0.0),
-            execution_time_ms=int((time.perf_counter() - start) * 1000),
-            trace_id=result.get("trace_id", trace_id),
-            tool_calls=result.get("tool_calls", []),
-        )
-    except Exception as exc:
-        logger.error(f"chat failed: {exc}")
-        raise HTTPException(status_code=500, detail=str(exc))
+    result["execution_time_ms"] = elapsed
+    return result
+
+
+# ═══════════════════════════════════════════════════════════════
+# POST /chat/stream — 真流式 SSE
+# ═══════════════════════════════════════════════════════════════
 
 
 @router.post("/stream")
 async def chat_stream(request: ChatRequest):
-    """Stream trace events and final response over SSE."""
+    """
+    真流式聊天接口。
+    使用 LangGraph astream_events 实现 token 级 SSE。
 
+    SSE 事件类型：
+      - trace_init:      {session_id, trace_id}
+      - response_chunk:  {chunk}           — 每个 LLM token
+      - tool_start:      {tool, input}     — 工具开始执行
+      - tool_end:        {tool, output}    — 工具执行完成
+      - hitl_waiting:    {...}             — 等待用户确认
+      - final_response:  {response, session_id, intent, tool_calls, ...}
+      - error:           {error}
+    """
     session_id = request.session_id or generate_session_id()
     trace_id = generate_trace_id()
     workflow = get_workflow()
 
     async def generate():
+        # 1. 发送 trace_init
         yield {
             "event": "trace_init",
-            "data": json.dumps({"trace_id": trace_id, "session_id": session_id}, ensure_ascii=False),
+            "data": json.dumps(
+                {
+                    "session_id": session_id,
+                    "trace_id": trace_id,
+                    "timestamp": time.time(),
+                }
+            ),
         }
 
-        result = await workflow.ainvoke(
-            user_input=request.message,
-            session_id=session_id,
-            trace_id=trace_id,
-        )
+        # 2. 真流式：逐 token / 逐工具事件发送
+        try:
+            async for item in workflow.astream(
+                user_input=request.message,
+                session_id=session_id,
+            ):
+                item_type = item.get("type")
 
-        # 分块发送响应文本（模拟流式）
-        response_text = result.get("response", "")
-        chunk_size = 20  # 每次发送的字符数
-        for i in range(0, len(response_text), chunk_size):
-            chunk = response_text[i:i + chunk_size]
+                if item_type == "token":
+                    yield {
+                        "event": "response_chunk",
+                        "data": json.dumps({"chunk": item["content"]}),
+                    }
+
+                elif item_type == "tool_start":
+                    yield {
+                        "event": "tool_start",
+                        "data": json.dumps(
+                            {
+                                "tool": item["tool"],
+                                "call_id": item.get("call_id", ""),
+                                "input": item.get("input", {}),
+                                "timestamp": time.time(),
+                            }
+                        ),
+                    }
+
+                elif item_type == "tool_end":
+                    yield {
+                        "event": "tool_end",
+                        "data": json.dumps(
+                            {
+                                "tool": item["tool"],
+                                "call_id": item.get("call_id", ""),
+                                "output": item.get("output", ""),
+                                "timestamp": time.time(),
+                            }
+                        ),
+                    }
+
+                elif item_type == "hitl_waiting":
+                    yield {
+                        "event": "hitl_waiting",
+                        "data": json.dumps(
+                            {
+                                **item.get("data", {}),
+                                "timestamp": time.time(),
+                            },
+                            ensure_ascii=False,
+                        ),
+                    }
+
+                elif item_type == "done":
+                    response_data = item.get("response", {})
+                    response_data["trace_id"] = trace_id
+                    yield {
+                        "event": "final_response",
+                        "data": json.dumps(response_data),
+                    }
+
+                elif item_type == "error":
+                    yield {
+                        "event": "error",
+                        "data": json.dumps(
+                            {
+                                "error": item.get("error", "未知错误"),
+                                "timestamp": time.time(),
+                            }
+                        ),
+                    }
+
+        except Exception as exc:
+            logger.error(f"Stream generation failed: {exc}")
             yield {
-                "event": "response_chunk",
-                "data": json.dumps({"chunk": chunk}, ensure_ascii=False),
+                "event": "error",
+                "data": json.dumps({"error": str(exc)}),
             }
-
-        yield {
-            "event": "final_response",
-            "data": json.dumps(result, ensure_ascii=False, default=str),
-        }
 
     return EventSourceResponse(generate())
 
 
-@router.post("/confirm", response_model=HITLConfirmResponse)
-async def confirm_hitl(request: HITLConfirmRequest):
-    """Resume HITL-interrupted workflow with user decision."""
-
-    try:
-        response_payload = request.response or {
-            "request_id": request.request_id,
-            "selected_option": request.selected_option,
-            "modified_data": request.modified_data,
-            "comment": request.comment,
-        }
-
-        manager = get_hitl_manager()
-        pending = manager.get_pending_request(request.session_id)
-        request_id = str(response_payload.get("request_id") or (pending or {}).get("request_id") or "")
-        if request_id:
-            try:
-                manager.submit_response(
-                    session_id=request.session_id,
-                    response=HITLSubmitResponse(
-                        request_id=request_id,
-                        selected_option=response_payload.get("selected_option"),
-                        modified_data=response_payload.get("modified_data"),
-                        comment=response_payload.get("comment"),
-                    ),
-                )
-            except Exception as persist_error:
-                logger.debug(f"submit HITL response skipped: {persist_error}")
-
-        workflow = get_workflow()
-        result = await workflow.resume_from_hitl(
-            session_id=request.session_id,
-            response=response_payload,
-        )
-        return HITLConfirmResponse(status="resumed", result=result)
-    except Exception as exc:
-        logger.error(f"HITL confirm failed: {exc}")
-        raise HTTPException(status_code=500, detail=str(exc))
+# ═══════════════════════════════════════════════════════════════
+# POST /chat/confirm — HITL 确认（真实恢复执行）
+# ═══════════════════════════════════════════════════════════════
 
 
-@router.get("/pending/{session_id}")
-async def get_pending_hitl(session_id: str):
-    """Get pending HITL request for polling fallback."""
+@router.post("/confirm")
+async def chat_confirm(request: HITLConfirmRequest):
+    """
+    HITL 确认接口。
+    前端用户选择泵方案后调用此接口，恢复被 interrupt() 暂停的子图。
+    """
+    workflow = get_workflow()
 
-    manager = get_hitl_manager()
-    pending = manager.get_pending_request(session_id)
-    return {
-        "session_id": session_id,
-        "pending": pending is not None,
-        "request": pending,
+    user_choice = {
+        "selected_option": request.selected_option,
+        "comment": request.comment or "",
+        "modified_data": request.modified_data,
+        "request_id": request.request_id,
     }
+
+    result = await workflow.resume_from_hitl(
+        session_id=request.session_id,
+        user_choice=user_choice,
+    )
+
+    return result
+
+
+# ═══════════════════════════════════════════════════════════════
+# GET /chat/history/{session_id} — 会话历史
+# ═══════════════════════════════════════════════════════════════
 
 
 @router.get("/history/{session_id}")
-async def get_chat_history(session_id: str):
-    """Return message history from checkpoint state."""
-
+async def chat_history(session_id: str):
+    """获取会话历史。从 LangGraph checkpointer 读取。"""
     workflow = get_workflow()
     state = workflow.get_state(session_id)
 
     if not state:
-        return {"session_id": session_id, "messages": [], "found": False}
+        return {"session_id": session_id, "messages": []}
 
     messages = state.get("messages", [])
-    history = [
-        {
-            "role": "user" if getattr(msg, "type", "") == "human" else "assistant",
-            "content": getattr(msg, "content", ""),
-        }
-        for msg in messages
-    ]
+    history = []
+    for msg in messages:
+        msg_type = getattr(msg, "type", "unknown")
+        content = getattr(msg, "content", "")
+        if msg_type in ("human", "ai"):
+            history.append(
+                {
+                    "role": "user" if msg_type == "human" else "assistant",
+                    "content": content,
+                }
+            )
 
-    return {
-        "session_id": session_id,
-        "messages": history,
-        "found": True,
-    }
+    return {"session_id": session_id, "messages": history}

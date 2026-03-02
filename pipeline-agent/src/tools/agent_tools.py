@@ -1,244 +1,335 @@
 """
-ReAct 主图的顶层工具定义。
-每个工具封装一个现有 Agent 的核心能力，通过 @tool 装饰器暴露给 LLM。
-LLM 通过工具的 docstring 判断是否调用——这是实现"语义感知工具调用"的关键。
+ReAct 主图可用的工具集。
+所有工具使用 @tool 装饰器定义，由 LLM 通过 bind_tools 自主决定调用。
 """
 
-import json
+from __future__ import annotations
+
+from typing import Any, Dict, List
 
 from langchain_core.tools import tool
 
+from src.agents import (
+    get_calc_agent,
+    get_data_agent,
+    get_graph_agent,
+    get_knowledge_agent,
+)
 from src.utils import logger
+
+
+# ═══════════════════════════════════════════════════════════════
+# 数据库查询工具
+# ═══════════════════════════════════════════════════════════════
 
 
 @tool
 def query_database(question: str) -> str:
-    """查询管道能耗系统数据库，获取项目、管道、泵站、油品等业务数据。
+    """查询数据库获取项目、管道、泵站、油品的具体数据。
 
-    使用场景举例：
-    - "有哪些项目" → 调用此工具
-    - "1号管道的参数" → 调用此工具
-    - "查询泵站效率" → 调用此工具
-    - "有多少条管道" → 调用此工具
-
-    不要在以下场景使用：
-    - 问候语（你好/hello）
-    - 专业概念解释（什么是雷诺数）→ 用 search_knowledge_base
-    - 执行计算 → 用 hydraulic_calculation
+    当用户询问具体的项目信息、管道参数（直径、长度、壁厚）、
+    泵站配置（效率、排量、扬程）、油品属性（密度、粘度）等
+    存储在数据库中的结构化数据时使用此工具。
 
     Args:
-        question: 用户的数据查询需求，自然语言描述
+        question: 数据查询问题，如"查询项目A的管道直径"、"有哪些项目"
     """
-    from src.agents import get_data_agent
-
     try:
-        return get_data_agent().execute(question)
+        agent = get_data_agent()
+        result = agent.execute(question)
+        return result
     except Exception as e:
         logger.error(f"query_database failed: {e}")
-        return json.dumps({"error": str(e)}, ensure_ascii=False)
+        return f"数据库查询失败: {str(e)}"
+
+
+# ═══════════════════════════════════════════════════════════════
+# 水力计算工具
+# ═══════════════════════════════════════════════════════════════
 
 
 @tool
-def hydraulic_calculation(task_description: str, available_data: str = "{}") -> str:
+def hydraulic_calculation(question: str) -> str:
     """执行管道水力计算，包括雷诺数、沿程摩阻、压降分析、泵站优化。
 
-    使用场景举例：
-    - "计算雷诺数" → 调用此工具
-    - "分析1号管道在500m³/h流量下的压降" → 调用此工具
-    - "优化泵站配置" → 调用此工具
-    - "计算摩阻损失" → 调用此工具
-
-    注意：如果用户未提供管道参数（管径、长度、油品粘度等），请先调用
-    query_database 获取参数，然后将查询结果作为 available_data 传入此工具。
-
-    不要在以下场景使用：
-    - 问候语
-    - 查询数据但不需要计算 → 用 query_database
-    - 知识概念解释 → 用 search_knowledge_base
+    当用户需要进行水力学相关的工程计算时使用此工具。
+    支持的计算类型：雷诺数计算、摩阻系数计算、沿程水头损失、
+    泵站扬程需求、泵组合优化方案搜索。
 
     Args:
-        task_description: 计算任务的完整描述
-        available_data: 已有数据的 JSON 字符串，格式为
-            {"pipeline": {...}, "oil": {...}, "pump_station": {...}}
-            如果没有已有数据，传入 "{}" 即可
+        question: 计算需求描述，如"计算流量800时的雷诺数和摩阻"
     """
-    from src.agents import get_calc_agent
-
     try:
-        data = json.loads(available_data) if available_data else {}
-    except (json.JSONDecodeError, TypeError):
-        data = {}
-
-    try:
-        return get_calc_agent().execute(task_description, available_data=data)
+        agent = get_calc_agent()
+        result = agent.execute(question)
+        return result
     except Exception as e:
         logger.error(f"hydraulic_calculation failed: {e}")
-        return f"计算失败: {str(e)}"
+        return f"水力计算失败: {str(e)}"
+
+
+# ═══════════════════════════════════════════════════════════════
+# 知识库检索工具
+# ═══════════════════════════════════════════════════════════════
 
 
 @tool
-def search_knowledge_base(query: str) -> str:
-    """检索管道工程知识库，回答专业概念、规范标准、工程原理问题。
+def search_knowledge_base(question: str) -> str:
+    """检索管道工程知识库，获取规范、标准、原理、公式等专业知识。
 
-    使用场景举例：
-    - "什么是雷诺数" → 调用此工具
-    - "GB50251有什么规定" → 调用此工具
-    - "泵的汽蚀是什么原理" → 调用此工具
-    - "管道摩阻计算的公式" → 调用此工具
-
-    不要在以下场景使用：
-    - 问候语（你好/hello）→ 直接回复，不调任何工具
-    - 查询具体业务数据（1号管道多长）→ 用 query_database
-    - 执行具体数值计算 → 用 hydraulic_calculation
+    当用户询问管道工程领域的专业知识、行业标准、设计规范、
+    计算公式的理论依据、工程原理解释等内容时使用此工具。
 
     Args:
-        query: 专业知识查询问题
+        question: 知识检索问题，如"管道摩阻系数的计算公式是什么"
     """
-    from src.agents import get_knowledge_agent
-
     try:
-        return get_knowledge_agent().execute(query)
+        agent = get_knowledge_agent()
+        result = agent.execute(question)
+        return result
     except Exception as e:
         logger.error(f"search_knowledge_base failed: {e}")
-        return f"知识检索失败: {str(e)}"
+        return f"知识库检索失败: {str(e)}"
+
+
+# ═══════════════════════════════════════════════════════════════
+# 知识图谱工具 — 拆分为 3 个独立工具，由 LLM 自主选择
+# ═══════════════════════════════════════════════════════════════
 
 
 @tool
-def query_knowledge_graph(query: str) -> str:
-    """通过知识图谱进行关系查询和因果推理。
+def query_fault_cause(query: str) -> str:
+    """通过知识图谱进行故障因果推理。
 
-    使用场景举例：
-    - "压力异常的原因有哪些" → 调用此工具
-    - "泵故障的因果关系" → 调用此工具
-    - "管道设备之间的连接关系" → 调用此工具
-
-    不要在以下场景使用：
-    - 问候语
-    - 查询具体数值数据 → 用 query_database
-    - 不涉及"关系""因果""故障原因"的普通知识问题 → 用 search_knowledge_base
+    当用户询问某个故障的原因、某个异常现象的因果链、
+    设备故障的根因分析等问题时使用此工具。
 
     Args:
-        query: 关系或因果查询问题
+        query: 故障查询，如"泵站压力异常的可能原因"、"管道泄漏的因果分析"
     """
-    from src.agents import get_graph_agent
-
     try:
-        result = get_graph_agent().execute(query)
-        if isinstance(result, dict):
-            return json.dumps(result, ensure_ascii=False, default=str)
-        return str(result)
+        agent = get_graph_agent()
+        result = agent.execute(query, query_type="fault_cause")
+        return result
     except Exception as e:
-        logger.error(f"query_knowledge_graph failed: {e}")
-        return f"知识图谱查询失败: {str(e)}"
+        logger.error(f"query_fault_cause failed: {e}")
+        return f"故障因果查询失败: {str(e)}"
 
 
 @tool
-def run_sensitivity_analysis(
-    flow_rate: float,
-    pipe_diameter: float,
-    pipe_length: float,
-    oil_density: float,
-    oil_viscosity: float,
-    roughness: float,
-    start_elevation: float,
-    end_elevation: float,
-    inlet_pressure: float,
-    pump_480_num: int,
-    pump_375_num: int,
-    pump_480_head: float,
-    pump_375_head: float,
-    variable_type: str,
-    start_percent: float = 80.0,
-    end_percent: float = 120.0,
-    step_percent: float = 5.0,
-) -> str:
-    """执行敏感性分析，研究某个变量变化对水力计算结果的影响。
+def query_standards(query: str) -> str:
+    """通过知识图谱查询相关标准规范。
 
-    使用场景：用户明确要求做"敏感性分析"或"参数敏感度研究"时才使用。
-    需要所有管道参数和泵站参数作为输入。如果用户没提供，先用 query_database 获取。
+    当用户询问某个操作或设计应遵循的标准、规范要求、
+    合规性检查等问题时使用此工具。
 
     Args:
-        flow_rate: 流量(m³/h)
-        pipe_diameter: 管道外径(mm)
-        pipe_length: 管道长度(km)
-        oil_density: 油品密度(kg/m³)
-        oil_viscosity: 油品粘度(m²/s)
-        roughness: 粗糙度(m)
-        start_elevation: 起点高程(m)
-        end_elevation: 终点高程(m)
-        inlet_pressure: 首站进站压头(m)
-        pump_480_num: ZMI480泵数量
-        pump_375_num: ZMI375泵数量
-        pump_480_head: ZMI480单泵扬程(m)
-        pump_375_head: ZMI375单泵扬程(m)
-        variable_type: 要分析的变量类型，可选值: flow_rate/diameter/viscosity/density/roughness/length
-        start_percent: 变化起始百分比(默认80)
-        end_percent: 变化结束百分比(默认120)
-        step_percent: 变化步长百分比(默认5)
+        query: 标准查询，如"管道设计压力的标准要求"、"泵站运行规范"
     """
-    from src.tools.extended_tools import call_sensitivity_analysis as _call
-
     try:
-        return _call.invoke(
-            {
-                "flow_rate": flow_rate,
-                "pipe_diameter": pipe_diameter,
-                "pipe_length": pipe_length,
-                "oil_density": oil_density,
-                "oil_viscosity": oil_viscosity,
-                "roughness": roughness,
-                "start_elevation": start_elevation,
-                "end_elevation": end_elevation,
-                "inlet_pressure": inlet_pressure,
-                "pump_480_num": pump_480_num,
-                "pump_375_num": pump_375_num,
-                "pump_480_head": pump_480_head,
-                "pump_375_head": pump_375_head,
-                "variable_type": variable_type,
-                "start_percent": start_percent,
-                "end_percent": end_percent,
-                "step_percent": step_percent,
-            }
-        )
+        agent = get_graph_agent()
+        result = agent.execute(query, query_type="standards")
+        return result
+    except Exception as e:
+        logger.error(f"query_standards failed: {e}")
+        return f"标准规范查询失败: {str(e)}"
+
+
+@tool
+def query_equipment_chain(query: str) -> str:
+    """通过知识图谱查询设备关联链路。
+
+    当用户询问设备之间的关联关系、上下游设备链路、
+    设备依赖关系等问题时使用此工具。
+
+    Args:
+        query: 设备查询，如"泵站A的上下游设备链路"、"阀门与管道的关联关系"
+    """
+    try:
+        agent = get_graph_agent()
+        result = agent.execute(query, query_type="equipment_chain")
+        return result
+    except Exception as e:
+        logger.error(f"query_equipment_chain failed: {e}")
+        return f"设备链路查询失败: {str(e)}"
+
+
+# ═══════════════════════════════════════════════════════════════
+# 敏感性分析工具
+# ═══════════════════════════════════════════════════════════════
+
+
+@tool
+def run_sensitivity_analysis(question: str) -> str:
+    """执行参数敏感性分析，研究单个参数变化对水力计算结果的影响。
+
+    当用户需要分析某个参数（流量、密度、粘度、管径、粗糙度）
+    变化时对计算结果的影响程度时使用此工具。
+
+    Args:
+        question: 分析需求，如"分析流量变化对摩阻的影响"
+    """
+    try:
+        from src.tools.extended_tools import call_sensitivity_analysis
+
+        return call_sensitivity_analysis.invoke(question)
     except Exception as e:
         logger.error(f"run_sensitivity_analysis failed: {e}")
         return f"敏感性分析失败: {str(e)}"
 
 
+# ═══════════════════════════════════════════════════════════════
+# 复杂任务规划工具
+# ═══════════════════════════════════════════════════════════════
+
+
 @tool
 def plan_complex_task(task_description: str) -> str:
-    """对复杂的多步骤任务进行规划和执行。进入 Plan-and-Execute 模式。
+    """对需要多步协作的复杂任务进行规划和分步执行。
 
-    仅在以下场景使用此工具：
-    - 用户要求"全面分析"某条管道（需要 查数据→计算→对比→生成报告）
-    - 用户要求"生成优化报告"（需要多个 agent 协作）
-    - 用户要求"对比多个泵站方案"（需要多次计算+汇总）
-    - 任务明确需要 3 个以上步骤才能完成
-
-    不要在以下场景使用此工具：
-    - 单步数据查询 → 用 query_database
-    - 单步计算 → 用 hydraulic_calculation
-    - 单步知识问答 → 用 search_knowledge_base
-    - 问候或闲聊
+    当用户的需求需要多个步骤协作完成时使用此工具，例如：
+    "查询项目A的数据，然后计算水力参数，再对比不同方案，最后生成报告"。
+    单步任务不要使用此工具。
 
     Args:
-        task_description: 完整的复杂任务描述，包含用户的具体需求
+        task_description: 完整的任务描述
     """
-    from src.workflows.subgraph import run_plan_execute
-
     try:
+        from src.workflows.subgraph import run_plan_execute
+
         return run_plan_execute(task_description)
     except Exception as e:
         logger.error(f"plan_complex_task failed: {e}")
         return f"复杂任务执行失败: {str(e)}"
 
 
-# 工具列表，供 graph.py 导入
+# ═══════════════════════════════════════════════════════════════
+# 工具列表 — 供 graph.py 中 bind_tools 使用
+# ═══════════════════════════════════════════════════════════════
+
 REACT_TOOLS = [
     query_database,
     hydraulic_calculation,
     search_knowledge_base,
-    query_knowledge_graph,
+    query_fault_cause,
+    query_standards,
+    query_equipment_chain,
     run_sensitivity_analysis,
     plan_complex_task,
 ]
+
+TOOL_NAME_TO_TOOL = {tool.name: tool for tool in REACT_TOOLS}
+
+# 高频核心工具常驻，避免检索误差导致关键能力不可用。
+ALWAYS_LOADED_TOOL_NAMES = ["query_database"]
+
+# Tool Search Tool 使用的元数据注册表（可逐步扩展到 MCP 生态）。
+TOOL_REGISTRY: Dict[str, Dict[str, Any]] = {
+    "query_database": {
+        "description": "查询数据库中的项目、管道、泵站、油品等结构化数据",
+        "keywords": ["数据库", "SQL", "项目", "管道", "泵站", "油品", "数据", "查询"],
+        "category": "data",
+        "defer_loading": False,
+        "usage_frequency": 0.90,
+        "input_examples": [
+            {"question": "查询项目A的所有管道直径和长度"},
+            {"question": "统计各泵站的平均效率"},
+        ],
+    },
+    "hydraulic_calculation": {
+        "description": "执行水力计算，包括雷诺数、摩阻、压降与泵站优化",
+        "keywords": ["水力", "计算", "雷诺", "摩阻", "压降", "流量", "泵", "扬程"],
+        "category": "calculation",
+        "defer_loading": True,
+        "usage_frequency": 0.75,
+        "input_examples": [
+            {"question": "计算流量1200m3/h时的雷诺数和沿程压降"},
+            {"question": "对比两种泵组合在同流量下的扬程需求"},
+        ],
+    },
+    "search_knowledge_base": {
+        "description": "检索管道工程知识库中的标准、规范、原理和公式",
+        "keywords": ["知识库", "标准", "规范", "原理", "公式", "检索", "依据"],
+        "category": "knowledge",
+        "defer_loading": True,
+        "usage_frequency": 0.55,
+        "input_examples": [
+            {"question": "达西摩阻系数的适用范围是什么"},
+            {"question": "输油管道设计压力有哪些规范要求"},
+        ],
+    },
+    "query_fault_cause": {
+        "description": "通过知识图谱分析故障因果链和根因",
+        "keywords": ["故障", "根因", "因果", "异常", "诊断", "原因"],
+        "category": "graph",
+        "defer_loading": True,
+        "usage_frequency": 0.42,
+        "input_examples": [
+            {"query": "泵站出口压力波动的可能根因"},
+            {"query": "管道泄漏报警与阀门异常的因果链"},
+        ],
+    },
+    "query_standards": {
+        "description": "通过知识图谱查询相关标准规范与合规要求",
+        "keywords": ["标准", "规范", "合规", "要求", "条款"],
+        "category": "graph",
+        "defer_loading": True,
+        "usage_frequency": 0.40,
+        "input_examples": [
+            {"query": "输油管道允许压力偏差的标准条款"},
+            {"query": "泵站运行维护频次规范"},
+        ],
+    },
+    "query_equipment_chain": {
+        "description": "通过知识图谱查询设备上下游关联链路",
+        "keywords": ["设备", "链路", "上下游", "关联", "依赖"],
+        "category": "graph",
+        "defer_loading": True,
+        "usage_frequency": 0.38,
+        "input_examples": [
+            {"query": "泵站A的上下游设备链路"},
+            {"query": "阀门V-21关联的关键设备"},
+        ],
+    },
+    "run_sensitivity_analysis": {
+        "description": "执行参数敏感性分析，评估变量变化对结果影响",
+        "keywords": ["敏感性", "参数变化", "影响", "分析", "对比"],
+        "category": "analysis",
+        "defer_loading": True,
+        "usage_frequency": 0.48,
+        "input_examples": [
+            {"question": "分析流量变化对摩阻损失的敏感性"},
+            {"question": "比较密度和粘度变化对压降影响"},
+        ],
+    },
+    "plan_complex_task": {
+        "description": "对复杂多步骤任务进行规划并执行",
+        "keywords": ["复杂任务", "步骤", "规划", "多步", "报告", "方案"],
+        "category": "orchestration",
+        "defer_loading": True,
+        "usage_frequency": 0.34,
+        "input_examples": [
+            {"task_description": "先查项目参数，再做水力计算，最后输出优化报告"},
+            {"task_description": "对比三种泵方案并给出推荐和风险说明"},
+        ],
+    },
+}
+
+
+def get_tools_by_names(tool_names: List[str]) -> List[Any]:
+    """Return tools by name while preserving order and removing duplicates."""
+    selected: List[Any] = []
+    seen = set()
+    for name in tool_names:
+        if name in seen:
+            continue
+        tool_obj = TOOL_NAME_TO_TOOL.get(name)
+        if tool_obj is None:
+            continue
+        selected.append(tool_obj)
+        seen.add(name)
+    return selected
+
+
+def get_all_tool_names() -> List[str]:
+    return list(TOOL_NAME_TO_TOOL.keys())

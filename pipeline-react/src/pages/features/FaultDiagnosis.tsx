@@ -1,8 +1,7 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { Card, Form, InputNumber, Button, Row, Col, Progress, Tag, Collapse, Descriptions, Space, Alert, message, Flex } from 'antd';
 import { AlertOutlined, CheckCircleOutlined, WarningOutlined, ExclamationCircleOutlined, MedicineBoxOutlined } from '@ant-design/icons';
 import ReactECharts from 'echarts-for-react';
-import type { EChartsInstance } from 'echarts-for-react';
 import type { DiagnosisResult } from '../../types';
 import { diagnosisApi } from '../../api';
 import AnimatedPage from '../../components/common/AnimatedPage';

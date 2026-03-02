@@ -5,3 +5,7 @@ export { default as SchemeSelector } from './SchemeSelector';
 export { default as MetricsBar } from './MetricsBar';
 export { default as GraphViewer } from './GraphViewer';
 export { default as MarkdownRenderer } from './MarkdownRenderer';
+export { default as StreamingMarkdown } from './StreamingMarkdown';
+export { default as ThinkingIndicator } from './ThinkingIndicator';
+export { default as ToolCallCard } from './ToolCallCard';
+export { default as ChatMessage } from './ChatMessage';

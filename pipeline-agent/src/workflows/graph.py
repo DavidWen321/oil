@@ -1,247 +1,218 @@
 """
-ReAct 主图 —— pipeline-agent v5.0 核心工作流。
+ReAct 主图 - 所有用户输入均由 LLM 处理，LLM 自主决定是否调用工具。
+不存在任何硬编码路由或规则拦截。
 
 架构：
   START --> agent --> tools_condition --> tools --> agent（循环）
-                                     -> __end__（结束）
-
-LLM 通过 bind_tools(tool_choice="auto") 自行决定是否调用工具。
-简单问候/闲聊不会触发任何工具调用。
-复杂多步任务通过调用 plan_complex_task 工具进入 Plan-Execute 子图。
+                                      -> __end__（结束）
 """
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+import json
+import time
+from typing import Any, Dict, List, Optional
 
-from langchain_core.messages import AIMessage, SystemMessage
+from langchain_core.messages import SystemMessage
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import MessagesState, START, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
+from langgraph.types import Command
 
 from src.config import settings
-from src.tools.agent_tools import REACT_TOOLS
+from src.tool_search import get_tool_search_engine
+from src.tools.agent_tools import (
+    ALWAYS_LOADED_TOOL_NAMES,
+    REACT_TOOLS,
+    TOOL_NAME_TO_TOOL,
+    get_all_tool_names,
+    get_tools_by_names,
+)
 from src.utils import generate_session_id, logger
 
 
 # ═══════════════════════════════════════════════════════════════
-# System Prompt — 唯一一份，给 ReAct Agent 用
+# System Prompt — 不包含任何"对问候语直接回复"的指令
 # ═══════════════════════════════════════════════════════════════
 
-REACT_SYSTEM_PROMPT = """你是管道能耗分析智能助手。
+REACT_SYSTEM_PROMPT = """你是管道能耗分析系统的 AI 助手。
 
 ## 你的能力
-你可以通过以下工具完成任务：
+你可以自然地与用户对话，也可以在需要时调用以下工具：
 1. query_database — 查询数据库中的项目、管道、泵站、油品数据
 2. hydraulic_calculation — 执行水力计算（雷诺数、摩阻、压降、泵优化）
 3. search_knowledge_base — 检索管道工程知识库（规范、标准、原理）
-4. query_knowledge_graph — 通过知识图谱进行故障因果推理和关系查询
-5. run_sensitivity_analysis — 执行敏感性分析
-6. plan_complex_task — 对需要 3 步以上的复杂任务进行规划和执行
+4. query_fault_cause — 通过知识图谱进行故障因果推理
+5. query_standards — 查询相关标准规范
+6. query_equipment_chain — 查询设备关联链路
+7. run_sensitivity_analysis — 执行参数敏感性分析
+8. plan_complex_task — 对需要多步协作的复杂任务进行规划和分步执行
 
-## 核心规则
-1. **只在用户的问题确实需要外部数据、计算或知识检索时才调用工具**
-2. 对于问候（你好/hello/hi）、闲聊、感谢、告别、常识问题，直接用文本回复，绝对不要调用任何工具
-3. 执行计算前如果缺少管道参数，先调用 query_database 获取
-4. 只有真正需要多步协作（查数据→计算→对比→出报告）的复杂任务才使用 plan_complex_task
-5. 用与用户相同的语言回答
-6. 数值结果保留合适的有效数字并带单位
-
-## 回答风格
-- 简洁专业，不冗长
-- 计算结果解释物理意义
-- 引用规范时注明出处编号
+## 行为准则
+- 你是一个自然、智能的对话伙伴。对于问候、闲聊、感谢、告别等，自然地回应即可。
+- 当用户的问题需要查数据、做计算、检索知识时，调用对应的工具。
+- 执行计算前如果缺少管道参数，先调用 query_database 获取。
+- 只有真正需要多步协作（查数据→计算→对比→出报告）的复杂任务才使用 plan_complex_task。
+- 用与用户相同的语言回答。
+- 数值结果保留合适的有效数字并带单位。
+- 引用规范时注明出处编号。
 """
 
 
 # ═══════════════════════════════════════════════════════════════
-# 规则快速路径 — 零成本拦截纯闲聊
+# LLM 实例（单例）
 # ═══════════════════════════════════════════════════════════════
 
-_CHAT_PHRASES = frozenset(
-    [
-        "你好",
-        "hello",
-        "hi",
-        "嗨",
-        "在吗",
-        "在不在",
-        "谢谢",
-        "感谢",
-        "thanks",
-        "thank you",
-        "再见",
-        "拜拜",
-        "bye",
-        "goodbye",
-        "你是谁",
-        "你叫什么",
-        "你能做什么",
-        "帮我什么",
-        "好的",
-        "ok",
-        "嗯",
-        "哦",
-        "哈哈",
-        "呵呵",
-        "早上好",
-        "下午好",
-        "晚上好",
-        "good morning",
-        "你好啊",
-        "hi there",
-        "hey",
-    ]
-)
-
-_DOMAIN_KEYWORDS = frozenset(
-    [
-        "管道",
-        "泵站",
-        "油品",
-        "项目",
-        "压力",
-        "流量",
-        "计算",
-        "优化",
-        "水力",
-        "摩阻",
-        "粘度",
-        "密度",
-        "能耗",
-        "分析",
-        "诊断",
-        "故障",
-        "报告",
-        "雷诺",
-        "扬程",
-        "排量",
-        "粗糙度",
-        "壁厚",
-        "管径",
-        "查询",
-        "数据",
-        "参数",
-        "规范",
-        "标准",
-        "公式",
-        "碳排放",
-        "敏感性",
-        "方案",
-        "对比",
-        "监控",
-        "知识图谱",
-        "因果",
-        "pipeline",
-        "pump",
-        "hydraulic",
-        "reynolds",
-        "friction",
-    ]
-)
-
-_SUFFIXES_TO_STRIP = "!！?？~。.，,、 \t\n"
+_base_llm: Optional[ChatOpenAI] = None
+_llm_tools_cache: Dict[str, Any] = {}
 
 
-def _is_trivial_chat(text: str) -> bool:
-    """
-    规则快速路径：识别不需要调 LLM 的纯闲聊。
-    返回 True 表示应直接返回硬编码回复。
-    """
-    t = text.strip().lower().strip(_SUFFIXES_TO_STRIP)
-    if not t:
-        return True
-    if t in _CHAT_PHRASES:
-        return True
-    # 短输入 + 无领域关键词 → 大概率闲聊
-    if len(t) <= 10 and not any(k in t for k in _DOMAIN_KEYWORDS):
-        return True
-    return False
-
-
-def _quick_chat_response(text: str) -> str:
-    """根据闲聊类型生成硬编码回复。"""
-    t = text.strip().lower()
-
-    if any(w in t for w in ["你好", "hello", "hi", "嗨", "早上好", "下午好", "晚上好", "hey"]):
-        return (
-            "你好！我是管道能耗分析智能助手，可以帮你：\n\n"
-            "- **数据查询** — 项目、管道、泵站、油品参数\n"
-            "- **水力计算** — 雷诺数、摩阻、压降分析\n"
-            "- **泵站优化** — 最优泵组合方案\n"
-            "- **知识问答** — 管道工程规范、标准、原理\n"
-            "- **故障诊断** — 异常工况因果分析\n"
-            "- **敏感性分析** — 参数变化对结果的影响\n\n"
-            "请描述你的需求。"
-        )
-
-    if any(w in t for w in ["谢谢", "感谢", "thanks", "thank you"]):
-        return "不客气！还有其他管道分析需求可以继续问我。"
-
-    if any(w in t for w in ["再见", "拜拜", "bye", "goodbye"]):
-        return "再见！有需要随时来找我。"
-
-    if any(w in t for w in ["你是谁", "你叫什么", "你能做什么", "帮我什么"]):
-        return (
-            "我是管道能耗分析智能助手，核心能力包括：\n\n"
-            "1. **水力计算** — 雷诺数、沿程摩阻、泵扬程等\n"
-            "2. **泵站优化** — 自动搜索最优泵组合方案\n"
-            "3. **数据查询** — 项目、管道、泵站、油品参数查询\n"
-            "4. **故障诊断** — 基于知识图谱的因果推理\n"
-            "5. **知识问答** — 管道工程规范、标准、原理检索\n"
-            "6. **报告生成** — 自动生成分析报告\n\n"
-            "请问有什么可以帮您？"
-        )
-
-    return "好的，请问有什么管道能耗方面的问题需要我帮忙分析？"
-
-
-# ═══════════════════════════════════════════════════════════════
-# LLM 实例
-# ═══════════════════════════════════════════════════════════════
-
-_llm_with_tools = None
-
-
-def _get_llm_with_tools():
-    """返回绑定了工具的 LLM 单例。tool_choice 默认为 "auto"。"""
-    global _llm_with_tools
-    if _llm_with_tools is None:
-        llm = ChatOpenAI(
+def _get_base_llm() -> ChatOpenAI:
+    global _base_llm
+    if _base_llm is None:
+        _base_llm = ChatOpenAI(
             api_key=settings.OPENAI_API_KEY,
             base_url=settings.OPENAI_API_BASE,
             model=settings.LLM_MODEL,
-            temperature=0,
-            max_tokens=4096,
+            temperature=settings.LLM_TEMPERATURE,
+            max_tokens=settings.LLM_MAX_TOKENS,
+            streaming=True,
         )
-        _llm_with_tools = llm.bind_tools(REACT_TOOLS)  # tool_choice 默认 "auto"
-    return _llm_with_tools
+    return _base_llm
+
+
+def _extract_latest_user_query(messages: List[Any]) -> str:
+    for message in reversed(messages):
+        if isinstance(message, dict) and message.get("role") == "user":
+            return str(message.get("content", ""))
+        msg_type = getattr(message, "type", "")
+        if msg_type == "human":
+            return str(getattr(message, "content", ""))
+    if messages:
+        return str(getattr(messages[-1], "content", ""))
+    return ""
+
+
+def _merge_tool_names(always_loaded: List[str], dynamic: List[str]) -> List[str]:
+    merged: List[str] = []
+    seen = set()
+    for name in always_loaded + dynamic:
+        if name in seen:
+            continue
+        if name not in TOOL_NAME_TO_TOOL:
+            continue
+        merged.append(name)
+        seen.add(name)
+    return merged
+
+
+def _parse_csv_setting(raw: str) -> List[str]:
+    return [item.strip() for item in str(raw).split(",") if item.strip()]
+
+
+def _select_active_tools(user_query: str) -> Dict[str, Any]:
+    if not settings.TOOL_SEARCH_ENABLED:
+        names = get_all_tool_names()
+        return {
+            "selected_names": names,
+            "scored_tools": [{"name": name, "score": 1.0, "forced": False} for name in names],
+            "total_tools": len(names),
+            "duration_ms": 0.0,
+            "mode": "all",
+        }
+
+    started = time.perf_counter()
+    search_engine = get_tool_search_engine()
+    allowed_categories = _parse_csv_setting(settings.TOOL_SEARCH_ALLOWED_CATEGORIES)
+    allowed_sources = _parse_csv_setting(settings.TOOL_SEARCH_ALLOWED_SOURCES)
+    dynamic_scored = search_engine.search_with_scores(
+        user_query,
+        top_k=max(1, settings.TOOL_SEARCH_TOP_K),
+        min_score=max(0.0, settings.TOOL_SEARCH_MIN_SCORE),
+        categories=allowed_categories or None,
+        sources=allowed_sources or None,
+    )
+    # 低分兜底，避免因为阈值过高导致无工具可用。
+    if not dynamic_scored:
+        dynamic_scored = search_engine.search_with_scores(
+            user_query,
+            top_k=max(1, settings.TOOL_SEARCH_TOP_K),
+            min_score=0.0,
+            categories=allowed_categories or None,
+            sources=allowed_sources or None,
+        )
+
+    dynamic_tools = [name for name, _ in dynamic_scored]
+    selected = _merge_tool_names(ALWAYS_LOADED_TOOL_NAMES, dynamic_tools)
+    if not selected:
+        selected = get_all_tool_names()
+
+    score_map = {name: float(score) for name, score in dynamic_scored}
+    scored_tools = []
+    for name in selected:
+        scored_tools.append(
+            {
+                "name": name,
+                "score": round(score_map.get(name, 1.0 if name in ALWAYS_LOADED_TOOL_NAMES else 0.0), 4),
+                "forced": name in ALWAYS_LOADED_TOOL_NAMES and name not in score_map,
+            }
+        )
+
+    duration_ms = round((time.perf_counter() - started) * 1000, 2)
+    return {
+        "selected_names": selected,
+        "scored_tools": scored_tools,
+        "total_tools": len(get_all_tool_names()),
+        "duration_ms": duration_ms,
+        "mode": "hybrid",
+        "filters": {
+            "categories": allowed_categories,
+            "sources": allowed_sources,
+        },
+    }
+
+
+def _get_llm_with_tools(tool_names: List[str]) -> Any:
+    selected_names = [name for name in tool_names if name in TOOL_NAME_TO_TOOL]
+    if not selected_names:
+        selected_names = get_all_tool_names()
+
+    cache_key = "|".join(sorted(selected_names))
+    cached = _llm_tools_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    selected_tools = get_tools_by_names(selected_names)
+    llm_with_tools = _get_base_llm().bind_tools(selected_tools)
+    _llm_tools_cache[cache_key] = llm_with_tools
+    return llm_with_tools
 
 
 # ═══════════════════════════════════════════════════════════════
-# 图节点
+# 图节点 — 没有任何硬编码路由，没有 _is_trivial_chat
 # ═══════════════════════════════════════════════════════════════
 
 
 def agent_node(state: MessagesState) -> dict:
     """
     ReAct Agent 核心节点。
-
-    执行逻辑：
-    1. 如果当前轮用户输入命中规则快速路径 → 直接返回硬编码回复（0 次 LLM 调用）
-    2. 否则调用 LLM（带 bind_tools），LLM 自行决定是否调用工具
+    所有用户输入都经过 LLM，由 LLM 自主决定是直接回复还是调用工具。
+    没有任何 if-else 快速路径。
     """
     messages = state["messages"]
-
-    # ── 快速路径：每轮入口若为 human 消息则可直接拦截 ──
-    if messages and getattr(messages[-1], "type", "") == "human":
-        user_text = messages[-1].content
-        if _is_trivial_chat(user_text):
-            return {"messages": [AIMessage(content=_quick_chat_response(user_text))]}
-
-    # ── 正常路径：调 LLM ──
-    llm = _get_llm_with_tools()
+    user_query = _extract_latest_user_query(list(messages))
+    selection = _select_active_tools(user_query)
+    active_tool_names = selection["selected_names"]
+    llm = _get_llm_with_tools(active_tool_names)
+    logger.info(
+        "Tool search selected {} tools for query='{}' (mode={}, {}ms): {}",
+        len(active_tool_names),
+        user_query[:80],
+        selection.get("mode", "hybrid"),
+        selection.get("duration_ms", 0.0),
+        ", ".join(active_tool_names),
+    )
     full_messages = [SystemMessage(content=REACT_SYSTEM_PROMPT)] + list(messages)
     response = llm.invoke(full_messages)
     return {"messages": [response]}
@@ -253,36 +224,21 @@ def agent_node(state: MessagesState) -> dict:
 
 
 def create_react_graph() -> StateGraph:
-    """
-    构建 ReAct 主图。
-
-    结构：
-      START --> agent --> tools_condition --> tools --> agent（循环）
-                                          -> __end__（结束）
-    """
     graph = StateGraph(MessagesState)
-
     graph.add_node("agent", agent_node)
     graph.add_node("tools", ToolNode(REACT_TOOLS))
-
     graph.add_edge(START, "agent")
     graph.add_conditional_edges("agent", tools_condition)
     graph.add_edge("tools", "agent")
-
     return graph
 
 
 # ═══════════════════════════════════════════════════════════════
-# Workflow 封装（对外接口保持兼容）
+# AgentWorkflow 封装
 # ═══════════════════════════════════════════════════════════════
 
 
 class AgentWorkflow:
-    """
-    Agent 工作流封装。
-    对外暴露 invoke / ainvoke / get_state 接口。
-    """
-
     def __init__(self):
         self.graph = create_react_graph()
         self.checkpointer = MemorySaver()
@@ -294,10 +250,8 @@ class AgentWorkflow:
         session_id: Optional[str] = None,
         trace_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """同步调用。"""
         session_id = session_id or generate_session_id()
         config = {"configurable": {"thread_id": session_id}}
-
         try:
             result = self.app.invoke(
                 {"messages": [{"role": "user", "content": user_input}]},
@@ -319,10 +273,8 @@ class AgentWorkflow:
         session_id: Optional[str] = None,
         trace_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """异步调用。"""
         session_id = session_id or generate_session_id()
         config = {"configurable": {"thread_id": session_id}}
-
         try:
             result = await self.app.ainvoke(
                 {"messages": [{"role": "user", "content": user_input}]},
@@ -338,23 +290,174 @@ class AgentWorkflow:
                 "error": str(exc),
             }
 
-    async def resume_from_hitl(self, session_id: str, response: dict) -> Dict[str, Any]:
-        """兼容旧接口：ReAct 主图默认不支持主图级 HITL 恢复。"""
+    async def astream(self, user_input: str, session_id: str):
+        """
+        真流式输出。使用 LangGraph 的 astream_events(version="v2")。
 
-        logger.warning("resume_from_hitl called in ReAct workflow; not supported in main graph")
-        return {
-            "response": "当前 ReAct 主图不支持从主图断点恢复，请重新发起任务。",
-            "session_id": session_id,
-            "trace_id": "",
-            "intent": "chat",
-            "sources": [],
-            "confidence": 0.5,
-            "tool_calls": [],
-            "hitl_response": response,
+        yield 的每个 item 是一个 dict：
+          {"type": "tool_search", "query": "...", "selected_tools": [...]} — 动态工具选择
+          {"type": "token", "content": "..."}           — LLM 输出的文本 token
+          {"type": "tool_start", "tool": "...", "input": {...}}  — 工具开始执行
+          {"type": "tool_end", "tool": "...", "output": "..."}   — 工具执行完成
+          {"type": "done", "response": {...}}            — 流结束
+          {"type": "error", "error": "..."}              — 出错
+        """
+        config = {"configurable": {"thread_id": session_id}}
+        input_data = {"messages": [{"role": "user", "content": user_input}]}
+        final_content = ""
+        tool_calls_record = []
+
+        # 先向上游输出本轮动态工具选择结果，便于前端 trace 展示。
+        selection = _select_active_tools(user_input)
+        yield {
+            "type": "tool_search",
+            "query": user_input,
+            "selected_tools": selection["selected_names"],
+            "selected_scores": selection["scored_tools"],
+            "total_tools": selection["total_tools"],
+            "duration_ms": selection["duration_ms"],
+            "mode": selection["mode"],
+            "filters": selection.get("filters", {}),
         }
 
+        try:
+            async for event in self.app.astream_events(
+                input_data, config=config, version="v2"
+            ):
+                kind = event["event"]
+
+                if kind == "on_chat_model_stream":
+                    chunk = event["data"].get("chunk")
+                    if chunk and hasattr(chunk, "content") and chunk.content:
+                        if not (hasattr(chunk, "tool_calls") and chunk.tool_calls):
+                            final_content += chunk.content
+                            yield {"type": "token", "content": chunk.content}
+
+                elif kind == "on_tool_start":
+                    tool_name = event.get("name", "")
+                    tool_input = event.get("data", {}).get("input", {})
+                    call_id = str(event.get("run_id") or event.get("id") or "")
+                    tool_calls_record.append(
+                        {
+                            "tool": tool_name,
+                            "args": tool_input,
+                            "call_id": call_id,
+                        }
+                    )
+                    yield {
+                        "type": "tool_start",
+                        "tool": tool_name,
+                        "call_id": call_id,
+                        "input": tool_input,
+                    }
+
+                elif kind == "on_tool_end":
+                    tool_name = event.get("name", "")
+                    call_id = str(event.get("run_id") or event.get("id") or "")
+                    tool_output = str(event.get("data", {}).get("output", ""))
+
+                    # 子图 HITL 中断桥接：识别 [HITL_WAITING]{...} 标记并向上层抛出事件
+                    if tool_output.startswith("[HITL_WAITING]"):
+                        hitl_payload = tool_output[len("[HITL_WAITING]") :]
+                        try:
+                            hitl_data = json.loads(hitl_payload)
+                        except Exception:
+                            hitl_data = {"raw": hitl_payload}
+                        yield {"type": "hitl_waiting", "data": hitl_data}
+
+                    if len(tool_output) > 1000:
+                        tool_output = tool_output[:1000] + "...(已截断)"
+                    yield {
+                        "type": "tool_end",
+                        "tool": tool_name,
+                        "call_id": call_id,
+                        "output": tool_output,
+                    }
+
+            # 流结束，从 checkpointer 获取最终内容
+            state = self.app.get_state(config)
+            if state and state.values:
+                msgs = state.values.get("messages", [])
+                if msgs and hasattr(msgs[-1], "content") and msgs[-1].content:
+                    final_content = msgs[-1].content
+
+            intent = self._infer_intent(tool_calls_record)
+            yield {
+                "type": "done",
+                "response": {
+                    "response": final_content,
+                    "session_id": session_id,
+                    "intent": intent,
+                    "tool_calls": tool_calls_record,
+                    "sources": [],
+                    "confidence": 0.85 if tool_calls_record else 0.95,
+                },
+            }
+        except Exception as exc:
+            logger.error(f"Workflow astream failed: {exc}")
+            yield {"type": "error", "error": str(exc)}
+
+    async def resume_from_hitl(self, session_id: str, user_choice: dict) -> Dict[str, Any]:
+        """从 HITL 中断恢复执行。"""
+        # 优先恢复 Plan-and-Execute 子图（通过 request_id 桥接）
+        request_id = str(user_choice.get("request_id", "")).strip()
+        if request_id:
+            try:
+                from src.workflows.subgraph import resume_plan_execute
+
+                resumed = resume_plan_execute(request_id=request_id, user_choice=user_choice)
+                resumed_status = resumed.get("status")
+
+                if resumed_status == "completed":
+                    return {
+                        "response": str(resumed.get("response", "")),
+                        "session_id": session_id,
+                        "trace_id": "",
+                        "intent": "complex",
+                        "sources": [],
+                        "confidence": 0.9,
+                        "tool_calls": [{"tool": "plan_complex_task", "args": {"request_id": request_id}}],
+                    }
+
+                if resumed_status == "hitl_waiting":
+                    return {
+                        "response": "任务仍需人工确认，请继续选择方案。",
+                        "session_id": session_id,
+                        "trace_id": "",
+                        "intent": "complex",
+                        "sources": [],
+                        "confidence": 0.85,
+                        "tool_calls": [{"tool": "plan_complex_task", "args": {"request_id": request_id}}],
+                        "hitl_request": resumed.get("hitl_data"),
+                    }
+
+                if resumed_status == "error":
+                    return {
+                        "response": f"恢复执行失败: {resumed.get('error', '未知错误')}",
+                        "session_id": session_id,
+                        "trace_id": "",
+                        "error": str(resumed.get("error", "")),
+                    }
+            except Exception as exc:
+                logger.error(f"Subgraph resume bridge failed: {exc}")
+
+        # 回退：尝试主图级 Command(resume)
+        config = {"configurable": {"thread_id": session_id}}
+        try:
+            result = await self.app.ainvoke(
+                Command(resume=user_choice), config=config
+            )
+            return self._build_response(result, session_id, None)
+        except Exception as exc:
+            logger.error(f"HITL resume failed: {exc}")
+            return {
+                "response": f"恢复执行失败: {exc}",
+                "session_id": session_id,
+                "trace_id": "",
+                "error": str(exc),
+            }
+
     def get_state(self, session_id: str) -> Optional[Dict[str, Any]]:
-        """获取 checkpointer 中的会话状态。"""
         config = {"configurable": {"thread_id": session_id}}
         try:
             state = self.app.get_state(config)
@@ -364,51 +467,48 @@ class AgentWorkflow:
             return None
 
     @staticmethod
+    def _infer_intent(tool_calls: list) -> str:
+        if not tool_calls:
+            return "chat"
+        tool_names = {tc["tool"] for tc in tool_calls}
+        if "plan_complex_task" in tool_names:
+            return "complex"
+        if "hydraulic_calculation" in tool_names or "run_sensitivity_analysis" in tool_names:
+            return "calculate"
+        if "query_database" in tool_names:
+            return "query"
+        if tool_names & {
+            "search_knowledge_base",
+            "query_fault_cause",
+            "query_standards",
+            "query_equipment_chain",
+        }:
+            return "knowledge"
+        return "chat"
+
+    @staticmethod
     def _build_response(
         result: dict,
         session_id: str,
         trace_id: Optional[str],
     ) -> Dict[str, Any]:
-        """从 MessagesState 结果构建统一响应格式。"""
         messages = result.get("messages", [])
         final_message = messages[-1] if messages else None
         response_text = final_message.content if final_message else ""
 
-        # 仅提取“最后一条用户消息之后”的工具调用，避免混入历史轮次
         current_turn_messages = messages
         for idx in range(len(messages) - 1, -1, -1):
-            msg = messages[idx]
-            if getattr(msg, "type", "") == "human":
+            if getattr(messages[idx], "type", "") == "human":
                 current_turn_messages = messages[idx + 1 :]
                 break
 
-        # 提取本轮工具调用记录
         tool_calls = []
         for msg in current_turn_messages:
             if hasattr(msg, "tool_calls") and msg.tool_calls:
                 for tc in msg.tool_calls:
-                    tool_calls.append(
-                        {
-                            "tool": tc.get("name", ""),
-                            "args": tc.get("args", {}),
-                        }
-                    )
+                    tool_calls.append({"tool": tc.get("name", ""), "args": tc.get("args", {})})
 
-        # 推断 intent
-        intent = "chat"
-        if tool_calls:
-            tool_names = {tc["tool"] for tc in tool_calls}
-            if "plan_complex_task" in tool_names:
-                intent = "complex"
-            elif "hydraulic_calculation" in tool_names or "run_sensitivity_analysis" in tool_names:
-                intent = "calculate"
-            elif "query_database" in tool_names:
-                intent = "query"
-            elif "search_knowledge_base" in tool_names:
-                intent = "knowledge"
-            elif "query_knowledge_graph" in tool_names:
-                intent = "knowledge"
-
+        intent = AgentWorkflow._infer_intent(tool_calls)
         return {
             "response": response_text,
             "session_id": session_id,
@@ -428,7 +528,6 @@ _workflow: Optional[AgentWorkflow] = None
 
 
 def get_workflow() -> AgentWorkflow:
-    """返回单例 AgentWorkflow。"""
     global _workflow
     if _workflow is None:
         _workflow = AgentWorkflow()
