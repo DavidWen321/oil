@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { Form, Input, Button, Card, message } from 'antd';
-import { UserOutlined, LockOutlined } from '@ant-design/icons';
+﻿import { useState } from 'react';
+import { Button, Card, Form, Input, Typography, message } from 'antd';
+import { LockOutlined, UserOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { authApi } from '../../api';
 import { useUserStore } from '../../stores/userStore';
@@ -8,43 +8,29 @@ import type { LoginParams } from '../../types';
 import styles from './Login.module.css';
 
 export default function Login() {
+  const [form] = Form.useForm<LoginParams>();
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { setToken, setUserInfo } = useUserStore();
 
-  const onFinish = async (values: LoginParams) => {
+  const handleLogin = async (values: LoginParams) => {
     setLoading(true);
     try {
-      const res = await authApi.login(values);
-      if (res.data) {
-        setToken(res.data.token);
+      const response = await authApi.login(values);
+      if (response.data) {
+        setToken(response.data.token);
         setUserInfo({
-          userId: res.data.userId,
-          username: res.data.username,
-          nickname: res.data.nickname,
+          userId: response.data.userId,
+          username: response.data.username,
+          nickname: response.data.nickname,
           roles: ['admin'],
         });
         message.success('登录成功');
         navigate('/dashboard');
       }
-    } catch {
-      // 错误已在拦截器处理
     } finally {
       setLoading(false);
     }
-  };
-
-  // 演示模式：直接登录
-  const handleDemoLogin = () => {
-    setToken('demo-token');
-    setUserInfo({
-      userId: 1,
-      username: 'admin',
-      nickname: '管理员',
-      roles: ['admin'],
-    });
-    message.success('演示模式登录成功');
-    navigate('/dashboard');
   };
 
   return (
@@ -62,58 +48,43 @@ export default function Login() {
           <p>Pipeline Energy Consumption Analysis System</p>
         </div>
 
-        <Form
+        <Form<LoginParams>
+          form={form}
           name="login"
-          onFinish={onFinish}
+          onFinish={(values) => void handleLogin(values)}
           autoComplete="off"
           size="large"
           initialValues={{ username: 'admin', password: 'admin123' }}
         >
-          <Form.Item
-            name="username"
-            rules={[{ required: true, message: '请输入用户名' }]}
-          >
-            <Input
-              prefix={<UserOutlined />}
-              placeholder="用户名"
-            />
+          <Form.Item name="username" rules={[{ required: true, message: '请输入用户名' }]}>
+            <Input prefix={<UserOutlined />} placeholder="用户名" />
           </Form.Item>
 
-          <Form.Item
-            name="password"
-            rules={[{ required: true, message: '请输入密码' }]}
-          >
-            <Input.Password
-              prefix={<LockOutlined />}
-              placeholder="密码"
-            />
+          <Form.Item name="password" rules={[{ required: true, message: '请输入密码' }]}>
+            <Input.Password prefix={<LockOutlined />} placeholder="密码" />
           </Form.Item>
 
           <Form.Item>
-            <Button
-              type="primary"
-              htmlType="submit"
-              loading={loading}
-              block
-              className={styles.loginBtn}
-            >
-              登录
+            <Button type="primary" htmlType="submit" loading={loading} block className={styles.loginBtn}>
+              登录系统
             </Button>
           </Form.Item>
 
           <Form.Item>
             <Button
-              type="default"
               block
-              onClick={handleDemoLogin}
+              onClick={() => {
+                form.setFieldsValue({ username: 'admin', password: 'admin123' });
+                message.info('已填入默认账号，请点击登录走真实认证流程');
+              }}
             >
-              演示模式（无需后端）
+              填充默认账号
             </Button>
           </Form.Item>
         </Form>
 
         <div className={styles.footer}>
-          <p>默认账号: admin / admin123</p>
+          <Typography.Text type="secondary">默认账号：`admin / admin123`</Typography.Text>
         </div>
       </Card>
     </div>

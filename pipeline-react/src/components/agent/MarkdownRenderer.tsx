@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
+import CodeBlock from './CodeBlock';
 import 'katex/dist/katex.min.css';
 
 interface MarkdownRendererProps {
@@ -14,7 +15,13 @@ const REHYPE_PLUGINS = [rehypeKatex];
 
 function MarkdownRenderer({ content }: MarkdownRendererProps) {
   return (
-    <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS}>
+    <ReactMarkdown
+      remarkPlugins={REMARK_PLUGINS}
+      rehypePlugins={REHYPE_PLUGINS}
+      components={{
+        code: CodeBlock,
+      }}
+    >
       {content}
     </ReactMarkdown>
   );

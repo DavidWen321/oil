@@ -1,8 +1,6 @@
 /**
- * ═══════════════════════════════════════════════════════════════════════════
- *  MainLayout - Apple风格浅色主题响应式布局
- *  Design: Apple HIG + Linear + Stripe Light Theme
- * ═══════════════════════════════════════════════════════════════════════════
+ * Main Layout Component
+ * Design: Apple HIG + Linear + Stripe Light Theme
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -40,73 +38,70 @@ import {
 import { useUserStore } from '../../stores/userStore';
 import { useMonitorStore } from '../../stores/monitorStore';
 import { useResponsive } from '../../hooks/useResponsive';
+import { useWebSocket } from '../../hooks/useWebSocket';
 import { useThemeStore } from '../../stores/themeStore';
 import MobileTabBar from './MobileTabBar';
 import styles from './MainLayout.module.css';
 
 const { Header, Sider, Content } = Layout;
 
-// ═══════════════════════════════════════════════════════════════════════════
-// 菜单配置
-// ═══════════════════════════════════════════════════════════════════════════
+// Menu Items Configuration
 const menuItems: MenuProps['items'] = [
   {
     key: '/dashboard',
     icon: <DashboardOutlined />,
-    label: '首页大屏',
+    label: 'Dashboard',
   },
   {
     key: 'data',
     icon: <DatabaseOutlined />,
-    label: '数据管理',
+    label: 'Data Management',
     children: [
-      { key: '/data/project', icon: <ProjectOutlined />, label: '项目管理' },
-      { key: '/data/pipeline', icon: <ApiOutlined />, label: '管道参数' },
-      { key: '/data/pump', icon: <ControlOutlined />, label: '泵站参数' },
-      { key: '/data/oil', icon: <ExperimentOutlined />, label: '油品特性' },
+      { key: '/data/project', icon: <ProjectOutlined />, label: 'Projects' },
+      { key: '/data/pipeline', icon: <ApiOutlined />, label: 'Pipelines' },
+      { key: '/data/pump', icon: <ControlOutlined />, label: 'Pump Stations' },
+      { key: '/data/oil', icon: <ExperimentOutlined />, label: 'Oil Properties' },
     ],
   },
   {
     key: 'calculation',
     icon: <CalculatorOutlined />,
-    label: '计算分析',
+    label: 'Calculation',
     children: [
-      { key: '/calculation/hydraulic', icon: <ThunderboltOutlined />, label: '水力分析' },
-      { key: '/calculation/optimization', icon: <SettingOutlined />, label: '泵站优化' },
-      { key: '/calculation/sensitivity', icon: <BarChartOutlined />, label: '敏感性分析' },
+      { key: '/calculation/hydraulic', icon: <ThunderboltOutlined />, label: 'Hydraulic Analysis' },
+      { key: '/calculation/optimization', icon: <SettingOutlined />, label: 'Pump Optimization' },
+      { key: '/calculation/sensitivity', icon: <BarChartOutlined />, label: 'Sensitivity Analysis' },
     ],
   },
   {
     key: 'features',
     icon: <ThunderboltOutlined />,
-    label: '特色功能',
+    label: 'Features',
     children: [
-      { key: '/features/diagnosis', icon: <AlertOutlined />, label: '智能故障诊断' },
-      { key: '/features/comparison', icon: <SwapOutlined />, label: '多方案对比' },
-      { key: '/features/carbon', icon: <CloudOutlined />, label: '碳排放核算' },
-      { key: '/features/monitor', icon: <MonitorOutlined />, label: '实时监控' },
+      { key: '/features/diagnosis', icon: <AlertOutlined />, label: 'Fault Diagnosis' },
+      { key: '/features/comparison', icon: <SwapOutlined />, label: 'Scheme Comparison' },
+      { key: '/features/carbon', icon: <CloudOutlined />, label: 'Carbon Emissions' },
+      { key: '/features/monitor', icon: <MonitorOutlined />, label: 'Real-time Monitor' },
     ],
   },
   {
     key: '/report',
     icon: <BarChartOutlined />,
-    label: '统计报表',
+    label: 'Reports',
   },
   {
     key: 'ai',
     icon: <RobotOutlined />,
-    label: 'AI 智能体',
+    label: 'AI Assistant',
     children: [
-      { key: '/ai/chat', icon: <DeploymentUnitOutlined />, label: '智能对话' },
-      { key: '/ai/trace', icon: <FileSearchOutlined />, label: '执行追踪' },
-      { key: '/ai/report', icon: <BarChartOutlined />, label: '报告预览' },
+      { key: '/ai/chat', icon: <DeploymentUnitOutlined />, label: 'AI Chat' },
+      { key: '/ai/trace', icon: <FileSearchOutlined />, label: 'Trace Analysis' },
+      { key: '/ai/report', icon: <BarChartOutlined />, label: 'AI Reports' },
     ],
   },
 ];
 
-// ═══════════════════════════════════════════════════════════════════════════
-// MainLayout 组件
-// ═══════════════════════════════════════════════════════════════════════════
+// MainLayout Component
 export default function MainLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -115,12 +110,14 @@ export default function MainLayout() {
   const { userInfo, logout } = useUserStore();
   const { resolved, setMode } = useThemeStore();
   const alarms = useMonitorStore((s) => s.alarms);
-  const activeCount = alarms.filter((a: { acknowledged: boolean }) => !a.acknowledged).length;
+  const monitorConnected = useMonitorStore((s) => s.connected);
+  useWebSocket({ scope: 'all', subscribeMonitor: false, subscribeAlarms: true });
+  const activeCount = alarms.filter((alarm) => alarm.status === 'ACTIVE').length;
 
-  // 响应式状态
+  // Responsive detection
   const { isMobile, isTablet, width } = useResponsive();
 
-  // 根据屏幕尺寸自动折叠侧边栏
+  // Auto collapse sidebar on tablet/mobile
   useEffect(() => {
     if (isTablet) {
       setCollapsed(true);
@@ -129,7 +126,7 @@ export default function MainLayout() {
     }
   }, [isMobile, isTablet, width]);
 
-  // 路由变化时关闭移动端菜单
+  // Close mobile menu on route change
   useEffect(() => {
     if (mobileMenuOpen) {
       setMobileMenuOpen(false);
@@ -137,12 +134,12 @@ export default function MainLayout() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);
 
-  // 点击遮罩关闭菜单
+  // Handle overlay click
   const handleOverlayClick = useCallback(() => {
     setMobileMenuOpen(false);
   }, []);
 
-  // 阻止遮罩上的滚动
+  // Prevent body scroll when mobile menu is open
   useEffect(() => {
     if (mobileMenuOpen) {
       document.body.style.overflow = 'hidden';
@@ -154,7 +151,7 @@ export default function MainLayout() {
     };
   }, [mobileMenuOpen]);
 
-  // 菜单点击处理
+  // Handle menu click
   const handleMenuClick: MenuProps['onClick'] = ({ key }) => {
     navigate(key);
     if (isMobile) {
@@ -162,17 +159,17 @@ export default function MainLayout() {
     }
   };
 
-  // 用户下拉菜单
+  // User menu items
   const userMenuItems: MenuProps['items'] = [
     {
       key: 'profile',
       icon: <UserOutlined />,
-      label: '个人中心',
+      label: 'Profile',
     },
     {
       key: 'settings',
       icon: <SettingOutlined />,
-      label: '系统设置',
+      label: 'Settings',
     },
     {
       type: 'divider',
@@ -180,7 +177,7 @@ export default function MainLayout() {
     {
       key: 'logout',
       icon: <LogoutOutlined />,
-      label: '退出登录',
+      label: 'Logout',
       danger: true,
     },
   ];
@@ -192,13 +189,13 @@ export default function MainLayout() {
     }
   };
 
-  // 获取当前选中的菜单项
+  // Get selected menu keys
   const getSelectedKeys = () => {
     const path = location.pathname;
     return [path];
   };
 
-  // 获取默认展开的子菜单
+  // Get open menu keys
   const getOpenKeys = () => {
     const path = location.pathname;
     if (path.startsWith('/data')) return ['data'];
@@ -208,17 +205,17 @@ export default function MainLayout() {
     return [];
   };
 
-  // 切换移动端菜单
+  // Toggle mobile menu
   const toggleMobileMenu = useCallback(() => {
     setMobileMenuOpen(prev => !prev);
   }, []);
 
-  // 切换侧边栏折叠状态
+  // Toggle sidebar collapse
   const toggleCollapsed = useCallback(() => {
     setCollapsed(prev => !prev);
   }, []);
 
-  // 计算侧边栏宽度
+  // Get sidebar width
   const getSiderWidth = () => {
     if (isMobile) return 280;
     if (width < 768) return 200;
@@ -228,7 +225,7 @@ export default function MainLayout() {
 
   return (
     <Layout className={styles.layout}>
-      {/* 移动端遮罩层 */}
+      {/* Mobile overlay */}
       {isMobile && (
         <div
           className={`${styles.overlay} ${mobileMenuOpen ? styles.visible : ''}`}
@@ -237,7 +234,7 @@ export default function MainLayout() {
         />
       )}
 
-      {/* 侧边栏 */}
+      {/* Sidebar */}
       <Sider
         trigger={null}
         collapsible
@@ -250,11 +247,11 @@ export default function MainLayout() {
         <div className={styles.logo}>
           <span className={styles.logoIcon}>⚡</span>
           {(!collapsed || isMobile) && (
-            <span className={styles.logoText}>管道能耗分析</span>
+            <span className={styles.logoText}>Pipeline Energy</span>
           )}
         </div>
 
-        {/* 导航菜单 */}
+        {/* Menu */}
         <Menu
           mode="inline"
           selectedKeys={getSelectedKeys()}
@@ -265,19 +262,19 @@ export default function MainLayout() {
         />
       </Sider>
 
-      {/* 右侧布局 */}
+      {/* Main content area */}
       <Layout>
-        {/* 顶部导航栏 */}
+        {/* Header */}
         <Header className={styles.header}>
           <div className={styles.headerLeft}>
-            {/* 移动端菜单按钮 */}
+            {/* Mobile menu toggle */}
             {isMobile ? (
               <Button
                 type="text"
                 icon={mobileMenuOpen ? <CloseOutlined /> : <MenuOutlined />}
                 onClick={toggleMobileMenu}
                 className={styles.mobileMenuBtn}
-                aria-label={mobileMenuOpen ? '关闭菜单' : '打开菜单'}
+                aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
               />
             ) : (
               <Button
@@ -285,7 +282,7 @@ export default function MainLayout() {
                 icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
                 onClick={toggleCollapsed}
                 className={styles.trigger}
-                aria-label={collapsed ? '展开侧边栏' : '收起侧边栏'}
+                aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
               />
             )}
           </div>
@@ -296,21 +293,22 @@ export default function MainLayout() {
               icon={resolved === 'dark' ? <SunOutlined /> : <MoonOutlined />}
               className={styles.headerBtn}
               onClick={() => setMode(resolved === 'dark' ? 'light' : 'dark')}
-              aria-label={resolved === 'dark' ? '切换亮色' : '切换暗色'}
+              aria-label={resolved === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
             />
 
-            {/* 通知按钮 */}
-            <Badge count={activeCount} size="small" offset={[-2, 2]}>
+            {/* Alarm notifications */}
+            <Badge count={activeCount} size="small" offset={[-2, 2]} color={monitorConnected ? undefined : '#faad14'}>
               <Button
                 type="text"
                 icon={<BellOutlined />}
                 className={styles.headerBtn}
                 onClick={() => navigate('/features/monitor')}
-                aria-label={`通知 ${activeCount > 0 ? `(${activeCount}条未读)` : ''}`}
+                aria-label={`Monitor alerts ${activeCount > 0 ? `(${activeCount} active)` : ''}`}
+                title={monitorConnected ? 'Alarm channel connected' : 'Alarm channel disconnected, using HTTP refresh fallback'}
               />
             </Badge>
 
-            {/* 用户信息 */}
+            {/* User dropdown */}
             <Dropdown
               menu={{ items: userMenuItems, onClick: handleUserMenuClick }}
               placement="bottomRight"
@@ -322,14 +320,14 @@ export default function MainLayout() {
                   icon={<UserOutlined />}
                 />
                 <span className={styles.userName}>
-                  {userInfo?.nickname || '用户'}
+                  {userInfo?.nickname || 'User'}
                 </span>
               </div>
             </Dropdown>
           </div>
         </Header>
 
-        {/* 主内容区 */}
+        {/* Content */}
         <Content className={`${styles.content} container-responsive`}>
           <Outlet />
         </Content>

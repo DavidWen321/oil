@@ -3,14 +3,28 @@
 }
 
 .block {
-  animation: fadeIn 0.15s ease-in;
+  animation: fadeInUp 0.2s ease-out;
 }
 
 .activeBlock {
-  animation: fadeIn 0.1s ease-in;
+  animation: fadeInUp 0.15s ease-out;
 }
 
-@keyframes fadeIn {
-  from { opacity: 0.6; }
-  to   { opacity: 1; }
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 支持 prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  .block,
+  .activeBlock {
+    animation: none;
+  }
 }

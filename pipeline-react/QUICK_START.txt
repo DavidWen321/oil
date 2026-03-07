@@ -1,0 +1,163 @@
+═══════════════════════════════════════════════════════════════════════════
+  性能优化快速开始指南
+  Performance Optimization Quick Start Guide
+═══════════════════════════════════════════════════════════════════════════
+
+## ⚡ 立即可用的优化
+
+### 1. 查看包体积分析
+
+npm run build:analyze
+
+构建完成后会自动生成 dist/stats.html，用浏览器打开查看：
+- 各个 chunk 的大小
+- 依赖关系图
+- Gzip/Brotli 压缩后的大小
+
+### 2. 替换图表组件（推荐）
+
+旧代码:
+import ReactECharts from 'echarts-for-react';
+<ReactECharts option={chartOption} />
+
+新代码:
+import OptimizedChart from '@/components/common/OptimizedChart';
+<OptimizedChart option={chartOption} loading={isLoading} />
+
+优势: 按需引入 ECharts 模块，减少 60-70% 包体积
+
+### 3. 大列表优化（推荐）
+
+在 ProjectList, PipelineList, PumpStationList 等页面使用虚拟滚动:
+
+import VirtualList from '@/components/common/VirtualList';
+
+<VirtualList
+  data={dataSource}
+  itemHeight={60}
+  containerHeight={600}
+  renderItem={(item, index) => (
+    <div className="list-item">
+      {/* 你的列表项内容 */}
+    </div>
+  )}
+/>
+
+优势: 1000+ 条数据渲染性能提升 10-100 倍
+
+### 4. 搜索框防抖（推荐）
+
+import { useDebounce } from '@/utils/debounce';
+
+const debouncedSearch = useDebounce((query: string) => {
+  // 执行搜索
+  fetchData(query);
+}, 300);
+
+<Input onChange={(e) => debouncedSearch(e.target.value)} />
+
+优势: 减少 80-90% 的 API 请求
+
+### 5. 图片懒加载
+
+import LazyImage from '@/components/common/LazyImage';
+
+<LazyImage
+  src="/images/pipeline.jpg"
+  alt="管道"
+  placeholder="/images/placeholder.svg"
+/>
+
+优势: 页面加载时间减少 30-40%
+
+═══════════════════════════════════════════════════════════════════════════
+
+## 📊 性能监控
+
+性能数据已自动收集，查看方式：
+
+### 开发环境
+打开浏览器控制台，查看性能日志:
+[Performance] FCP: 1234.56 ✅ Good
+[Performance] LCP: 2345.67 ⚠️ Needs Improvement
+[Performance] FID: 89.12 ✅ Good
+
+### 生产环境
+性能数据会自动上报到: POST /api/v1/performance
+
+数据格式:
+{
+  "url": "https://example.com/dashboard",
+  "timestamp": 1234567890,
+  "userAgent": "...",
+  "metrics": {
+    "FCP": 1234.56,
+    "LCP": 2345.67,
+    "FID": 89.12,
+    "CLS": 0.05,
+    "TTFB": 567.89
+  }
+}
+
+═══════════════════════════════════════════════════════════════════════════
+
+## 🎯 优先级建议
+
+### 今天就做（高优先级）
+1. ✅ 运行 npm run build:analyze 查看包体积
+2. 替换 3-5 个页面的图表组件为 OptimizedChart
+3. 在 1-2 个大列表页面使用 VirtualList
+4. 在搜索框中使用 useDebounce
+
+预计耗时: 2-3 小时
+预计效果: 包体积减少 30-40%，性能提升 50%+
+
+### 本周完成（中优先级）
+5. 在关键组件中使用 React.memo
+6. 使用 useMemo/useCallback 优化计算和回调
+7. 替换所有图片为 LazyImage 组件
+
+预计耗时: 4-6 小时
+预计效果: 首屏加载时间减少 40-50%
+
+### 后续优化（低优先级）
+8. 配置 Service Worker（PWA）
+9. 使用 React Query 缓存 API 数据
+10. 图片转换为 WebP 格式
+
+═══════════════════════════════════════════════════════════════════════════
+
+## 📝 代码示例
+
+完整示例请查看: src/examples/performance-optimization.tsx
+
+包含:
+- React.memo 使用示例
+- useMemo 使用示例
+- useCallback 使用示例
+- 列表渲染优化
+- 避免不必要的重渲染
+
+═══════════════════════════════════════════════════════════════════════════
+
+## 🔍 验证优化效果
+
+### 1. Lighthouse 审计
+Chrome DevTools > Lighthouse > Generate report
+
+目标:
+- Performance > 90
+- First Contentful Paint < 1.8s
+- Largest Contentful Paint < 2.5s
+
+### 2. 包体积对比
+优化前: npm run build (记录 dist 目录大小)
+优化后: npm run build (对比大小变化)
+
+### 3. 网络面板
+Chrome DevTools > Network
+- 查看资源加载时间
+- 查看资源大小（Gzip/Brotli 压缩后）
+- 查看并发请求数
+
+═══════════════════════════════════════════════════════════════════════════

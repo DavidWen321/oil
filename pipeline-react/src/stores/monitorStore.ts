@@ -1,37 +1,59 @@
-import { create } from 'zustand';
-import type { MonitorData, AlarmInfo } from '../types';
+﻿import { create } from 'zustand';
+import type { AlarmMessage, MonitorDataPoint } from '../types';
 
 interface MonitorState {
-  // 监控数据
-  data: MonitorData | null;
-  // 活动告警
-  alarms: AlarmInfo[];
-  // 连接状态
+  data: MonitorDataPoint | null;
+  alarms: AlarmMessage[];
   connected: boolean;
+  connectedSources: Record<string, boolean>;
+  setData: (data: MonitorDataPoint | null) => void;
+  setAlarms: (alarms: AlarmMessage[]) => void;
+  upsertAlarm: (alarm: AlarmMessage) => void;
+  clearAlarms: (pipelineId?: number) => void;
+  setConnectionState: (sourceId: string, connected: boolean) => void;
+}
 
-  // 设置监控数据
-  setData: (data: MonitorData) => void;
-  // 添加告警
-  addAlarm: (alarm: AlarmInfo) => void;
-  // 清除告警
-  clearAlarms: () => void;
-  // 设置连接状态
-  setConnected: (connected: boolean) => void;
+function sortAlarms(alarms: AlarmMessage[]) {
+  return [...alarms].sort(
+    (left, right) => new Date(right.alarmTime).getTime() - new Date(left.alarmTime).getTime(),
+  );
 }
 
 export const useMonitorStore = create<MonitorState>((set) => ({
   data: null,
   alarms: [],
-  connected: true, // 演示模式默认已连接
+  connected: false,
+  connectedSources: {},
 
   setData: (data) => set({ data }),
 
-  addAlarm: (alarm) =>
+  setAlarms: (alarms) => set({ alarms: sortAlarms(alarms).slice(0, 100) }),
+
+  upsertAlarm: (alarm) =>
+    set((state) => {
+      const next = state.alarms.filter((item) => item.alarmId !== alarm.alarmId);
+      if (alarm.status !== 'RESOLVED') {
+        next.unshift(alarm);
+      }
+      return { alarms: sortAlarms(next).slice(0, 100) };
+    }),
+
+  clearAlarms: (pipelineId) =>
     set((state) => ({
-      alarms: [alarm, ...state.alarms].slice(0, 50), // 最多保留50条
+      alarms: pipelineId == null ? [] : state.alarms.filter((item) => item.pipelineId !== pipelineId),
     })),
 
-  clearAlarms: () => set({ alarms: [] }),
-
-  setConnected: (connected) => set({ connected }),
+  setConnectionState: (sourceId, connected) =>
+    set((state) => {
+      const nextSources = { ...state.connectedSources };
+      if (connected) {
+        nextSources[sourceId] = true;
+      } else {
+        delete nextSources[sourceId];
+      }
+      return {
+        connectedSources: nextSources,
+        connected: Object.keys(nextSources).length > 0,
+      };
+    }),
 }));
