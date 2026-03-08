@@ -6,6 +6,7 @@ query_type 由 agent_tools.py 中的 3 个独立工具传入，
 
 from __future__ import annotations
 
+import threading
 import json
 from typing import Any, Optional
 
@@ -90,10 +91,13 @@ class GraphAgent:
 
 # 单例
 _graph_agent: Optional[GraphAgent] = None
+_graph_agent_lock = threading.Lock()
 
 
 def get_graph_agent() -> GraphAgent:
     global _graph_agent
     if _graph_agent is None:
-        _graph_agent = GraphAgent()
+        with _graph_agent_lock:
+            if _graph_agent is None:
+                _graph_agent = GraphAgent()
     return _graph_agent

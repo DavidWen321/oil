@@ -1,7 +1,8 @@
-﻿"""Report generation agent."""
+"""Report generation agent."""
 
 from __future__ import annotations
 
+import threading
 import json
 from typing import Dict, List, Optional
 
@@ -9,7 +10,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
-from src.config import settings
+from src.llm import get_cached_llm
 from src.utils import now_iso, logger
 
 from .prompts import REPORT_AGENT_PROMPT
@@ -24,13 +25,7 @@ class ReportAgent:
     @property
     def llm(self) -> ChatOpenAI:
         if self._llm is None:
-            self._llm = ChatOpenAI(
-                api_key=settings.OPENAI_API_KEY,
-                base_url=settings.OPENAI_API_BASE,
-                model=settings.LLM_MODEL,
-                temperature=0.2,
-                max_tokens=2500,
-            )
+            self._llm = get_cached_llm("report_section")
         return self._llm
 
     def generate_outline(self, user_request: str, available_data: dict) -> dict:
@@ -167,6 +162,7 @@ class ReportAgent:
 
 
 _report_agent: Optional[ReportAgent] = None
+_report_agent_lock = threading.Lock()
 
 
 def get_report_agent() -> ReportAgent:
@@ -174,5 +170,7 @@ def get_report_agent() -> ReportAgent:
 
     global _report_agent
     if _report_agent is None:
-        _report_agent = ReportAgent()
+        with _report_agent_lock:
+            if _report_agent is None:
+                _report_agent = ReportAgent()
     return _report_agent

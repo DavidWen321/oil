@@ -1,7 +1,8 @@
-﻿"""Reflexion agent for failed-step analysis."""
+"""Reflexion agent for failed-step analysis."""
 
 from __future__ import annotations
 
+import threading
 import json
 from typing import Dict, List, Optional
 
@@ -9,7 +10,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
-from src.config import settings
+from src.llm import get_cached_llm
 from src.models.state import PlanStep, ReflexionMemory
 from src.utils import logger
 
@@ -25,13 +26,7 @@ class ReflexionAgent:
     @property
     def llm(self) -> ChatOpenAI:
         if self._llm is None:
-            self._llm = ChatOpenAI(
-                api_key=settings.OPENAI_API_KEY,
-                base_url=settings.OPENAI_API_BASE,
-                model=settings.LLM_MODEL,
-                temperature=0.2,
-                max_tokens=1200,
-            )
+            self._llm = get_cached_llm("reflexion")
         return self._llm
 
     def reflect(
@@ -92,6 +87,7 @@ class ReflexionAgent:
 
 
 _reflexion_agent: Optional[ReflexionAgent] = None
+_reflexion_agent_lock = threading.Lock()
 
 
 def get_reflexion_agent() -> ReflexionAgent:
@@ -99,5 +95,7 @@ def get_reflexion_agent() -> ReflexionAgent:
 
     global _reflexion_agent
     if _reflexion_agent is None:
-        _reflexion_agent = ReflexionAgent()
+        with _reflexion_agent_lock:
+            if _reflexion_agent is None:
+                _reflexion_agent = ReflexionAgent()
     return _reflexion_agent

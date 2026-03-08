@@ -4,13 +4,14 @@ Supervisor Agent
 """
 
 import json
+import threading
 from typing import Callable, Generator, List, Dict, Any, Optional
 
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
-from src.config import settings
+from src.llm import get_cached_llm
 from src.utils import logger, generate_task_id
 from src.models.enums import IntentType, AgentType
 from src.models.state import AgentState, SubTask
@@ -36,19 +37,34 @@ class SupervisorAgent:
     def __init__(self):
         """初始化Supervisor"""
         self._llm = None
+        self._classify_llm = None
+        self._synthesis_llm = None
+        self._chat_llm = None
 
     @property
     def llm(self) -> ChatOpenAI:
         """获取LLM实例"""
         if self._llm is None:
-            self._llm = ChatOpenAI(
-                api_key=settings.OPENAI_API_KEY,
-                base_url=settings.OPENAI_API_BASE,
-                model=settings.LLM_MODEL,
-                temperature=0.1,
-                max_tokens=2000
-            )
+            self._llm = get_cached_llm("plan_creation")
         return self._llm
+
+    @property
+    def classify_llm(self) -> ChatOpenAI:
+        if self._classify_llm is None:
+            self._classify_llm = get_cached_llm("intent_classification")
+        return self._classify_llm
+
+    @property
+    def synthesis_llm(self) -> ChatOpenAI:
+        if self._synthesis_llm is None:
+            self._synthesis_llm = get_cached_llm("synthesis")
+        return self._synthesis_llm
+
+    @property
+    def chat_llm(self) -> ChatOpenAI:
+        if self._chat_llm is None:
+            self._chat_llm = get_cached_llm("chat_response")
+        return self._chat_llm
 
     def analyze_intent(self, user_input: str) -> Dict[str, Any]:
         """
@@ -99,7 +115,7 @@ class SupervisorAgent:
         """
         try:
             prompt = ChatPromptTemplate.from_template(INTENT_CLASSIFICATION_PROMPT)
-            chain = prompt | self.llm | StrOutputParser()
+            chain = prompt | self.classify_llm | StrOutputParser()
 
             response = chain.invoke({"user_input": user_input}).strip().lower()
 
@@ -217,7 +233,7 @@ class SupervisorAgent:
             agent_results = "\n\n".join(results_text)
 
             prompt = ChatPromptTemplate.from_template(SYNTHESIS_PROMPT)
-            chain = prompt | self.llm | StrOutputParser()
+            chain = prompt | self.synthesis_llm | StrOutputParser()
 
             response = chain.invoke({
                 "user_input": user_input,
@@ -268,7 +284,7 @@ class SupervisorAgent:
             agent_results = "\n\n".join(results_text)
 
             prompt = ChatPromptTemplate.from_template(SYNTHESIS_PROMPT)
-            chain = prompt | self.llm
+            chain = prompt | self.synthesis_llm
 
             full_text = ""
             for chunk in chain.stream({
@@ -309,7 +325,7 @@ class SupervisorAgent:
                 ("human", "{input}")
             ])
 
-            chain = prompt | self.llm | StrOutputParser()
+            chain = prompt | self.chat_llm | StrOutputParser()
             return chain.invoke({"input": user_input})
 
         except Exception as e:
@@ -338,13 +354,13 @@ class SupervisorAgent:
         response_lower = response.lower()
 
         # 简单规则判断
-        if "查询" in response or "数据" in response:
+        if "查询" in response_lower or "数据" in response_lower:
             intent = "query"
             agent = "data_agent"
-        elif "计算" in response or "雷诺" in response or "摩阻" in response:
+        elif "计算" in response_lower or "雷诺" in response_lower or "摩阻" in response_lower:
             intent = "calculate"
             agent = "calc_agent"
-        elif "知识" in response or "概念" in response or "什么是" in response:
+        elif "知识" in response_lower or "概念" in response_lower or "什么是" in response_lower:
             intent = "knowledge"
             agent = "knowledge_agent"
         else:
@@ -393,11 +409,14 @@ class SupervisorAgent:
 
 # 全局实例
 _supervisor: Optional[SupervisorAgent] = None
+_supervisor_lock = threading.Lock()
 
 
 def get_supervisor() -> SupervisorAgent:
     """获取Supervisor实例"""
     global _supervisor
     if _supervisor is None:
-        _supervisor = SupervisorAgent()
+        with _supervisor_lock:
+            if _supervisor is None:
+                _supervisor = SupervisorAgent()
     return _supervisor

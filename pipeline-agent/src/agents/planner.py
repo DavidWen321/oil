@@ -1,7 +1,8 @@
-﻿"""Planner agent for plan-and-execute workflow."""
+"""Planner agent for plan-and-execute workflow."""
 
 from __future__ import annotations
 
+import threading
 import json
 from typing import Any, Dict, List, Optional
 
@@ -9,7 +10,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
-from src.config import settings
+from src.llm import get_cached_llm
 from src.utils import logger
 
 from .prompts import (
@@ -28,13 +29,7 @@ class PlannerAgent:
     @property
     def llm(self) -> ChatOpenAI:
         if self._llm is None:
-            self._llm = ChatOpenAI(
-                api_key=settings.OPENAI_API_KEY,
-                base_url=settings.OPENAI_API_BASE,
-                model=settings.LLM_MODEL,
-                temperature=0.1,
-                max_tokens=3000,
-            )
+            self._llm = get_cached_llm("plan_creation")
         return self._llm
 
     def create_plan(self, user_input: str, context: Optional[dict] = None) -> dict:
@@ -297,6 +292,7 @@ class PlannerAgent:
 
 
 _planner: Optional[PlannerAgent] = None
+_planner_lock = threading.Lock()
 
 
 def get_planner() -> PlannerAgent:
@@ -304,5 +300,7 @@ def get_planner() -> PlannerAgent:
 
     global _planner
     if _planner is None:
-        _planner = PlannerAgent()
+        with _planner_lock:
+            if _planner is None:
+                _planner = PlannerAgent()
     return _planner

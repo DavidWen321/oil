@@ -4,15 +4,16 @@ Data Agent
 """
 
 import json
+import threading
 from typing import Optional, Dict, Any
 
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_classic.agents import AgentExecutor, create_tool_calling_agent
+from langchain.agents import AgentExecutor, create_tool_calling_agent
 
-from src.config import settings
+from src.llm import get_cached_llm
 from src.utils import logger
-from src.tools.database_tools import DATABASE_TOOLS
+from src.tools.database_tools import DATABASE_AGENT_TOOLS
 from .prompts import DATA_AGENT_SYSTEM_PROMPT, DATA_AGENT_TASK_PROMPT
 
 
@@ -35,13 +36,7 @@ class DataAgent:
     def llm(self) -> ChatOpenAI:
         """获取LLM实例"""
         if self._llm is None:
-            self._llm = ChatOpenAI(
-                api_key=settings.OPENAI_API_KEY,
-                base_url=settings.OPENAI_API_BASE,
-                model=settings.LLM_MODEL,
-                temperature=0,
-                max_tokens=4096,
-            )
+            self._llm = get_cached_llm("data_analysis")
         return self._llm
 
     @property
@@ -56,13 +51,13 @@ class DataAgent:
 
             agent = create_tool_calling_agent(
                 llm=self.llm,
-                tools=DATABASE_TOOLS,
+                tools=DATABASE_AGENT_TOOLS,
                 prompt=prompt
             )
 
             self._agent_executor = AgentExecutor(
                 agent=agent,
-                tools=DATABASE_TOOLS,
+                tools=DATABASE_AGENT_TOOLS,
                 verbose=True,
                 max_iterations=5,
                 handle_parsing_errors=True
@@ -163,11 +158,14 @@ class DataAgent:
 
 # 全局实例
 _data_agent: Optional[DataAgent] = None
+_data_agent_lock = threading.Lock()
 
 
 def get_data_agent() -> DataAgent:
     """获取Data Agent实例"""
     global _data_agent
     if _data_agent is None:
-        _data_agent = DataAgent()
+        with _data_agent_lock:
+            if _data_agent is None:
+                _data_agent = DataAgent()
     return _data_agent
