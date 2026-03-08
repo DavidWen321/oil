@@ -25,14 +25,16 @@ java -jar pipeline-data/target/pipeline-data-1.0.0-SNAPSHOT.jar
 java -jar pipeline-calculation/target/pipeline-calculation-1.0.0-SNAPSHOT.jar
 ```
 
-### Python AI Service (pipeline-ai)
+### Python AI Agent Service (pipeline-agent)
 
 ```bash
-cd pipeline-ai
+cd pipeline-agent
 pip install -r requirements.txt
 python main.py
-# Or with uvicorn: uvicorn main:app --host 0.0.0.0 --port 8000
+# Or with uvicorn: uvicorn src.api.main:app --host 0.0.0.0 --port 8100
 ```
+
+> `pipeline-ai/` 为旧版实验实现，当前正式主线为 `pipeline-agent/`。
 
 ## Architecture
 
@@ -46,11 +48,12 @@ python main.py
 | pipeline-data | 9400 | CRUD for Project, Pipeline, PumpStation, OilProperty |
 | pipeline-calculation | 9500 | Hydraulic analysis & pump optimization engine |
 
-### AI Service (Python - FastAPI + LangGraph)
+### AI Agent Service (Python - FastAPI + LangGraph)
 
-- **Port**: 8000
-- **Purpose**: RAG knowledge base Q&A and intelligent agent orchestration
-- **Tools**: SQL queries, knowledge base search, hydraulic analysis API calls
+- **Port**: 8100
+- **Path**: `pipeline-agent/`
+- **Purpose**: ReAct + Plan-and-Execute 智能体编排，含 RAG、GraphRAG、HITL、Trace、报告生成和 MCP 工具平面
+- **Legacy**: `pipeline-ai/` 仅作为旧版原型保留，不再作为正式主线
 
 ### Tech Stack
 
@@ -70,11 +73,12 @@ Two core calculation strategies implement hydraulic engineering formulas (ported
 
 2. **OptimizationStrategy**: Iterates 8 pump combinations (ZMI480 × ZMI375) to find optimal configuration minimizing end station pressure while maintaining feasibility (end pressure > 0)
 
-### AI Agent (`pipeline-ai/app/agents/`)
+### AI Agent (`pipeline-agent/src/`)
 
-- **graph.py**: LangGraph workflow with router → general_agent → END
-- **tools.py**: Three tools - SQL_Database, Knowledge_Base, Hydraulic_Analysis (calls Java calculation service)
-- **state.py**: Agent state management
+- **workflows/graph.py**: ReAct 主图，支持动态工具选择和流式输出
+- **workflows/subgraph.py**: Plan-and-Execute 子图，支持 HITL 中断/恢复
+- **rag/**: Hybrid RAG + GraphRAG + Reranker + Self-RAG
+- **api/routes/**: v1/v2 聊天、Trace、报告、MCP 诊断接口
 
 ## Database Schema
 
