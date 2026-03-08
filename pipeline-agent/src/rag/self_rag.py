@@ -10,7 +10,8 @@ from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
-from src.config import settings, rag_config
+from src.config import rag_config
+from src.llm import get_cached_llm
 from src.utils import logger
 from src.models.enums import RetrievalQuality
 from .reranker import RerankResult
@@ -75,13 +76,7 @@ class SelfRAG:
     def llm(self):
         """获取LLM实例"""
         if self._llm is None:
-            self._llm = ChatOpenAI(
-                api_key=settings.OPENAI_API_KEY,
-                base_url=settings.OPENAI_API_BASE,
-                model=settings.LLM_MODEL,
-                temperature=0,
-                max_tokens=256,
-            )
+            self._llm = get_cached_llm("should_retrieve")
         return self._llm
 
     def should_retrieve(self, query: str) -> Tuple[RetrievalDecision, str]:
@@ -231,13 +226,7 @@ class QueryRewriter:
     @property
     def llm(self):
         if self._llm is None:
-            self._llm = ChatOpenAI(
-                api_key=settings.OPENAI_API_KEY,
-                base_url=settings.OPENAI_API_BASE,
-                model=settings.LLM_MODEL,
-                temperature=0.3,
-                max_tokens=512,
-            )
+            self._llm = get_cached_llm("query_rewrite")
         return self._llm
 
     def rewrite(self, query: str) -> str:

@@ -9,7 +9,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
-from src.config import settings
+from src.llm import get_cached_llm
 from src.knowledge_graph import KnowledgeGraphBuilder
 from src.utils import logger
 
@@ -24,13 +24,7 @@ class GraphRAGRetriever:
     @property
     def llm(self) -> ChatOpenAI:
         if self._llm is None:
-            self._llm = ChatOpenAI(
-                api_key=settings.OPENAI_API_KEY,
-                base_url=settings.OPENAI_API_BASE,
-                model=settings.LLM_MODEL,
-                temperature=0,
-                max_tokens=300,
-            )
+            self._llm = get_cached_llm("knowledge_qa")
         return self._llm
 
     def retrieve(self, query: str, top_k: int = 5) -> List[dict]:

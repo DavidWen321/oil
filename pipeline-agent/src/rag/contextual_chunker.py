@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 
-from src.config import settings
+from src.llm import get_cached_llm
 from src.utils import logger
 from src.models.enums import KnowledgeCategory
 from .document_processor import Document
@@ -111,13 +111,7 @@ class ContextualChunker:
     def llm(self):
         """获取LLM实例（懒加载）"""
         if self._llm is None:
-            self._llm = ChatOpenAI(
-                api_key=settings.OPENAI_API_KEY,
-                base_url=settings.OPENAI_API_BASE,
-                model=settings.LLM_MODEL,
-                temperature=0.3,
-                max_tokens=500
-            )
+            self._llm = get_cached_llm("context_generation")
         return self._llm
 
     def chunk_document(self, document: Document) -> List[Chunk]:
