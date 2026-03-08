@@ -11,7 +11,14 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.config import settings
+from src.tools.error_handler import safe_tool_call
 from src.utils import logger, decimal_to_float
+
+
+ALLOWED_TABLES = settings.sql_allowed_tables
+BLOCKED_TABLES = settings.sql_blocked_tables
+FORBIDDEN_SQL_KEYWORDS = ["INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "CREATE", "TRUNCATE", "GRANT", "REVOKE", "MERGE", "CALL"]
+TABLE_PATTERN = re.compile(r"(?:FROM|JOIN)\s+`?(\w+)`?", re.IGNORECASE)
 
 
 # 创建数据库引擎
@@ -26,12 +33,18 @@ def get_engine():
             settings.DATABASE_URL,
             pool_pre_ping=True,
             pool_size=5,
-            max_overflow=10
+            max_overflow=10,
+            pool_timeout=settings.SQL_QUERY_TIMEOUT_SECONDS,
+            connect_args={
+                "connect_timeout": settings.SQL_CONNECT_TIMEOUT_SECONDS,
+                "read_timeout": settings.SQL_QUERY_TIMEOUT_SECONDS,
+                "write_timeout": settings.SQL_QUERY_TIMEOUT_SECONDS,
+            },
         )
     return _engine
 
 
-def execute_query(sql: str, params: dict = None) -> List[dict]:
+def execute_query(sql: str, params: Optional[dict] = None) -> List[dict]:
     """
     执行SQL查询并返回结果
 
@@ -567,69 +580,125 @@ def get_calculation_parameters(pipeline_id: int, oil_id: int) -> str:
         )
 
 
+def _normalize_sql(sql: str) -> str:
+    return str(sql or "").strip()
+
+
+def _contains_multiple_statements(sql: str) -> bool:
+    normalized = sql.strip()
+    if not normalized:
+        return False
+    return ";" in normalized.rstrip(";")
+
+
+def _validate_sql_tables(sql: str) -> tuple[bool, str, list[str]]:
+    referenced_tables = {match.lower() for match in TABLE_PATTERN.findall(sql)}
+    if not referenced_tables:
+        return False, "未检测到 FROM/JOIN 表名，仅允许查询明确业务表", []
+
+    blocked = sorted(referenced_tables & BLOCKED_TABLES)
+    if blocked:
+        return False, f"禁止访问系统表: {', '.join(blocked)}", sorted(referenced_tables)
+
+    unknown = sorted(referenced_tables - ALLOWED_TABLES)
+    if unknown:
+        return False, f"未授权的表: {', '.join(unknown)}", sorted(referenced_tables)
+
+    return True, "", sorted(referenced_tables)
+
+
+def _ensure_limit(sql: str) -> str:
+    sql = sql.rstrip().rstrip(';')
+    if re.search(r"\bLIMIT\b", sql, re.IGNORECASE):
+        return sql
+    return f"{sql} LIMIT {settings.SQL_MAX_LIMIT}"
+
+
+def _validate_readonly(sql: str) -> tuple[bool, str]:
+    sql_upper = sql.upper()
+    if not sql_upper.startswith("SELECT"):
+        return False, "错误: 仅支持SELECT查询"
+
+    if _contains_multiple_statements(sql):
+        return False, "错误: 不允许执行多语句查询"
+
+    for keyword in FORBIDDEN_SQL_KEYWORDS:
+        if re.search(rf"\b{keyword}\b", sql_upper):
+            return False, f"错误: 不允许使用 {keyword} 操作"
+
+    if "SYS_USER" in sql_upper:
+        return False, "错误: 不允许访问系统用户表"
+
+    if re.search(r"\bINTO\s+OUTFILE\b", sql_upper):
+        return False, "错误: 不允许导出查询结果"
+
+    return True, ""
+
+
+@safe_tool_call("execute_safe_sql")
 @tool
 def execute_safe_sql(sql: str) -> str:
     """
-    执行安全的只读SQL查询（仅支持SELECT）
+    执行安全的只读SQL查询（仅支持 SELECT + 白名单业务表）。
 
     Args:
-        sql: SELECT查询语句
+        sql: SELECT 查询语句
 
     Returns:
         查询结果（JSON格式）
-
-    注意:
-        - 仅支持SELECT语句
-        - 禁止访问sys_user表的password字段
-        - 结果最多返回100条
     """
     try:
-        # 安全检查
-        sql_upper = sql.upper().strip()
-
-        if not sql_upper.startswith("SELECT"):
+        normalized = _normalize_sql(sql)
+        if not normalized:
             return json.dumps(
-                {"success": False, "message": "错误: 仅支持SELECT查询", "data": []},
+                {"success": False, "message": "错误: SQL不能为空", "data": []},
                 ensure_ascii=False,
                 default=str,
             )
 
-        forbidden_keywords = ["INSERT", "UPDATE", "DELETE", "DROP", "ALTER",
-                              "CREATE", "TRUNCATE", "GRANT", "REVOKE"]
-        for keyword in forbidden_keywords:
-            if re.search(rf"\b{keyword}\b", sql_upper):
-                return json.dumps(
-                    {
-                        "success": False,
-                        "message": f"错误: 不允许使用 {keyword} 操作",
-                        "data": [],
-                    },
-                    ensure_ascii=False,
-                    default=str,
-                )
-
-        # 禁止访问敏感字段
-        if "SYS_USER" in sql_upper and "PASSWORD" in sql_upper:
+        allowed, message = _validate_readonly(normalized)
+        if not allowed:
             return json.dumps(
-                {"success": False, "message": "错误: 不允许查询用户密码", "data": []},
+                {"success": False, "message": message, "data": []},
                 ensure_ascii=False,
                 default=str,
             )
 
-        # 添加LIMIT限制
-        if "LIMIT" not in sql_upper:
-            sql = sql.rstrip(";") + " LIMIT 100"
+        tables_ok, table_message, referenced_tables = _validate_sql_tables(normalized)
+        if not tables_ok:
+            return json.dumps(
+                {
+                    "success": False,
+                    "message": table_message,
+                    "data": [],
+                    "referenced_tables": referenced_tables,
+                },
+                ensure_ascii=False,
+                default=str,
+            )
 
-        results = execute_query(sql)
+        limited_sql = _ensure_limit(normalized)
+        results = execute_query(limited_sql)
         if not results:
             return json.dumps(
-                {"success": True, "message": "查询结果为空", "data": [], "count": 0},
+                {
+                    "success": True,
+                    "message": "查询结果为空",
+                    "data": [],
+                    "count": 0,
+                    "referenced_tables": referenced_tables,
+                },
                 ensure_ascii=False,
                 default=str,
             )
 
         return json.dumps(
-            {"success": True, "data": results, "count": len(results)},
+            {
+                "success": True,
+                "data": results,
+                "count": len(results),
+                "referenced_tables": referenced_tables,
+            },
             ensure_ascii=False,
             default=str,
         )
@@ -653,5 +722,6 @@ DATABASE_TOOLS = [
     query_pump_stations,
     query_oil_properties,
     get_calculation_parameters,
-    execute_safe_sql
 ]
+
+DATABASE_AGENT_TOOLS = list(DATABASE_TOOLS)
