@@ -1,4 +1,4 @@
-﻿"""LangGraph nodes for plan-and-execute workflow."""
+"""LangGraph nodes for plan-and-execute workflow."""
 
 from __future__ import annotations
 
@@ -19,10 +19,34 @@ from src.agents import (
     get_report_agent,
     get_supervisor,
 )
+from src.models.scheme_card import ApprovalStatus, EvidenceItem, RiskLevel, SchemeCard, SchemeOption
 from src.models.state import AgentState, PlanStep, ReflexionMemory
 from src.observability import TraceEventType, emit_trace_event, get_tracer
+from src.persistence import save_scheme_card
 from src.utils import generate_task_id, now_iso
 from .hitl import HITLRequest, HITLResponse, HITLType, get_hitl_manager
+
+
+def _copy_plan_with_step_updates(plan: List[PlanStep], index: int, **updates: Any) -> List[PlanStep]:
+    """Return a new plan list with one step immutably updated."""
+
+    copied: List[PlanStep] = []
+    for idx, item in enumerate(plan):
+        if idx == index:
+            copied.append(PlanStep(**{**dict(item), **updates}))
+        else:
+            copied.append(PlanStep(**dict(item)))
+    return copied
+
+
+def _parse_report_result(final_response: Any) -> Any:
+    if not isinstance(final_response, str):
+        return None
+    try:
+        return json.loads(final_response)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return None
+
 
 
 def planner_node(state: AgentState) -> Dict[str, Any]:
@@ -51,8 +75,8 @@ def planner_node(state: AgentState) -> Dict[str, Any]:
 
         result = planner.replan(
             user_input=user_input,
-            completed_steps=completed,
-            failed_step=failed_step,
+            completed_steps=[dict(step) for step in completed],
+            failed_step=dict(failed_step),
             reflexion=reflexion,
         )
         event_type = TraceEventType.PLAN_UPDATED
@@ -110,23 +134,23 @@ def executor_node(state: AgentState) -> Dict[str, Any]:
         return {"next_agent": None}
 
     step = plan[index]
-    step["status"] = "in_progress"
-    step["error"] = None
+    updated_plan = _copy_plan_with_step_updates(plan, index, status="in_progress", error=None)
+    updated_step = updated_plan[index]
 
     emit_trace_event(
         state.get("trace_id", ""),
         TraceEventType.STEP_STARTED,
         {
-            "description": step.get("description", ""),
-            "retry_count": step.get("retry_count", 0),
+            "description": updated_step.get("description", ""),
+            "retry_count": updated_step.get("retry_count", 0),
         },
-        step_number=step.get("step_number"),
-        agent=step.get("agent"),
+        step_number=updated_step.get("step_number"),
+        agent=updated_step.get("agent"),
     )
 
     return {
-        "plan": plan,
-        "next_agent": step.get("agent"),
+        "plan": updated_plan,
+        "next_agent": updated_step.get("agent"),
     }
 
 
@@ -212,7 +236,7 @@ def report_agent_node(state: AgentState) -> Dict[str, Any]:
                     section_title=title,
                     data=current_state.get("pipeline_data") or {},
                     calc_results=current_state.get("calculation_result") or {},
-                    standards=str(current_state.get("knowledge_context") or ""),
+                    standards={"knowledge_context": current_state.get("knowledge_context") or ""},
                 )
             )
 
@@ -301,11 +325,15 @@ def reflexion_node(state: AgentState) -> Dict[str, Any]:
     should_replan = bool(reflexion.get("should_replan")) and not should_retry
 
     if should_retry:
-        step["retry_count"] = retry_count + 1
-        step["status"] = "pending"
-        step["error"] = None
+        updated_plan = _copy_plan_with_step_updates(
+            plan,
+            index,
+            retry_count=retry_count + 1,
+            status="pending",
+            error=None,
+        )
         return {
-            "plan": plan,
+            "plan": updated_plan,
             "reflexion_memories": memories,
             "needs_replan": False,
             "replan_reason": None,
@@ -371,10 +399,10 @@ def hitl_check_node(state: AgentState) -> Dict[str, Any]:
                 request=HITLRequest(
                     request_id=request_id,
                     type=HITLType.SCHEME_SELECTION,
-                    title=hitl_request["title"],
-                    description=hitl_request["description"],
-                    options=hitl_request["options"],
-                    data=hitl_request["data"],
+                    title=str(hitl_request["title"]),
+                    description=str(hitl_request["description"]),
+                    options=list(hitl_request["options"]),
+                    data=dict(hitl_request["data"]),
                     timeout_seconds=300,
                 ),
             )
@@ -387,8 +415,9 @@ def hitl_check_node(state: AgentState) -> Dict[str, Any]:
                 agent=current_step.get("agent"),
             )
 
-            user_choice = interrupt(hitl_request)
-            user_choice["request_id"] = request_id
+            interrupted = interrupt(hitl_request)
+            raw_user_choice = interrupted if isinstance(interrupted, dict) else {}
+            user_choice = {**raw_user_choice, "request_id": request_id}
             selected_option = str(user_choice.get("selected_option", "scheme_0"))
             selected_index = 0
             if "_" in selected_option:
@@ -434,6 +463,132 @@ def hitl_check_node(state: AgentState) -> Dict[str, Any]:
     }
 
 
+def _build_scheme_card(state: AgentState) -> SchemeCard:
+    """Build one structured scheme card from workflow state."""
+
+    card = SchemeCard(
+        card_id=generate_task_id(),
+        title=f"管道能耗分析方案 - {state.get('user_input', '')[:30]}",
+        task_objective=state.get("user_input", ""),
+        created_at=now_iso(),
+        created_by=state.get("trace_id", ""),
+        session_id=state.get("session_id", ""),
+    )
+
+    pipeline_data = state.get("pipeline_data")
+    oil_property_data = state.get("oil_property_data")
+    calc_result = state.get("calculation_result")
+    optimization_result = state.get("optimization_result")
+
+    if pipeline_data:
+        card.current_conditions["pipeline"] = pipeline_data
+    if oil_property_data:
+        card.current_conditions["oil_property"] = oil_property_data
+
+    scheme_candidates = []
+    if isinstance(calc_result, list):
+        scheme_candidates.extend(calc_result)
+    elif calc_result:
+        scheme_candidates.append(calc_result)
+    if optimization_result:
+        scheme_candidates.append(optimization_result)
+
+    if not scheme_candidates and state.get("final_response"):
+        scheme_candidates.append({"description": "综合分析结果", "results": {"summary": state.get("final_response")}})
+
+    for index, result in enumerate(scheme_candidates, start=1):
+        option_id = chr(64 + index) if index <= 26 else f"S{index}"
+        result_dict = result if isinstance(result, dict) else {"raw": str(result)}
+        parameters = result_dict.get("parameters", {}) if isinstance(result_dict.get("parameters", {}), dict) else {}
+        results = result_dict.get("results") if isinstance(result_dict.get("results"), dict) else result_dict
+        card.schemes.append(
+            SchemeOption(
+                id=option_id,
+                name=f"方案 {option_id}",
+                description=str(result_dict.get("description", "水力/优化分析结果")),
+                parameters=parameters,
+                results=results if isinstance(results, dict) else {"raw": str(results)},
+                advantages=list(result_dict.get("advantages", [])) if isinstance(result_dict.get("advantages", []), list) else [],
+                disadvantages=list(result_dict.get("disadvantages", [])) if isinstance(result_dict.get("disadvantages", []), list) else [],
+                energy_saving_kwh=result_dict.get("energy_saving_kwh"),
+                carbon_reduction_kg=result_dict.get("carbon_reduction_kg"),
+                cost_saving_yuan=result_dict.get("cost_saving_yuan"),
+            )
+        )
+
+    if card.schemes:
+        best_scheme = card.schemes[0]
+        best_score = None
+        for scheme in card.schemes:
+            candidate_score = scheme.results.get("power_consumption") or scheme.results.get("energy_consumption")
+            if isinstance(candidate_score, (int, float)) and (best_score is None or candidate_score < best_score):
+                best_score = candidate_score
+                best_scheme = scheme
+        card.recommended_scheme_id = best_scheme.id
+        card.recommendation_reason = "综合能耗、结果可行性与可执行性后自动推荐。"
+
+    if pipeline_data:
+        card.evidence.append(
+            EvidenceItem(
+                type="operational_data",
+                title="管道运行参数",
+                content=str(pipeline_data)[:800],
+                source="t_pipeline",
+                confidence=1.0,
+                timestamp=now_iso(),
+            )
+        )
+    if calc_result or optimization_result:
+        card.evidence.append(
+            EvidenceItem(
+                type="mechanism_model",
+                title="机理模型/优化结果",
+                content=str(optimization_result or calc_result)[:800],
+                source="hydraulic_calculation",
+                confidence=0.95,
+                timestamp=now_iso(),
+            )
+        )
+    if state.get("knowledge_context"):
+        card.evidence.append(
+            EvidenceItem(
+                type="standard_reference",
+                title="相关标准规范",
+                content=str(state.get("knowledge_context", ""))[:500],
+                source="knowledge_base",
+                confidence=0.8,
+                timestamp=now_iso(),
+            )
+        )
+
+    knowledge_sources = state.get("knowledge_sources", [])
+    for source in knowledge_sources[:5]:
+        doc_name = source.get("doc_name") if isinstance(source, dict) else None
+        if doc_name and doc_name not in card.standard_references:
+            card.standard_references.append(str(doc_name))
+
+    for scheme in card.schemes:
+        end_pressure = scheme.results.get("end_pressure")
+        if isinstance(end_pressure, (int, float)) and end_pressure < 0.1:
+            card.risk_level = RiskLevel.HIGH
+            card.risk_factors.append(f"方案 {scheme.id} 末站压力过低 ({end_pressure} MPa)")
+            card.requires_approval = True
+            card.approval_status = ApprovalStatus.PENDING
+            card.approval_role = "高级工程师"
+
+    if not card.rollback_plan:
+        card.rollback_plan = "若执行后出现压力异常或能耗明显升高，回退至当前已验证运行方案。"
+
+    save_scheme_card(
+        card_id=card.card_id,
+        session_id=card.session_id,
+        title=card.title,
+        card=card.to_dict(),
+        approval_status=card.approval_status.value,
+    )
+    return card
+
+
 def synthesizer_node(state: AgentState) -> Dict[str, Any]:
     """Synthesize all completed step results as final response (streaming)."""
 
@@ -448,29 +603,23 @@ def synthesizer_node(state: AgentState) -> Dict[str, Any]:
     ]
 
     trace_id = state.get("trace_id", "")
+    has_calculation = state.get("calculation_result") is not None
+    has_optimization = state.get("optimization_result") is not None
 
-    if not completed_steps and state.get("final_response"):
+    if has_calculation or has_optimization:
+        card = _build_scheme_card(state)
+        final_response = json.dumps(card.to_dict(), ensure_ascii=False)
+        emit_trace_event(trace_id, TraceEventType.ARTIFACT_CREATE, {"artifact_type": "scheme_card", "card_id": card.card_id})
+        emit_trace_event(trace_id, TraceEventType.ARTIFACT_DONE, {"artifact_type": "scheme_card", "card_id": card.card_id})
+    elif not completed_steps and state.get("final_response"):
         final_response = state.get("final_response", "")
-        # 直接回复也发一个 response_chunk，让前端能流式展示
-        emit_trace_event(
-            trace_id,
-            TraceEventType.RESPONSE_CHUNK,
-            {"chunk": final_response},
-        )
+        emit_trace_event(trace_id, TraceEventType.RESPONSE_CHUNK, {"chunk": final_response})
     elif not completed_steps:
         final_response = "抱歉，未能获得有效执行结果。"
-        emit_trace_event(
-            trace_id,
-            TraceEventType.RESPONSE_CHUNK,
-            {"chunk": final_response},
-        )
+        emit_trace_event(trace_id, TraceEventType.RESPONSE_CHUNK, {"chunk": final_response})
     else:
         def on_chunk(chunk: str) -> None:
-            emit_trace_event(
-                trace_id,
-                TraceEventType.RESPONSE_CHUNK,
-                {"chunk": chunk},
-            )
+            emit_trace_event(trace_id, TraceEventType.RESPONSE_CHUNK, {"chunk": chunk})
 
         final_response = get_supervisor().synthesize_response_stream(
             user_input=state.get("user_input", ""),
@@ -489,6 +638,7 @@ def synthesizer_node(state: AgentState) -> Dict[str, Any]:
         {
             "final_response_preview": final_response[:200],
             "metrics": metrics,
+            "response_type": "scheme_card" if (has_calculation or has_optimization) else "text",
         },
     )
 
@@ -496,6 +646,7 @@ def synthesizer_node(state: AgentState) -> Dict[str, Any]:
         "final_response": final_response,
         "messages": messages,
         "confidence_score": 0.85,
+        "report_result": _parse_report_result(final_response) if (has_calculation or has_optimization) else state.get("report_result"),
     }
 
 
@@ -565,10 +716,15 @@ def _run_step_with_agent(
         if _looks_like_error_text(result):
             raise RuntimeError(_to_result_text(result))
 
-        step["status"] = "completed"
-        step["result"] = result
-        step["duration_ms"] = duration
-        step["error"] = None
+        updated_plan = _copy_plan_with_step_updates(
+            plan,
+            index,
+            status="completed",
+            result=result,
+            duration_ms=duration,
+            error=None,
+        )
+        updated_step = updated_plan[index]
 
         emit_trace_event(
             trace_id,
@@ -587,7 +743,7 @@ def _run_step_with_agent(
         )
 
         update: Dict[str, Any] = {
-            "plan": plan,
+            "plan": updated_plan,
             "error_message": None,
             "last_error_agent": None,
         }
@@ -609,9 +765,13 @@ def _run_step_with_agent(
     except Exception as exc:
         duration = int((time.perf_counter() - start_time) * 1000)
 
-        step["status"] = "failed"
-        step["error"] = str(exc)
-        step["duration_ms"] = duration
+        updated_plan = _copy_plan_with_step_updates(
+            plan,
+            index,
+            status="failed",
+            error=str(exc),
+            duration_ms=duration,
+        )
 
         emit_trace_event(
             trace_id,
@@ -623,7 +783,7 @@ def _run_step_with_agent(
         )
 
         return {
-            "plan": plan,
+            "plan": updated_plan,
             "error_message": str(exc),
             "error_count": state.get("error_count", 0) + 1,
             "last_error_agent": agent_name,

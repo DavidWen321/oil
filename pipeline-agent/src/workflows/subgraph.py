@@ -15,13 +15,16 @@ import time
 from threading import Lock
 from typing import Any, Dict, Optional
 
-from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 from langgraph.types import Command
 
+from src.config import get_redis, settings
 from src.models.state import AgentState, create_initial_state
-from src.observability import create_tracer
+from src.observability import create_tracer, get_tracer, pop_tracer
+from src.persistence import save_trace_end, save_trace_start
 from src.utils import generate_session_id, generate_trace_id, logger
+
+from .checkpointer import create_checkpointer
 
 from .edges import route_after_hitl, route_after_reflexion, route_after_step, route_to_agent
 from .nodes import (
@@ -40,7 +43,7 @@ from .nodes import (
 
 
 def _create_plan_execute_subgraph():
-    """构建 Plan-and-Execute 子图。带 MemorySaver 以支持 interrupt/resume。"""
+    """构建 Plan-and-Execute 子图。支持持久化 checkpoint 与 interrupt/resume。"""
     graph = StateGraph(AgentState)
 
     graph.add_node("planner", planner_node)
@@ -93,50 +96,80 @@ def _create_plan_execute_subgraph():
     )
 
     graph.add_edge("synthesizer", END)
-    return graph.compile(checkpointer=MemorySaver())
+    return graph.compile(checkpointer=create_checkpointer())
 
 
 _subgraph_app = None
+_subgraph_lock = Lock()
 
-# request_id -> {"app": app, "config": config, "updated_at": ts}
+# request_id -> {"thread_id": ..., "updated_at": ...}
 _pending_subgraph_runs: Dict[str, Dict[str, Any]] = {}
 _pending_lock = Lock()
-_PENDING_TTL_SECONDS = 1800
+_PENDING_REDIS_PREFIX = "workflow:subgraph:pending:"
 
 
 def _get_subgraph():
     global _subgraph_app
     if _subgraph_app is None:
-        _subgraph_app = _create_plan_execute_subgraph()
+        with _subgraph_lock:
+            if _subgraph_app is None:
+                _subgraph_app = _create_plan_execute_subgraph()
     return _subgraph_app
+
+
+def _pending_redis_key(request_id: str) -> str:
+    return f"{_PENDING_REDIS_PREFIX}{request_id}"
 
 
 def _cleanup_pending_runs(now: float):
     expired = [
         request_id
         for request_id, info in _pending_subgraph_runs.items()
-        if now - float(info.get("updated_at", 0.0)) > _PENDING_TTL_SECONDS
+        if now - float(info.get("updated_at", 0.0)) > settings.CHECKPOINT_PENDING_TTL_SECONDS
     ]
     for request_id in expired:
         _pending_subgraph_runs.pop(request_id, None)
 
 
-def _cache_pending_run(request_id: str, app, config: dict):
-    if not request_id:
+def _cache_pending_run(request_id: str, thread_id: str):
+    if not request_id or not thread_id:
         return
+
+    payload = {"thread_id": thread_id, "updated_at": time.time()}
+
+    try:
+        redis_client = get_redis()
+        redis_client.setex(
+            _pending_redis_key(request_id),
+            settings.CHECKPOINT_PENDING_TTL_SECONDS,
+            json.dumps(payload, ensure_ascii=False),
+        )
+        return
+    except Exception as exc:
+        logger.debug(f"cache pending run in redis skipped: {exc}")
+
     with _pending_lock:
         now = time.time()
         _cleanup_pending_runs(now)
-        _pending_subgraph_runs[request_id] = {
-            "app": app,
-            "config": config,
-            "updated_at": now,
-        }
+        _pending_subgraph_runs[request_id] = payload
 
 
 def _take_pending_run(request_id: str) -> Optional[Dict[str, Any]]:
     if not request_id:
         return None
+
+    try:
+        redis_client = get_redis()
+        key = _pending_redis_key(request_id)
+        raw = redis_client.get(key)
+        if raw is not None:
+            redis_client.delete(key)
+            data = json.loads(raw)
+            if isinstance(data, dict):
+                return data
+    except Exception as exc:
+        logger.debug(f"load pending run from redis skipped: {exc}")
+
     with _pending_lock:
         now = time.time()
         _cleanup_pending_runs(now)
@@ -157,6 +190,7 @@ def run_plan_execute(task_description: str) -> str:
     session_id = generate_session_id()
     trace_id = generate_trace_id()
     create_tracer(trace_id)
+    save_trace_start(trace_id=trace_id, session_id=session_id, user_input=task_description)
 
     initial_state = create_initial_state(
         user_input=task_description,
@@ -179,15 +213,27 @@ def run_plan_execute(task_description: str) -> str:
             if hitl_data:
                 request_id = str(hitl_data.get("request_id", "")).strip()
                 if request_id:
-                    _cache_pending_run(request_id, app, config)
+                    _cache_pending_run(request_id, session_id)
+                tracer = get_tracer(trace_id)
+                save_trace_end(trace_id=trace_id, status="hitl_waiting", final_response=None, plan=result.get("plan", []), metrics=(tracer.metrics if tracer else {}))
+                pop_tracer(trace_id)
                 return f"[HITL_WAITING]{json.dumps(hitl_data, ensure_ascii=False)}"
 
         final_response = result.get("final_response", "")
         if final_response:
+            tracer = get_tracer(trace_id)
+            save_trace_end(trace_id=trace_id, status="completed", final_response=final_response, plan=result.get("plan", []), metrics=(tracer.metrics if tracer else {}))
+            pop_tracer(trace_id)
             return final_response
+        tracer = get_tracer(trace_id)
+        save_trace_end(trace_id=trace_id, status="completed", final_response="复杂任务执行完成，但未生成最终回复。", plan=result.get("plan", []), metrics=(tracer.metrics if tracer else {}))
+        pop_tracer(trace_id)
         return "复杂任务执行完成，但未生成最终回复。"
 
     except Exception as e:
+        tracer = get_tracer(trace_id)
+        save_trace_end(trace_id=trace_id, status="error", final_response=None, plan=[], metrics=(tracer.metrics if tracer else {}))
+        pop_tracer(trace_id)
         logger.error(f"Plan-Execute subgraph failed: {e}")
         return f"复杂任务执行失败: {str(e)}"
 
@@ -211,8 +257,15 @@ def resume_plan_execute(request_id: str, user_choice: dict) -> Dict[str, Any]:
             "error": f"未找到 request_id={request_id} 对应的待恢复子图状态，可能已过期。",
         }
 
-    app = pending["app"]
-    config = pending["config"]
+    thread_id = str(pending.get("thread_id", "")).strip()
+    if not thread_id:
+        return {
+            "status": "not_found",
+            "error": f"request_id={request_id} 缺少 thread_id，无法恢复。",
+        }
+
+    app = _get_subgraph()
+    config = {"configurable": {"thread_id": thread_id}}
 
     try:
         result = app.invoke(Command(resume=user_choice), config=config)
@@ -224,7 +277,7 @@ def resume_plan_execute(request_id: str, user_choice: dict) -> Dict[str, Any]:
             if hitl_data:
                 next_request_id = str(hitl_data.get("request_id", "")).strip()
                 if next_request_id:
-                    _cache_pending_run(next_request_id, app, config)
+                    _cache_pending_run(next_request_id, thread_id)
                 return {"status": "hitl_waiting", "hitl_data": hitl_data}
 
         final_response = result.get("final_response", "")
