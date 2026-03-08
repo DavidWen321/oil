@@ -9,6 +9,7 @@ langchain-core>=0.3.0
 langchain-community>=0.3.0
 langchain-openai>=0.2.0
 langgraph>=1.0.0                    # 2025年10月发布的首个稳定版
+langgraph[redis]>=1.0.0  # Redis persistence for LangGraph checkpoints
 
 # ===== Vector Database =====
 pymilvus>=2.4.0                     # 支持Hybrid Search
