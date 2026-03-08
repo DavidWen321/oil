@@ -8,6 +8,8 @@ from typing import Any, Dict, List
 
 from .protocol import StreamEventType
 
+_PUBLIC_STREAM_ERROR_MESSAGE = "服务暂时不可用，请稍后重试。"
+
 
 class StreamEventProcessor:
     """Convert workflow stream items into unified SSE event packets."""
@@ -38,6 +40,31 @@ class StreamEventProcessor:
             },
         )
 
+    def _artifact_packets(self, response: Dict[str, Any]) -> List[Dict[str, str]]:
+        content = response.get("response", "")
+        response_type = str(response.get("response_type", "") or "")
+        if response_type != "scheme_card":
+            try:
+                parsed = json.loads(content)
+                if not (isinstance(parsed, dict) and parsed.get("card_id") and parsed.get("schemes") is not None):
+                    return []
+            except Exception:
+                return []
+        else:
+            try:
+                parsed = json.loads(content) if isinstance(content, str) else content
+            except Exception:
+                return []
+
+        if not isinstance(parsed, dict):
+            return []
+
+        return [
+            self._build_packet(StreamEventType.ARTIFACT_CREATE, {"artifact_type": "scheme_card"}),
+            self._build_packet(StreamEventType.ARTIFACT_DELTA, {"artifact": parsed}),
+            self._build_packet(StreamEventType.ARTIFACT_DONE, {"artifact_type": "scheme_card", "card_id": parsed.get("card_id", "")}),
+        ]
+
     def map_workflow_item(self, item: Dict[str, Any]) -> List[Dict[str, str]]:
         """Map one workflow astream item into one or more stream packets."""
         item_type = item.get("type")
@@ -49,6 +76,12 @@ class StreamEventProcessor:
                     {"content": str(item.get("content", ""))},
                 )
             ]
+
+        if item_type == "thinking_delta":
+            return [self._build_packet(StreamEventType.THINKING_DELTA, {"content": str(item.get("content", ""))})]
+
+        if item_type == "thinking_done":
+            return [self._build_packet(StreamEventType.THINKING_DONE, item.get("data", {}))]
 
         if item_type == "tool_search":
             return [
@@ -98,17 +131,38 @@ class StreamEventProcessor:
                 ),
             ]
 
+        if item_type == "plan_created":
+            return [self._build_packet(StreamEventType.PLAN_CREATED, item.get("data", {}))]
+
+        if item_type == "plan_step_start":
+            return [self._build_packet(StreamEventType.PLAN_STEP_START, item.get("data", {}))]
+
+        if item_type == "plan_step_done":
+            return [self._build_packet(StreamEventType.PLAN_STEP_DONE, item.get("data", {}))]
+
+        if item_type == "plan_updated":
+            return [self._build_packet(StreamEventType.PLAN_UPDATED, item.get("data", {}))]
+
+        if item_type == "state_sync":
+            return [self._build_packet(StreamEventType.STATE_SYNC, item.get("data", {}))]
+
         if item_type == "hitl_waiting":
             data = item.get("data", {})
             if not isinstance(data, dict):
                 data = {"raw": data}
             return [self._build_packet(StreamEventType.HITL_REQUEST, data)]
 
+        if item_type == "hitl_resumed":
+            data = item.get("data", {})
+            if not isinstance(data, dict):
+                data = {"raw": data}
+            return [self._build_packet(StreamEventType.HITL_RESUMED, data)]
+
         if item_type == "done":
             response = item.get("response", {})
             if not isinstance(response, dict):
                 response = {"response": str(response)}
-            return [
+            packets = [
                 self._build_packet(
                     StreamEventType.CONTENT_DONE,
                     {
@@ -116,16 +170,19 @@ class StreamEventProcessor:
                         "intent": str(response.get("intent", "")),
                         "session_id": str(response.get("session_id", "")),
                         "tool_calls": response.get("tool_calls", []),
+                        "response_type": str(response.get("response_type", "text")),
                     },
-                ),
-                self._build_packet(StreamEventType.DONE, {"status": "completed"}),
+                )
             ]
+            packets.extend(self._artifact_packets(response))
+            packets.append(self._build_packet(StreamEventType.DONE, {"status": "completed"}))
+            return packets
 
         if item_type == "error":
             return [
                 self._build_packet(
                     StreamEventType.ERROR,
-                    {"error": str(item.get("error", "unknown error"))},
+                    {"error": _PUBLIC_STREAM_ERROR_MESSAGE},
                 )
             ]
 
