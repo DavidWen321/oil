@@ -6,6 +6,8 @@ from typing import Optional
 
 
 class TraceEventType(str, Enum):
+    WORKFLOW_STARTED = "workflow_started"
+
     # Plan
     PLAN_CREATED = "plan_created"
     PLAN_UPDATED = "plan_updated"
@@ -27,6 +29,9 @@ class TraceEventType(str, Enum):
     REFLEXION = "reflexion"
     REPLAN = "replan"
     RESPONSE_CHUNK = "response_chunk"
+    STATE_SYNC = "state_sync"
+    ARTIFACT_CREATE = "artifact_create"
+    ARTIFACT_DONE = "artifact_done"
 
     # Final
     WORKFLOW_COMPLETED = "completed"
