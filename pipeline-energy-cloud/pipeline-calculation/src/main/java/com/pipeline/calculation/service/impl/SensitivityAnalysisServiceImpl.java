@@ -1,7 +1,6 @@
 package com.pipeline.calculation.service.impl;
 
 import java.math.BigDecimal;
-import java.util.Arrays;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
@@ -52,6 +51,12 @@ public class SensitivityAnalysisServiceImpl implements ISensitivityAnalysisServi
      * 默认步长百分比
      */
     private static final BigDecimal DEFAULT_STEP_PERCENT = new BigDecimal("5");
+    private static final List<SensitivityVariableEnum> SUPPORTED_QUICK_SINGLE_VARIABLES = List.of(
+            SensitivityVariableEnum.FLOW_RATE,
+            SensitivityVariableEnum.OIL_VISCOSITY,
+            SensitivityVariableEnum.PIPE_DIAMETER,
+            SensitivityVariableEnum.PIPE_ROUGHNESS
+    );
 
     private final SensitivityAnalysisStrategy sensitivityAnalysisStrategy;
     private final ICalculationHistoryService calculationHistoryService;
@@ -116,6 +121,9 @@ public class SensitivityAnalysisServiceImpl implements ISensitivityAnalysisServi
         if (varEnum == null) {
             return Result.fail("不支持的变量类型: " + variableType);
         }
+        if (!SUPPORTED_QUICK_SINGLE_VARIABLES.contains(varEnum)) {
+            return Result.fail("当前版本暂不支持该变量的快速敏感性分析: " + variableType);
+        }
 
         SensitivityVariable variable = SensitivityVariable.builder()
                 .variableType(variableType)
@@ -137,6 +145,6 @@ public class SensitivityAnalysisServiceImpl implements ISensitivityAnalysisServi
 
     @Override
     public List<SensitivityVariableEnum> getSupportedVariables() {
-        return Arrays.asList(SensitivityVariableEnum.values());
+        return SUPPORTED_QUICK_SINGLE_VARIABLES;
     }
 }

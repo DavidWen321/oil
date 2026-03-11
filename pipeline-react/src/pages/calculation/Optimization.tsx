@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Button,
   Card,
@@ -22,6 +22,12 @@ import styles from './Optimization.module.css';
 
 const FORM_ITEM_SPAN = { xs: 24, md: 12, xl: 8 } as const;
 
+type OptimizationFormValues = OptimizationParams & {
+  pipelineId?: number;
+  oilId?: number;
+  pumpStationId?: number;
+};
+
 const INITIAL_VALUES: OptimizationParams = {
   flowRate: 850,
   density: 860,
@@ -42,7 +48,7 @@ const INITIAL_VALUES: OptimizationParams = {
 };
 
 export default function Optimization() {
-  const [form] = Form.useForm<OptimizationParams>();
+  const [form] = Form.useForm<OptimizationFormValues>();
   const [loading, setLoading] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
@@ -51,7 +57,7 @@ export default function Optimization() {
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [result, setResult] = useState<OptimizationResult | null>(null);
 
-  const loadBaseData = async () => {
+  const loadBaseData = useCallback(async () => {
     const [projectRes, oilRes, stationRes] = await Promise.all([
       projectApi.list(),
       oilPropertyApi.list(),
@@ -66,30 +72,48 @@ export default function Optimization() {
     if (projectList.length > 0) {
       setSelectedProjectId(projectList[0].proId);
     }
-  };
+  }, []);
 
-  const loadPipelines = async (projectId: number) => {
+  const loadPipelines = useCallback(async (projectId: number) => {
     const response = await pipelineApi.listByProject(projectId);
-    setPipelines(response.data ?? []);
-  };
+    const pipelineList = response.data ?? [];
+    setPipelines(pipelineList);
+
+    if (pipelineList.length > 0) {
+      const [firstPipeline] = pipelineList;
+      form.setFieldsValue({
+        pipelineId: firstPipeline.id,
+        length: firstPipeline.length,
+        diameter: firstPipeline.diameter,
+        thickness: firstPipeline.thickness,
+        roughness: firstPipeline.roughness ?? INITIAL_VALUES.roughness,
+        startAltitude: firstPipeline.startAltitude,
+        endAltitude: firstPipeline.endAltitude,
+      });
+    } else {
+      form.setFieldValue('pipelineId', undefined);
+    }
+  }, [form]);
 
   useEffect(() => {
     form.setFieldsValue(INITIAL_VALUES);
     void loadBaseData();
-  }, [form]);
+  }, [form, loadBaseData]);
 
   useEffect(() => {
     if (selectedProjectId) {
+      setResult(null);
       void loadPipelines(selectedProjectId);
       form.setFieldValue('projectId', selectedProjectId);
     }
-  }, [form, selectedProjectId]);
+  }, [form, loadPipelines, selectedProjectId]);
 
   const handlePipelineChange = (pipelineId: number) => {
     const pipeline = pipelines.find((item) => item.id === pipelineId);
     if (!pipeline) return;
 
     form.setFieldsValue({
+      pipelineId,
       length: pipeline.length,
       diameter: pipeline.diameter,
       thickness: pipeline.thickness,
@@ -97,6 +121,7 @@ export default function Optimization() {
       startAltitude: pipeline.startAltitude,
       endAltitude: pipeline.endAltitude,
     });
+    setResult(null);
   };
 
   const handleOilChange = (oilId: number) => {
@@ -104,9 +129,11 @@ export default function Optimization() {
     if (!oil) return;
 
     form.setFieldsValue({
+      oilId,
       density: oil.density,
       viscosity: oil.viscosity,
     });
+    setResult(null);
   };
 
   const handleStationChange = (stationId: number) => {
@@ -114,19 +141,25 @@ export default function Optimization() {
     if (!station) return;
 
     form.setFieldsValue({
+      pumpStationId: stationId,
       inletPressure: station.comePower,
       pump480Head: station.zmi480Lift,
       pump375Head: station.zmi375Lift,
       pumpEfficiency: station.pumpEfficiency / 100,
       motorEfficiency: station.electricEfficiency / 100,
     });
+    setResult(null);
   };
 
   const handleSubmit = async () => {
     const values = await form.validateFields();
+    const payload = { ...values };
+    delete payload.pipelineId;
+    delete payload.oilId;
+    delete payload.pumpStationId;
     setLoading(true);
     try {
-      const response = await calculationApi.optimization(values);
+      const response = await calculationApi.optimization(payload);
       setResult(response.data ?? null);
       message.success('优化计算完成');
     } finally {
@@ -147,7 +180,7 @@ export default function Optimization() {
       },
       yAxis: {
         type: 'value',
-        name: '数值',
+        name: '压头 / 扬程 (m)',
       },
       series: [
         {
@@ -164,11 +197,11 @@ export default function Optimization() {
         <div className={styles.paramPanel}>
           <div className="page-header">
             <h2><SettingOutlined /> 泵站优化</h2>
-            <p>由后端遍历泵组合并给出可行工况下的推荐运行方案。</p>
+            <p>由后端遍历泵组合并给出可行工况下的推荐运行方案。压头与扬程单位均为 m。</p>
           </div>
 
           <Card title="优化参数" className="page-card">
-            <Form<OptimizationParams> form={form} layout="vertical" className={styles.paramForm} onFinish={() => void handleSubmit()}>
+            <Form<OptimizationFormValues> form={form} layout="vertical" className={styles.paramForm} onFinish={() => void handleSubmit()}>
               <Row gutter={16}>
                 <Col span={12}>
                   <Form.Item label="所属项目">
@@ -181,31 +214,52 @@ export default function Optimization() {
                   </Form.Item>
                 </Col>
                 <Col span={12}>
-                  <Form.Item label="管道参数">
+                  <Form.Item name="pipelineId" label="管道参数">
                     <Select<number>
                       allowClear
                       placeholder="带入管道参数"
-                      onChange={(value) => value && handlePipelineChange(value)}
+                      onChange={(value) => {
+                        if (value) {
+                          handlePipelineChange(value);
+                          return;
+                        }
+                        form.setFieldValue('pipelineId', undefined);
+                        setResult(null);
+                      }}
                       options={pipelines.map((pipeline) => ({ value: pipeline.id, label: pipeline.name }))}
                     />
                   </Form.Item>
                 </Col>
                 <Col span={12}>
-                  <Form.Item label="油品参数">
+                  <Form.Item name="oilId" label="油品参数">
                     <Select<number>
                       allowClear
                       placeholder="带入油品参数"
-                      onChange={(value) => value && handleOilChange(value)}
+                      onChange={(value) => {
+                        if (value) {
+                          handleOilChange(value);
+                          return;
+                        }
+                        form.setFieldValue('oilId', undefined);
+                        setResult(null);
+                      }}
                       options={oils.map((oil) => ({ value: oil.id, label: oil.name }))}
                     />
                   </Form.Item>
                 </Col>
                 <Col span={12}>
-                  <Form.Item label="泵站参数">
+                  <Form.Item name="pumpStationId" label="泵站参数">
                     <Select<number>
                       allowClear
                       placeholder="带入泵站参数"
-                      onChange={(value) => value && handleStationChange(value)}
+                      onChange={(value) => {
+                        if (value) {
+                          handleStationChange(value);
+                          return;
+                        }
+                        form.setFieldValue('pumpStationId', undefined);
+                        setResult(null);
+                      }}
                       options={stations.map((station) => ({ value: station.id, label: station.name }))}
                     />
                   </Form.Item>
@@ -228,7 +282,7 @@ export default function Optimization() {
                 <Col {...FORM_ITEM_SPAN}><Form.Item name="endAltitude" label="终点高程(m)" rules={[{ required: true }]}><InputNumber precision={2} style={{ width: '100%' }} /></Form.Item></Col>
               </Row>
               <Row gutter={16}>
-                <Col {...FORM_ITEM_SPAN}><Form.Item name="inletPressure" label="首站进站压力" rules={[{ required: true }]}><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
+                <Col {...FORM_ITEM_SPAN}><Form.Item name="inletPressure" label="首站进站压头(m)" rules={[{ required: true }]}><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
                 <Col {...FORM_ITEM_SPAN}><Form.Item name="pump480Head" label="ZMI480 扬程(m)" rules={[{ required: true }]}><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
                 <Col {...FORM_ITEM_SPAN}><Form.Item name="pump375Head" label="ZMI375 扬程(m)" rules={[{ required: true }]}><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
               </Row>
@@ -263,7 +317,7 @@ export default function Optimization() {
                 <Descriptions column={2} bordered style={{ marginTop: 16 }}>
                   <Descriptions.Item label="总扬程">{result.totalHead}</Descriptions.Item>
                   <Descriptions.Item label="总压降">{result.totalPressureDrop}</Descriptions.Item>
-                  <Descriptions.Item label="末站进站压力">{result.endStationInPressure}</Descriptions.Item>
+                  <Descriptions.Item label="末站进站压头">{result.endStationInPressure}</Descriptions.Item>
                   <Descriptions.Item label="预计总成本">{result.totalCost}</Descriptions.Item>
                   <Descriptions.Item label="推荐说明" span={2}>{result.description}</Descriptions.Item>
                 </Descriptions>

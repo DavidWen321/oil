@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Button,
   Card,
@@ -56,7 +56,7 @@ export default function HydraulicAnalysis() {
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [result, setResult] = useState<HydraulicAnalysisResult | null>(null);
 
-  const loadBaseData = async () => {
+  const loadBaseData = useCallback(async () => {
     const [projectRes, oilRes, stationRes] = await Promise.all([
       projectApi.list(),
       oilPropertyApi.list(),
@@ -71,23 +71,40 @@ export default function HydraulicAnalysis() {
     if (projectList.length > 0) {
       setSelectedProjectId(projectList[0].proId);
     }
-  };
+  }, []);
 
-  const loadPipelines = async (projectId: number) => {
+  const loadPipelines = useCallback(async (projectId: number) => {
     const response = await pipelineApi.listByProject(projectId);
-    setPipelines(response.data ?? []);
-  };
+    const pipelineList = response.data ?? [];
+    setPipelines(pipelineList);
+
+    if (pipelineList.length > 0) {
+      const [firstPipeline] = pipelineList;
+      form.setFieldsValue({
+        pipelineId: firstPipeline.id,
+        length: firstPipeline.length,
+        diameter: firstPipeline.diameter,
+        thickness: firstPipeline.thickness,
+        roughness: firstPipeline.roughness ?? INITIAL_VALUES.roughness,
+        startAltitude: firstPipeline.startAltitude,
+        endAltitude: firstPipeline.endAltitude,
+      });
+    } else {
+      form.setFieldValue('pipelineId', undefined);
+    }
+  }, [form]);
 
   useEffect(() => {
     form.setFieldsValue(INITIAL_VALUES);
     void loadBaseData();
-  }, [form]);
+  }, [form, loadBaseData]);
 
   useEffect(() => {
     if (selectedProjectId) {
+      setResult(null);
       void loadPipelines(selectedProjectId);
     }
-  }, [selectedProjectId]);
+  }, [loadPipelines, selectedProjectId]);
 
   const handlePipelineChange = (pipelineId: number) => {
     const pipeline = pipelines.find((item) => item.id === pipelineId);
@@ -104,6 +121,7 @@ export default function HydraulicAnalysis() {
       startAltitude: pipeline.startAltitude,
       endAltitude: pipeline.endAltitude,
     });
+    setResult(null);
   };
 
   const handleOilChange = (oilId: number) => {
@@ -117,6 +135,7 @@ export default function HydraulicAnalysis() {
       density: oil.density,
       viscosity: oil.viscosity,
     });
+    setResult(null);
   };
 
   const handleStationChange = (stationId: number) => {
@@ -130,6 +149,7 @@ export default function HydraulicAnalysis() {
       pump480Head: station.zmi480Lift,
       pump375Head: station.zmi375Lift,
     });
+    setResult(null);
   };
 
   const handleSubmit = async () => {
@@ -157,7 +177,7 @@ export default function HydraulicAnalysis() {
       },
       yAxis: {
         type: 'value',
-        name: '压力 / 扬程',
+        name: '压头 / 扬程 (m)',
       },
       series: [
         {
@@ -179,7 +199,7 @@ export default function HydraulicAnalysis() {
         <div className={styles.paramPanel}>
           <div className="page-header">
             <h2><ThunderboltOutlined /> 水力分析</h2>
-            <p>支持从项目基础数据自动带入参数，也支持手工修正后直接计算。</p>
+            <p>支持从项目基础数据自动带入参数。压头与扬程单位均为 m，密度字段当前主要用于油品记录。</p>
           </div>
 
           <Card title="参数输入" className="page-card">
@@ -229,7 +249,7 @@ export default function HydraulicAnalysis() {
 
               <Row gutter={16}>
                 <Col {...FORM_ITEM_SPAN}><Form.Item name="flowRate" label="流量(m³/h)" rules={[{ required: true }]}><InputNumber min={0} style={{ width: '100%' }} /></Form.Item></Col>
-                <Col {...FORM_ITEM_SPAN}><Form.Item name="density" label="密度(kg/m³)" rules={[{ required: true }]}><InputNumber min={0} style={{ width: '100%' }} /></Form.Item></Col>
+                <Col {...FORM_ITEM_SPAN}><Form.Item name="density" label="密度(kg/m³)"><InputNumber min={0} style={{ width: '100%' }} /></Form.Item></Col>
                 <Col {...FORM_ITEM_SPAN}><Form.Item name="viscosity" label="运动粘度(m²/s)" rules={[{ required: true }]}><InputNumber min={0} precision={8} style={{ width: '100%' }} /></Form.Item></Col>
               </Row>
               <Row gutter={16}>
@@ -243,7 +263,7 @@ export default function HydraulicAnalysis() {
                 <Col {...FORM_ITEM_SPAN}><Form.Item name="endAltitude" label="终点高程(m)" rules={[{ required: true }]}><InputNumber precision={2} style={{ width: '100%' }} /></Form.Item></Col>
               </Row>
               <Row gutter={16}>
-                <Col {...FORM_ITEM_SPAN}><Form.Item name="inletPressure" label="首站进站压力" rules={[{ required: true }]}><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
+                <Col {...FORM_ITEM_SPAN}><Form.Item name="inletPressure" label="首站进站压头(m)" rules={[{ required: true }]}><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
                 <Col {...FORM_ITEM_SPAN}><Form.Item name="pump480Num" label="ZMI480 台数" rules={[{ required: true }]}><InputNumber min={0} precision={0} style={{ width: '100%' }} /></Form.Item></Col>
                 <Col {...FORM_ITEM_SPAN}><Form.Item name="pump375Num" label="ZMI375 台数" rules={[{ required: true }]}><InputNumber min={0} precision={0} style={{ width: '100%' }} /></Form.Item></Col>
               </Row>
@@ -272,11 +292,11 @@ export default function HydraulicAnalysis() {
                   <Descriptions.Item label="摩阻损失">{result.frictionHeadLoss} m</Descriptions.Item>
                   <Descriptions.Item label="水力坡降">{result.hydraulicSlope}</Descriptions.Item>
                   <Descriptions.Item label="总扬程">{result.totalHead} m</Descriptions.Item>
-                  <Descriptions.Item label="首站出站压力">{result.firstStationOutPressure}</Descriptions.Item>
-                  <Descriptions.Item label="末站进站压力" span={2}>{result.endStationInPressure}</Descriptions.Item>
+                  <Descriptions.Item label="首站出站压头">{result.firstStationOutPressure}</Descriptions.Item>
+                  <Descriptions.Item label="末站进站压头" span={2}>{result.endStationInPressure}</Descriptions.Item>
                 </Descriptions>
                 <Divider />
-                <div>末站进站压力大于 0 时表示当前工况满足基本运行约束。</div>
+                <div>末站进站压头大于 0 时表示当前工况满足基本运行约束。</div>
               </Card>
 
               <Card title="压力变化趋势" className="page-card">

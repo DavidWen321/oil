@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Button,
   Card,
@@ -37,7 +37,7 @@ type SensitivityFormValues = HydraulicAnalysisParams & {
 };
 
 const INITIAL_VALUES: SensitivityFormValues = {
-  variableType: 'flowRate',
+  variableType: 'FLOW_RATE',
   flowRate: 850,
   density: 860,
   viscosity: 0.00002,
@@ -66,7 +66,7 @@ export default function SensitivityAnalysis() {
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [result, setResult] = useState<SensitivityResult | null>(null);
 
-  const loadBaseData = async () => {
+  const loadBaseData = useCallback(async () => {
     const [projectRes, oilRes, stationRes, variableRes] = await Promise.all([
       projectApi.list(),
       oilPropertyApi.list(),
@@ -88,23 +88,40 @@ export default function SensitivityAnalysis() {
     if (variableList.length > 0) {
       form.setFieldValue('variableType', variableList[0].code);
     }
-  };
+  }, [form]);
 
-  const loadPipelines = async (projectId: number) => {
+  const loadPipelines = useCallback(async (projectId: number) => {
     const response = await pipelineApi.listByProject(projectId);
-    setPipelines(response.data ?? []);
-  };
+    const pipelineList = response.data ?? [];
+    setPipelines(pipelineList);
+
+    if (pipelineList.length > 0) {
+      const [firstPipeline] = pipelineList;
+      form.setFieldsValue({
+        pipelineId: firstPipeline.id,
+        length: firstPipeline.length,
+        diameter: firstPipeline.diameter,
+        thickness: firstPipeline.thickness,
+        roughness: firstPipeline.roughness ?? INITIAL_VALUES.roughness,
+        startAltitude: firstPipeline.startAltitude,
+        endAltitude: firstPipeline.endAltitude,
+      });
+    } else {
+      form.setFieldValue('pipelineId', undefined);
+    }
+  }, [form]);
 
   useEffect(() => {
     form.setFieldsValue(INITIAL_VALUES);
     void loadBaseData();
-  }, [form]);
+  }, [form, loadBaseData]);
 
   useEffect(() => {
     if (selectedProjectId) {
+      setResult(null);
       void loadPipelines(selectedProjectId);
     }
-  }, [selectedProjectId]);
+  }, [loadPipelines, selectedProjectId]);
 
   const handlePipelineChange = (pipelineId: number) => {
     const pipeline = pipelines.find((item) => item.id === pipelineId);
@@ -121,6 +138,7 @@ export default function SensitivityAnalysis() {
       startAltitude: pipeline.startAltitude,
       endAltitude: pipeline.endAltitude,
     });
+    setResult(null);
   };
 
   const handleOilChange = (oilId: number) => {
@@ -134,6 +152,7 @@ export default function SensitivityAnalysis() {
       density: oil.density,
       viscosity: oil.viscosity,
     });
+    setResult(null);
   };
 
   const handleStationChange = (stationId: number) => {
@@ -147,6 +166,7 @@ export default function SensitivityAnalysis() {
       pump480Head: station.zmi480Lift,
       pump375Head: station.zmi375Lift,
     });
+    setResult(null);
   };
 
   const handleSubmit = async () => {
@@ -248,7 +268,7 @@ export default function SensitivityAnalysis() {
         <div className={styles.paramPanel}>
           <div className="page-header">
             <h2><BarChartOutlined /> 敏感性分析</h2>
-            <p>直接调用后端敏感性分析引擎，评估关键参数变化对输送工况的影响。</p>
+            <p>直接调用后端敏感性分析引擎，评估关键参数变化对输送工况的影响。压头与扬程单位均为 m，当前仅展示已实现变量。</p>
           </div>
 
           <Card title="分析参数" className="page-card">
@@ -313,7 +333,7 @@ export default function SensitivityAnalysis() {
 
               <Row gutter={16}>
                 <Col {...FORM_ITEM_SPAN}><Form.Item name="flowRate" label="流量(m³/h)" rules={[{ required: true }]}><InputNumber min={0} style={{ width: '100%' }} /></Form.Item></Col>
-                <Col {...FORM_ITEM_SPAN}><Form.Item name="density" label="密度(kg/m³)" rules={[{ required: true }]}><InputNumber min={0} style={{ width: '100%' }} /></Form.Item></Col>
+                <Col {...FORM_ITEM_SPAN}><Form.Item name="density" label="密度(kg/m³)"><InputNumber min={0} style={{ width: '100%' }} /></Form.Item></Col>
                 <Col {...FORM_ITEM_SPAN}><Form.Item name="viscosity" label="运动粘度(m²/s)" rules={[{ required: true }]}><InputNumber min={0} precision={8} style={{ width: '100%' }} /></Form.Item></Col>
               </Row>
               <Row gutter={16}>
@@ -327,7 +347,7 @@ export default function SensitivityAnalysis() {
                 <Col {...FORM_ITEM_SPAN}><Form.Item name="endAltitude" label="终点高程(m)" rules={[{ required: true }]}><InputNumber precision={2} style={{ width: '100%' }} /></Form.Item></Col>
               </Row>
               <Row gutter={16}>
-                <Col {...FORM_ITEM_SPAN}><Form.Item name="inletPressure" label="首站进站压力" rules={[{ required: true }]}><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
+                <Col {...FORM_ITEM_SPAN}><Form.Item name="inletPressure" label="首站进站压头(m)" rules={[{ required: true }]}><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
                 <Col {...FORM_ITEM_SPAN}><Form.Item name="pump480Num" label="ZMI480 台数" rules={[{ required: true }]}><InputNumber min={0} precision={0} style={{ width: '100%' }} /></Form.Item></Col>
                 <Col {...FORM_ITEM_SPAN}><Form.Item name="pump375Num" label="ZMI375 台数" rules={[{ required: true }]}><InputNumber min={0} precision={0} style={{ width: '100%' }} /></Form.Item></Col>
               </Row>
@@ -348,12 +368,12 @@ export default function SensitivityAnalysis() {
               <Card
                 title="分析结论"
                 className="page-card"
-                extra={<Tag color={activeVariableResult.maxImpactPercent >= 20 ? 'warning' : 'success'}>{activeVariableResult.trend}</Tag>}
+                extra={<Tag color={activeVariableResult.maxImpactPercent >= 20 ? 'warning' : 'success'}>{activeVariableResult.trend === 'POSITIVE' ? '正相关' : activeVariableResult.trend === 'NEGATIVE' ? '负相关' : activeVariableResult.trend === 'MIXED' ? '混合' : '未知'}</Tag>}
               >
                 <Descriptions column={2} bordered>
                   <Descriptions.Item label="基准流态">{result.baseResult.flowRegime}</Descriptions.Item>
                   <Descriptions.Item label="基准雷诺数">{result.baseResult.reynoldsNumber}</Descriptions.Item>
-                  <Descriptions.Item label="基准末站压力">{result.baseResult.endStationInPressure}</Descriptions.Item>
+                  <Descriptions.Item label="基准末站进站压头">{result.baseResult.endStationInPressure}</Descriptions.Item>
                   <Descriptions.Item label="敏感系数">{activeVariableResult.sensitivityCoefficient}</Descriptions.Item>
                   <Descriptions.Item label="最大影响幅度">{activeVariableResult.maxImpactPercent}%</Descriptions.Item>
                   <Descriptions.Item label="总计算次数">{result.totalCalculations}</Descriptions.Item>
