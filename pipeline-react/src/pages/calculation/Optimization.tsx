@@ -20,6 +20,8 @@ import type { OilProperty, OptimizationParams, OptimizationResult, Pipeline, Pro
 import AnimatedPage from '../../components/common/AnimatedPage';
 import styles from './Optimization.module.css';
 
+const FORM_ITEM_SPAN = { xs: 24, md: 12, xl: 8 } as const;
+
 const INITIAL_VALUES: OptimizationParams = {
   flowRate: 850,
   density: 860,
@@ -166,7 +168,7 @@ export default function Optimization() {
           </div>
 
           <Card title="优化参数" className="page-card">
-            <Form<OptimizationParams> form={form} layout="vertical" onFinish={() => void handleSubmit()}>
+            <Form<OptimizationParams> form={form} layout="vertical" className={styles.paramForm} onFinish={() => void handleSubmit()}>
               <Row gutter={16}>
                 <Col span={12}>
                   <Form.Item label="所属项目">
@@ -211,33 +213,33 @@ export default function Optimization() {
               </Row>
 
               <Row gutter={16}>
-                <Col span={8}><Form.Item name="flowRate" label="流量(m³/h)" rules={[{ required: true }]}><InputNumber min={0} style={{ width: '100%' }} /></Form.Item></Col>
-                <Col span={8}><Form.Item name="density" label="密度(kg/m³)" rules={[{ required: true }]}><InputNumber min={0} style={{ width: '100%' }} /></Form.Item></Col>
-                <Col span={8}><Form.Item name="viscosity" label="运动粘度(m²/s)" rules={[{ required: true }]}><InputNumber min={0} precision={8} style={{ width: '100%' }} /></Form.Item></Col>
+                <Col {...FORM_ITEM_SPAN}><Form.Item name="flowRate" label="流量(m³/h)" rules={[{ required: true }]}><InputNumber min={0} style={{ width: '100%' }} /></Form.Item></Col>
+                <Col {...FORM_ITEM_SPAN}><Form.Item name="density" label="密度(kg/m³)" rules={[{ required: true }]}><InputNumber min={0} style={{ width: '100%' }} /></Form.Item></Col>
+                <Col {...FORM_ITEM_SPAN}><Form.Item name="viscosity" label="运动粘度(m²/s)" rules={[{ required: true }]}><InputNumber min={0} precision={8} style={{ width: '100%' }} /></Form.Item></Col>
               </Row>
               <Row gutter={16}>
-                <Col span={8}><Form.Item name="length" label="长度(km)" rules={[{ required: true }]}><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
-                <Col span={8}><Form.Item name="diameter" label="外径(mm)" rules={[{ required: true }]}><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
-                <Col span={8}><Form.Item name="thickness" label="壁厚(mm)" rules={[{ required: true }]}><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
+                <Col {...FORM_ITEM_SPAN}><Form.Item name="length" label="长度(km)" rules={[{ required: true }]}><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
+                <Col {...FORM_ITEM_SPAN}><Form.Item name="diameter" label="外径(mm)" rules={[{ required: true }]}><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
+                <Col {...FORM_ITEM_SPAN}><Form.Item name="thickness" label="壁厚(mm)" rules={[{ required: true }]}><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
               </Row>
               <Row gutter={16}>
-                <Col span={8}><Form.Item name="roughness" label="粗糙度(m)" rules={[{ required: true }]}><InputNumber min={0} precision={6} style={{ width: '100%' }} /></Form.Item></Col>
-                <Col span={8}><Form.Item name="startAltitude" label="起点高程(m)" rules={[{ required: true }]}><InputNumber precision={2} style={{ width: '100%' }} /></Form.Item></Col>
-                <Col span={8}><Form.Item name="endAltitude" label="终点高程(m)" rules={[{ required: true }]}><InputNumber precision={2} style={{ width: '100%' }} /></Form.Item></Col>
+                <Col {...FORM_ITEM_SPAN}><Form.Item name="roughness" label="粗糙度(m)" rules={[{ required: true }]}><InputNumber min={0} precision={6} style={{ width: '100%' }} /></Form.Item></Col>
+                <Col {...FORM_ITEM_SPAN}><Form.Item name="startAltitude" label="起点高程(m)" rules={[{ required: true }]}><InputNumber precision={2} style={{ width: '100%' }} /></Form.Item></Col>
+                <Col {...FORM_ITEM_SPAN}><Form.Item name="endAltitude" label="终点高程(m)" rules={[{ required: true }]}><InputNumber precision={2} style={{ width: '100%' }} /></Form.Item></Col>
               </Row>
               <Row gutter={16}>
-                <Col span={8}><Form.Item name="inletPressure" label="首站进站压力" rules={[{ required: true }]}><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
-                <Col span={8}><Form.Item name="pump480Head" label="ZMI480 扬程(m)" rules={[{ required: true }]}><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
-                <Col span={8}><Form.Item name="pump375Head" label="ZMI375 扬程(m)" rules={[{ required: true }]}><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
+                <Col {...FORM_ITEM_SPAN}><Form.Item name="inletPressure" label="首站进站压力" rules={[{ required: true }]}><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
+                <Col {...FORM_ITEM_SPAN}><Form.Item name="pump480Head" label="ZMI480 扬程(m)" rules={[{ required: true }]}><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
+                <Col {...FORM_ITEM_SPAN}><Form.Item name="pump375Head" label="ZMI375 扬程(m)" rules={[{ required: true }]}><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
               </Row>
               <Row gutter={16}>
-                <Col span={8}><Form.Item name="pumpEfficiency" label="泵效率(0-1)"><InputNumber min={0} max={1} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
-                <Col span={8}><Form.Item name="motorEfficiency" label="电机效率(0-1)"><InputNumber min={0} max={1} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
-                <Col span={8}><Form.Item name="workingDays" label="年工作天数"><InputNumber min={1} precision={0} style={{ width: '100%' }} /></Form.Item></Col>
+                <Col {...FORM_ITEM_SPAN}><Form.Item name="pumpEfficiency" label="泵效率(0-1)"><InputNumber min={0} max={1} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
+                <Col {...FORM_ITEM_SPAN}><Form.Item name="motorEfficiency" label="电机效率(0-1)"><InputNumber min={0} max={1} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
+                <Col {...FORM_ITEM_SPAN}><Form.Item name="workingDays" label="年工作天数"><InputNumber min={1} precision={0} style={{ width: '100%' }} /></Form.Item></Col>
               </Row>
-              <Form.Item name="electricityPrice" label="电价(元/kWh)">
-                <InputNumber min={0} precision={2} style={{ width: '100%' }} />
-              </Form.Item>
+              <Row gutter={16}>
+                <Col span={24}><Form.Item name="electricityPrice" label="电价(元/kWh)"><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
+              </Row>
               <Button type="primary" htmlType="submit" loading={loading} icon={<CalculatorOutlined />} block>
                 开始优化
               </Button>
