@@ -12,8 +12,10 @@ import com.pipeline.calculation.domain.comparison.*;
 import com.pipeline.calculation.domain.comparison.ComparisonRequest.PumpConfig;
 import com.pipeline.calculation.domain.comparison.ComparisonRequest.SchemeData;
 import com.pipeline.calculation.domain.comparison.ComparisonResult.*;
+import com.pipeline.calculation.mapper.PipelineLookupMapper;
 import com.pipeline.calculation.service.ISchemeComparisonService;
 
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -28,7 +30,10 @@ import lombok.extern.slf4j.Slf4j;
  */
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class SchemeComparisonServiceImpl implements ISchemeComparisonService {
+
+    private static final BigDecimal DEFAULT_PIPELINE_LENGTH = new BigDecimal("100");
 
     /**
      * 碳排放因子 (kgCO2/kWh) - 国家电网平均排放因子
@@ -54,6 +59,8 @@ public class SchemeComparisonServiceImpl implements ISchemeComparisonService {
      * 默认运行时间 (小时/天)
      */
     private static final BigDecimal DEFAULT_OPERATING_HOURS = new BigDecimal("24");
+
+    private final PipelineLookupMapper pipelineLookupMapper;
 
     @Override
     public ComparisonResult compare(ComparisonRequest request) {
@@ -122,6 +129,7 @@ public class SchemeComparisonServiceImpl implements ISchemeComparisonService {
                 ? scheme.getDailyOperatingHours() : DEFAULT_OPERATING_HOURS;
         BigDecimal electricityPrice = scheme.getElectricityPrice() != null
                 ? scheme.getElectricityPrice() : DEFAULT_ELECTRICITY_PRICE;
+        BigDecimal pipelineLength = resolvePipelineLength(request.getPipelineId());
 
         // 计算总功率
         BigDecimal totalPower = calculateTotalPower(scheme.getPumpConfigs());
@@ -138,7 +146,6 @@ public class SchemeComparisonServiceImpl implements ISchemeComparisonService {
 
         // 计算单位输量能耗 (kWh/t·km)
         // 假设管道长度100km（实际应从数据库获取）
-        BigDecimal pipelineLength = new BigDecimal("100");
         BigDecimal density = scheme.getOilDensity() != null ? scheme.getOilDensity() : new BigDecimal("850");
         BigDecimal dailyThroughput = scheme.getFlowRate().multiply(operatingHours).multiply(density)
                 .divide(new BigDecimal("1000"), 4, RoundingMode.HALF_UP); // 转换为吨
@@ -234,6 +241,20 @@ public class SchemeComparisonServiceImpl implements ISchemeComparisonService {
     /**
      * 计算相对评分
      */
+    private BigDecimal resolvePipelineLength(Long pipelineId) {
+        if (pipelineId == null) {
+            return DEFAULT_PIPELINE_LENGTH;
+        }
+
+        BigDecimal pipelineLength = pipelineLookupMapper.selectLengthById(pipelineId);
+        if (pipelineLength == null || pipelineLength.compareTo(BigDecimal.ZERO) <= 0) {
+            log.warn("未查询到有效管道长度，使用默认值 {} km，pipelineId={}", DEFAULT_PIPELINE_LENGTH, pipelineId);
+            return DEFAULT_PIPELINE_LENGTH;
+        }
+
+        return pipelineLength;
+    }
+
     private void calculateRelativeScores(List<SchemeAnalysis> analyses) {
         if (analyses.isEmpty()) return;
 

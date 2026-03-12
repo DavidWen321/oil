@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Button,
   Card,
@@ -81,6 +81,13 @@ export default function RealtimeMonitor() {
   const [alarms, setAlarms] = useState<AlarmMessage[]>([]);
   const [selectedAlarm, setSelectedAlarm] = useState<AlarmMessage | null>(null);
 
+  const resetMonitorState = useCallback(() => {
+    setCurrentData(null);
+    setHistory([]);
+    setAlarms([]);
+    setSelectedAlarm(null);
+  }, []);
+
   const applyDataPoint = useCallback((data: MonitorDataPoint) => {
     setCurrentData(data);
     setHistory((prev) => dedupeHistory(prev, data));
@@ -89,6 +96,20 @@ export default function RealtimeMonitor() {
   const applyAlarm = useCallback((alarm: AlarmMessage) => {
     setAlarms((prev) => reconcileAlarm(prev, alarm));
   }, []);
+
+  const stopSimulationIfNeeded = useCallback(async (pipelineId: number | null) => {
+    if (!running || pipelineId == null) {
+      return;
+    }
+
+    try {
+      await monitorApi.stopSimulation(pipelineId);
+    } catch {
+      message.warning('旧的监控模拟停止失败，已切换当前视图');
+    } finally {
+      setRunning(false);
+    }
+  }, [running]);
 
   const { connected } = useWebSocket({
     pipelineId: selectedPipelineId,
@@ -130,16 +151,6 @@ export default function RealtimeMonitor() {
     }
   };
 
-  const loadPipelines = async (projectId: number) => {
-    const response = await pipelineApi.listByProject(projectId);
-    const pipelineList = response.data ?? [];
-    setPipelines(pipelineList);
-    setSelectedPipelineId(pipelineList.length > 0 ? pipelineList[0].id : null);
-    setCurrentData(null);
-    setHistory([]);
-    setAlarms([]);
-  };
-
   const fetchSnapshot = async (pipelineId: number) => {
     const [dataRes, alarmRes] = await Promise.all([
       monitorApi.getCurrentData(pipelineId).catch(() => null),
@@ -156,6 +167,23 @@ export default function RealtimeMonitor() {
     setAlarms(nextAlarms);
   };
 
+  const switchPipeline = useCallback(async (nextPipelineId: number | null) => {
+    if (selectedPipelineId === nextPipelineId) {
+      return;
+    }
+
+    await stopSimulationIfNeeded(selectedPipelineId);
+    setSelectedPipelineId(nextPipelineId);
+    resetMonitorState();
+  }, [resetMonitorState, selectedPipelineId, stopSimulationIfNeeded]);
+
+  const loadPipelines = useCallback(async (projectId: number) => {
+    const response = await pipelineApi.listByProject(projectId);
+    const pipelineList = response.data ?? [];
+    setPipelines(pipelineList);
+    await switchPipeline(pipelineList.length > 0 ? pipelineList[0].id : null);
+  }, [switchPipeline]);
+
   useEffect(() => {
     void loadBaseData();
   }, []);
@@ -164,7 +192,7 @@ export default function RealtimeMonitor() {
     if (selectedProjectId) {
       void loadPipelines(selectedProjectId);
     }
-  }, [selectedProjectId]);
+  }, [loadPipelines, selectedProjectId]);
 
   useEffect(() => {
     if (selectedPipelineId) {
@@ -207,7 +235,7 @@ export default function RealtimeMonitor() {
       window.setTimeout(() => {
         void fetchSnapshot(selectedPipelineId);
       }, 600);
-      message.success(connected ? '监控推送已启动' : '监控模拟已启动，当前使用接口兜底刷新');
+      message.success(connected ? '监控推送已启动' : '监控模拟已启动，当前使用接口轮询兜底刷新');
     } finally {
       setLoading(false);
     }
@@ -392,7 +420,7 @@ export default function RealtimeMonitor() {
     <AnimatedPage>
       <div className="page-header">
         <h2><DashboardOutlined /> 实时监控</h2>
-        <p>已升级为 WebSocket 推送优先、接口兜底的实时监控链路，支持异常场景注入与告警处置。</p>
+        <p>支持 WebSocket 推送优先、接口轮询兜底的实时监控链路，并可注入异常场景进行联调。</p>
       </div>
 
       <Card className="page-card" style={{ marginBottom: 16 }}>
@@ -402,7 +430,10 @@ export default function RealtimeMonitor() {
               style={{ width: '100%' }}
               value={selectedProjectId ?? undefined}
               placeholder="选择项目"
-              onChange={setSelectedProjectId}
+              onChange={(value) => {
+                setSelectedProjectId(value);
+                setSelectedAlarm(null);
+              }}
               options={projects.map((project) => ({ value: project.proId, label: project.name }))}
             />
           </Col>
@@ -411,7 +442,9 @@ export default function RealtimeMonitor() {
               style={{ width: '100%' }}
               value={selectedPipelineId ?? undefined}
               placeholder="选择管道"
-              onChange={setSelectedPipelineId}
+              onChange={(value) => {
+                void switchPipeline(value);
+              }}
               options={pipelines.map((pipeline) => ({ value: pipeline.id, label: pipeline.name }))}
             />
           </Col>
@@ -545,4 +578,3 @@ export default function RealtimeMonitor() {
     </AnimatedPage>
   );
 }
-

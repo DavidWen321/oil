@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Button,
   Card,
@@ -72,7 +72,7 @@ export default function CarbonCalculation() {
   const [industryAverage, setIndustryAverage] = useState<number | null>(null);
   const [result, setResult] = useState<CarbonCalculationResult | null>(null);
 
-  const loadBaseData = async () => {
+  const loadBaseData = useCallback(async () => {
     const [projectRes, factorsRes, averageRes] = await Promise.all([
       projectApi.list(),
       carbonApi.getEmissionFactors(),
@@ -88,33 +88,47 @@ export default function CarbonCalculation() {
       setSelectedProjectId(projectList[0].proId);
       form.setFieldValue('projectId', projectList[0].proId);
     }
-  };
+  }, [form]);
 
-  const loadPipelines = async (projectId: number) => {
+  const loadPipelines = useCallback(async (projectId: number) => {
     const response = await pipelineApi.listByProject(projectId);
     const pipelineList = response.data ?? [];
     setPipelines(pipelineList);
     if (pipelineList.length > 0) {
       form.setFieldValue('pipelineId', pipelineList[0].id);
       form.setFieldValue('pipelineLength', pipelineList[0].length);
+    } else {
+      form.setFieldValue('pipelineId', undefined);
+      form.setFieldValue('pipelineLength', undefined);
     }
-  };
+    setResult(null);
+  }, [form]);
 
   useEffect(() => {
     form.setFieldsValue(INITIAL_VALUES);
     void loadBaseData();
-  }, [form]);
+  }, [form, loadBaseData]);
 
   useEffect(() => {
     if (selectedProjectId) {
       void loadPipelines(selectedProjectId);
     }
-  }, [selectedProjectId]);
+  }, [loadPipelines, selectedProjectId]);
+
+  const handlePipelineChange = (pipelineId?: number) => {
+    const pipeline = pipelines.find((item) => item.id === pipelineId);
+    form.setFieldsValue({
+      pipelineId,
+      pipelineLength: pipeline?.length,
+    });
+    setResult(null);
+  };
 
   const handleSubmit = async () => {
     const values = await form.validateFields();
     const payload: CarbonCalculationRequest = {
       ...values,
+      projectId: values.projectId ?? selectedProjectId ?? undefined,
       startDate: values.dateRange[0].format('YYYY-MM-DD'),
       endDate: values.dateRange[1].format('YYYY-MM-DD'),
     };
@@ -219,12 +233,11 @@ export default function CarbonCalculation() {
             <Form<CarbonFormValues> form={form} layout="vertical" onFinish={() => void handleSubmit()}>
               <Row gutter={16}>
                 <Col span={12}>
-                  <Form.Item label="所属项目">
+                  <Form.Item name="projectId" label="所属项目" rules={[{ required: true, message: '请选择项目' }]}>
                     <Select<number>
-                      value={selectedProjectId ?? undefined}
                       onChange={(value) => {
                         setSelectedProjectId(value);
-                        form.setFieldValue('projectId', value);
+                        setResult(null);
                       }}
                       options={projects.map((project) => ({ value: project.proId, label: project.name }))}
                     />
@@ -235,6 +248,7 @@ export default function CarbonCalculation() {
                     <Select<number>
                       allowClear
                       placeholder="选择管道"
+                      onChange={handlePipelineChange}
                       options={pipelines.map((pipeline) => ({ value: pipeline.id, label: pipeline.name }))}
                     />
                   </Form.Item>
@@ -356,3 +370,4 @@ export default function CarbonCalculation() {
     </AnimatedPage>
   );
 }
+

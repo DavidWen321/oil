@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Button,
   Card,
@@ -100,7 +100,7 @@ export default function SchemeComparison() {
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [result, setResult] = useState<ComparisonResult | null>(null);
 
-  const loadBaseData = async () => {
+  const loadBaseData = useCallback(async () => {
     const [projectRes, dimensionRes] = await Promise.all([
       projectApi.list(),
       comparisonApi.getDimensions(),
@@ -119,32 +119,35 @@ export default function SchemeComparison() {
     if (dimensionList.length > 0) {
       form.setFieldValue('comparisonDimensions', dimensionList);
     }
-  };
+  }, [form]);
 
-  const loadPipelines = async (projectId: number) => {
+  const loadPipelines = useCallback(async (projectId: number) => {
     const response = await pipelineApi.listByProject(projectId);
     const pipelineList = response.data ?? [];
     setPipelines(pipelineList);
     if (pipelineList.length > 0) {
       form.setFieldValue('pipelineId', pipelineList[0].id);
+    } else {
+      form.setFieldValue('pipelineId', undefined);
     }
-  };
+    setResult(null);
+  }, [form]);
 
   useEffect(() => {
     form.setFieldsValue(INITIAL_VALUES);
     void loadBaseData();
-  }, [form]);
+  }, [form, loadBaseData]);
 
   useEffect(() => {
     if (selectedProjectId) {
       void loadPipelines(selectedProjectId);
     }
-  }, [selectedProjectId]);
+  }, [loadPipelines, selectedProjectId]);
 
   const handleSubmit = async () => {
     const values = await form.validateFields();
     const payload: ComparisonRequest & { comparisonDimensions?: string[] } = {
-      projectId: values.projectId,
+      projectId: values.projectId ?? selectedProjectId ?? undefined,
       pipelineId: values.pipelineId,
       comparisonDimensions: values.comparisonDimensions,
       schemes: values.schemes.map((scheme) => ({
@@ -278,12 +281,11 @@ export default function SchemeComparison() {
             <Form<ComparisonFormValues> form={form} layout="vertical" onFinish={() => void handleSubmit()}>
               <Row gutter={16}>
                 <Col span={12}>
-                  <Form.Item label="所属项目">
+                  <Form.Item name="projectId" label="所属项目" rules={[{ required: true, message: '请选择项目' }]}>
                     <Select<number>
-                      value={selectedProjectId ?? undefined}
                       onChange={(value) => {
                         setSelectedProjectId(value);
-                        form.setFieldValue('projectId', value);
+                        setResult(null);
                       }}
                       options={projects.map((project) => ({ value: project.proId, label: project.name }))}
                     />
@@ -293,6 +295,7 @@ export default function SchemeComparison() {
                   <Form.Item name="pipelineId" label="管道" rules={[{ required: true, message: '请选择管道' }]}>
                     <Select<number>
                       placeholder="选择管道"
+                      onChange={() => setResult(null)}
                       options={pipelines.map((pipeline) => ({ value: pipeline.id, label: pipeline.name }))}
                     />
                   </Form.Item>
@@ -445,3 +448,4 @@ function AlertCard({ conclusion }: { conclusion: string }) {
     </Card>
   );
 }
+

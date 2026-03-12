@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Button,
@@ -96,7 +96,7 @@ export default function FaultDiagnosis() {
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [result, setResult] = useState<DiagnosisResult | null>(null);
 
-  const loadBaseData = async () => {
+  const loadBaseData = useCallback(async () => {
     const [projectRes, stationRes] = await Promise.all([
       projectApi.list(),
       pumpStationApi.list(),
@@ -109,28 +109,31 @@ export default function FaultDiagnosis() {
     if (projectList.length > 0) {
       setSelectedProjectId(projectList[0].proId);
     }
-  };
+  }, []);
 
-  const loadPipelines = async (projectId: number) => {
+  const loadPipelines = useCallback(async (projectId: number) => {
     const response = await pipelineApi.listByProject(projectId);
     const pipelineList = response.data ?? [];
     setPipelines(pipelineList);
     if (pipelineList.length > 0) {
       form.setFieldValue('pipelineId', pipelineList[0].id);
+    } else {
+      form.setFieldValue('pipelineId', undefined);
     }
-  };
+    setResult(null);
+  }, [form]);
 
   useEffect(() => {
     form.setFieldsValue(INITIAL_VALUES);
     void loadBaseData();
-  }, [form]);
+  }, [form, loadBaseData]);
 
   useEffect(() => {
     if (selectedProjectId) {
       form.setFieldValue('projectId', selectedProjectId);
       void loadPipelines(selectedProjectId);
     }
-  }, [form, selectedProjectId]);
+  }, [form, loadPipelines, selectedProjectId]);
 
   const handlePipelineChange = (pipelineId: number) => {
     const pipeline = pipelines.find((item) => item.id === pipelineId);
@@ -140,8 +143,8 @@ export default function FaultDiagnosis() {
 
     form.setFieldsValue({
       pipelineId,
-      designFlowRate: pipeline.throughput,
     });
+    setResult(null);
   };
 
   const buildPayload = async (): Promise<DiagnosisRequest> => {
@@ -252,7 +255,10 @@ export default function FaultDiagnosis() {
                     <Select<number>
                       value={selectedProjectId ?? undefined}
                       placeholder="选择项目"
-                      onChange={setSelectedProjectId}
+                      onChange={(value) => {
+                        setSelectedProjectId(value);
+                        setResult(null);
+                      }}
                       options={projects.map((project) => ({ value: project.proId, label: project.name }))}
                     />
                   </Form.Item>
@@ -281,7 +287,7 @@ export default function FaultDiagnosis() {
                 <Col span={12}><Form.Item name="minDesignPressure" label="最小设计压力"><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
               </Row>
               <Row gutter={16}>
-                <Col span={12}><Form.Item name="designFlowRate" label="设计流量"><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
+                <Col span={12}><Form.Item name="designFlowRate" label="设计流量(m³/h)"><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
                 <Col span={12}><Form.Item name="temperature" label="油温(℃)"><InputNumber precision={2} style={{ width: '100%' }} /></Form.Item></Col>
               </Row>
               <Row gutter={16}>
@@ -425,3 +431,5 @@ export default function FaultDiagnosis() {
     </AnimatedPage>
   );
 }
+
+
