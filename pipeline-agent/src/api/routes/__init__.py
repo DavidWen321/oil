@@ -1,6 +1,6 @@
-"""API route package exports."""
+﻿"""API route package exports."""
 
-from . import chat, chat_v2, evaluation, graph_query, health, knowledge, mcp_v2, report, scheme, trace
+from . import health, chat, chat_v2, mcp_v2, knowledge, trace, report, graph_query
 
 __all__ = [
     "health",
@@ -11,6 +11,4 @@ __all__ = [
     "trace",
     "report",
     "graph_query",
-    "evaluation",
-    "scheme",
 ]

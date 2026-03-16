@@ -213,7 +213,6 @@ class RAGPipeline:
             results=retrieval_results,
             top_k=top_k
         )
-        rerank_results = self._dedupe_rerank_results(rerank_results)[:top_k]
 
         # 4.5 Graph RAG检索
         graph_results = self.graph_rag.retrieve(query, top_k=3)
@@ -246,20 +245,6 @@ class RAGPipeline:
                 "graph_results": len(graph_results),
             }
         )
-
-
-    @staticmethod
-    def _dedupe_rerank_results(results: List[RerankResult]) -> List[RerankResult]:
-        """Deduplicate dense/sparse/HyPE retrieval outputs by chunk/doc identity."""
-        deduped: List[RerankResult] = []
-        seen = set()
-        for item in results:
-            key = (getattr(item, "chunk_id", None), getattr(item, "doc_id", None), getattr(item, "content", "")[:120])
-            if key in seen:
-                continue
-            seen.add(key)
-            deduped.append(item)
-        return deduped
 
     def _build_context(
         self,

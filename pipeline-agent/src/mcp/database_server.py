@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-import time
 from typing import Any, Dict, List
 
 from src.tools.agent_tools import query_database
@@ -35,14 +34,11 @@ class DatabaseMCPServer(MCPServer):
                     {"question": "查询项目A的所有管道直径", "max_rows": 50},
                     {"question": "统计各泵站的平均效率"},
                 ],
-                category="data",
-                keywords=["数据库", "查询", "项目", "管道", "泵站", "油品", "SQL"],
             )
         ]
         self._resources = [
             MCPResourceDefinition(
                 uri=self.SCHEMA_URI,
-                name="pipeline_cloud_schema",
                 description="管道能耗系统数据库 schema 信息",
                 mime_type="text/sql",
             )
@@ -50,6 +46,11 @@ class DatabaseMCPServer(MCPServer):
         self._schema_cache = self._load_schema_file()
 
     def _load_schema_file(self) -> str:
+        """
+        Load SQL schema from repository root.
+
+        We resolve from current file path to avoid depending on process cwd.
+        """
         candidates = [
             Path(__file__).resolve().parents[3] / "pipeline-energy-cloud/sql/schema.sql",
             Path(__file__).resolve().parents[2] / "knowledge_base/standards/pipeline_standards.md",
@@ -68,36 +69,21 @@ class DatabaseMCPServer(MCPServer):
         return list(self._tools)
 
     async def call_tool(self, tool_name: str, args: Dict[str, Any]) -> MCPToolCallResult:
-        started = time.perf_counter()
         if tool_name != "query_database":
-            return MCPToolCallResult(
-                ok=False,
-                content=None,
-                error=f"unsupported tool: {tool_name}",
-                duration_ms=round((time.perf_counter() - started) * 1000, 2),
-            )
+            return MCPToolCallResult(ok=False, content=None, error=f"unsupported tool: {tool_name}")
 
         question = str(args.get("question", "")).strip()
         if not question:
-            return MCPToolCallResult(
-                ok=False,
-                content=None,
-                error="question is required",
-                duration_ms=round((time.perf_counter() - started) * 1000, 2),
-            )
+            return MCPToolCallResult(ok=False, content=None, error="question is required")
 
+        # max_rows kept for forward compatibility; current query tool uses NL input only.
         _ = int(args.get("max_rows", 100) or 100)
         try:
             result = query_database.invoke({"question": question})
-            return MCPToolCallResult(ok=True, content=result, duration_ms=round((time.perf_counter() - started) * 1000, 2))
+            return MCPToolCallResult(ok=True, content=result)
         except Exception as exc:
             logger.error("MCP query_database failed: {}", exc)
-            return MCPToolCallResult(
-                ok=False,
-                content=None,
-                error=str(exc),
-                duration_ms=round((time.perf_counter() - started) * 1000, 2),
-            )
+            return MCPToolCallResult(ok=False, content=None, error=str(exc))
 
     async def list_resources(self) -> List[MCPResourceDefinition]:
         return list(self._resources)
@@ -106,3 +92,4 @@ class DatabaseMCPServer(MCPServer):
         if uri != self.SCHEMA_URI:
             raise ValueError(f"unknown resource uri: {uri}")
         return self._schema_cache
+

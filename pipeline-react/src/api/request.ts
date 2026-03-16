@@ -1,9 +1,17 @@
-import axios from 'axios';
+﻿import axios from 'axios';
 import type { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { message } from 'antd';
-import { useUserStore } from '../stores/userStore';
+import { clearPersistedUserState, useUserStore } from '../stores/userStore';
 
-// 创建axios实例
+const TOKEN_ERROR_MESSAGE_RE = /(未登录|登录失效|登录超时|token|Token|TOKEN)/;
+
+function logoutAndRedirect() {
+  clearPersistedUserState();
+  if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+    window.location.href = '/login';
+  }
+}
+
 const request: AxiosInstance = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? '',
   timeout: 30000,
@@ -12,7 +20,6 @@ const request: AxiosInstance = axios.create({
   },
 });
 
-// 请求拦截器
 request.interceptors.request.use(
   (config) => {
     const token = useUserStore.getState().token;
@@ -21,27 +28,22 @@ request.interceptors.request.use(
     }
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
-// 响应拦截器
 request.interceptors.response.use(
   (response: AxiosResponse) => {
     const res = response.data;
+    const errorMessage = typeof res?.msg === 'string' ? res.msg : '请求失败';
 
-    // 业务错误处理
     if (res.code !== 200) {
-      message.error(res.msg || '请求失败');
+      message.error(errorMessage);
 
-      // 401: 未授权，跳转登录
-      if (res.code === 401) {
-        useUserStore.getState().logout();
-        window.location.href = '/login';
+      if (res.code === 401 || TOKEN_ERROR_MESSAGE_RE.test(errorMessage)) {
+        logoutAndRedirect();
       }
 
-      return Promise.reject(new Error(res.msg || 'Error'));
+      return Promise.reject(new Error(errorMessage));
     }
 
     return res;
@@ -49,12 +51,14 @@ request.interceptors.response.use(
   (error) => {
     console.error('请求错误:', error);
 
+    const responseMessage =
+      typeof error?.response?.data?.msg === 'string' ? error.response.data.msg : '';
+
     if (error.response) {
       switch (error.response.status) {
         case 401:
           message.error('登录已过期，请重新登录');
-          useUserStore.getState().logout();
-          window.location.href = '/login';
+          logoutAndRedirect();
           break;
         case 403:
           message.error('没有权限访问');
@@ -63,10 +67,20 @@ request.interceptors.response.use(
           message.error('请求的资源不存在');
           break;
         case 500:
-          message.error('服务器内部错误');
+          if (TOKEN_ERROR_MESSAGE_RE.test(responseMessage)) {
+            message.error(responseMessage);
+            logoutAndRedirect();
+          } else {
+            message.error('服务器内部错误');
+          }
           break;
         default:
-          message.error(error.message || '网络错误');
+          if (TOKEN_ERROR_MESSAGE_RE.test(responseMessage)) {
+            message.error(responseMessage);
+            logoutAndRedirect();
+          } else {
+            message.error(error.message || '网络错误');
+          }
       }
     } else {
       message.error('网络连接失败');
@@ -76,7 +90,6 @@ request.interceptors.response.use(
   }
 );
 
-// 封装请求方法
 export const http = {
   get<T>(url: string, config?: AxiosRequestConfig): Promise<T> {
     return request.get(url, config);

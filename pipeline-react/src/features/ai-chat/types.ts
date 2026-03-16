@@ -1,4 +1,4 @@
-﻿import type { ToolExecutionEvent } from '../../../types/agent';
+﻿import type { ToolExecutionEvent } from '../../types/agent';
 
 export type ChatMode = 'standard' | 'diagnosis' | 'optimization';
 

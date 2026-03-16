@@ -311,7 +311,15 @@ class LLMReranker:
 评分："""
 
     def __init__(self):
-        self.llm = get_cached_llm("tool_result_format")
+        from langchain_openai import ChatOpenAI
+
+        self.llm = ChatOpenAI(
+            api_key=settings.OPENAI_API_KEY,
+            base_url=settings.OPENAI_API_BASE,
+            model=settings.LLM_MODEL,
+            temperature=0,
+            max_tokens=64,
+        )
 
     def rerank(
         self,

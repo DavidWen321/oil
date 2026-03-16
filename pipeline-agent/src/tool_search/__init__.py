@@ -50,12 +50,10 @@ def sync_tool_registry_from_mcp(server_name: str, tool_defs: Iterable[Any]) -> N
                 if isinstance(item, dict) and item not in merged_examples:
                     merged_examples.append(item)
 
-        mcp_keywords = getattr(tool_def, "keywords", None) or [name, server_name, "mcp"]
-        mcp_category = str(getattr(tool_def, "category", "") or "mcp")
         merged = {
             "description": existing.get("description") or description or name,
-            "keywords": existing.get("keywords") or list(mcp_keywords),
-            "category": existing.get("category") or mcp_category,
+            "keywords": existing.get("keywords") or [name, server_name, "mcp"],
+            "category": existing.get("category") or "mcp",
             "defer_loading": existing.get("defer_loading", True),
             "usage_frequency": existing.get("usage_frequency", 0.2),
             "input_examples": merged_examples,

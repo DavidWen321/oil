@@ -15,7 +15,6 @@ from src.agents import (
     get_graph_agent,
     get_knowledge_agent,
 )
-from src.tools.error_handler import safe_tool_call
 from src.utils import logger
 
 
@@ -25,7 +24,6 @@ from src.utils import logger
 
 
 @tool
-@safe_tool_call("query_database")
 def query_database(question: str) -> str:
     """查询数据库获取项目、管道、泵站、油品的具体数据。
 
@@ -51,7 +49,6 @@ def query_database(question: str) -> str:
 
 
 @tool
-@safe_tool_call("hydraulic_calculation")
 def hydraulic_calculation(question: str) -> str:
     """执行管道水力计算，包括雷诺数、沿程摩阻、压降分析、泵站优化。
 
@@ -77,7 +74,6 @@ def hydraulic_calculation(question: str) -> str:
 
 
 @tool
-@safe_tool_call("search_knowledge_base")
 def search_knowledge_base(question: str) -> str:
     """检索管道工程知识库，获取规范、标准、原理、公式等专业知识。
 
@@ -102,7 +98,6 @@ def search_knowledge_base(question: str) -> str:
 
 
 @tool
-@safe_tool_call("query_fault_cause")
 def query_fault_cause(query: str) -> str:
     """通过知识图谱进行故障因果推理。
 
@@ -122,7 +117,6 @@ def query_fault_cause(query: str) -> str:
 
 
 @tool
-@safe_tool_call("query_standards")
 def query_standards(query: str) -> str:
     """通过知识图谱查询相关标准规范。
 
@@ -142,7 +136,6 @@ def query_standards(query: str) -> str:
 
 
 @tool
-@safe_tool_call("query_equipment_chain")
 def query_equipment_chain(query: str) -> str:
     """通过知识图谱查询设备关联链路。
 
@@ -167,7 +160,6 @@ def query_equipment_chain(query: str) -> str:
 
 
 @tool
-@safe_tool_call("run_sensitivity_analysis")
 def run_sensitivity_analysis(question: str) -> str:
     """执行参数敏感性分析，研究单个参数变化对水力计算结果的影响。
 
@@ -192,7 +184,6 @@ def run_sensitivity_analysis(question: str) -> str:
 
 
 @tool
-@safe_tool_call("plan_complex_task")
 def plan_complex_task(task_description: str) -> str:
     """对需要多步协作的复杂任务进行规划和分步执行。
 

@@ -1,6 +1,14 @@
-import { create } from 'zustand';
+﻿import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { UserInfo } from '../types';
+
+export const USER_STORAGE_KEY = 'user-storage';
+
+const EMPTY_USER_STATE = {
+  token: null,
+  userInfo: null,
+  isLoggedIn: false,
+} as const;
 
 interface UserState {
   token: string | null;
@@ -14,9 +22,7 @@ interface UserState {
 export const useUserStore = create<UserState>()(
   persist(
     (set) => ({
-      token: null,
-      userInfo: null,
-      isLoggedIn: false,
+      ...EMPTY_USER_STATE,
 
       setToken: (token: string) =>
         set({ token, isLoggedIn: true }),
@@ -25,10 +31,10 @@ export const useUserStore = create<UserState>()(
         set({ userInfo: info }),
 
       logout: () =>
-        set({ token: null, userInfo: null, isLoggedIn: false }),
+        set(EMPTY_USER_STATE),
     }),
     {
-      name: 'user-storage',
+      name: USER_STORAGE_KEY,
       partialize: (state) => ({
         token: state.token,
         userInfo: state.userInfo,
@@ -37,3 +43,10 @@ export const useUserStore = create<UserState>()(
     }
   )
 );
+
+export function clearPersistedUserState() {
+  useUserStore.setState(EMPTY_USER_STATE);
+  if (typeof window !== 'undefined') {
+    window.localStorage.removeItem(USER_STORAGE_KEY);
+  }
+}
