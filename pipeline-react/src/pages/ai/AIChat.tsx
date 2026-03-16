@@ -1,266 +1,252 @@
 ﻿import { useEffect, useMemo, useState } from 'react';
-import {
-  Button,
-  Card,
-  Col,
-  FloatButton,
-  Input,
-  Row,
-  Space,
-  Tag,
-  Typography,
-} from 'antd';
-import {
-  ClearOutlined,
-  DownOutlined,
-  RobotOutlined,
-  SendOutlined,
-  ThunderboltOutlined,
-} from '@ant-design/icons';
+import { ChevronDown } from 'lucide-react';
 import AnimatedPage from '../../components/common/AnimatedPage';
-import { ChatMessage, HITLDialog, TracePanel } from '../../components/agent';
-import MessageSkeleton from '../../components/agent/MessageSkeleton';
+import { HITLDialog } from '../../components/agent';
 import { useAgentTrace } from '../../hooks/useAgentTrace';
 import { useScrollToBottom } from '../../hooks/useScrollToBottom';
-import type { ChatMessageItem } from '../../types';
+import {
+  ChatTopbar,
+  ComposerDock,
+  ContextRail,
+  ConversationSidebar,
+  EmptyStateWelcome,
+  ChatMessageItem,
+} from '../../features/ai-chat/components';
+import { useChatConversations } from '../../features/ai-chat/hooks/useChatConversations';
+import type { PendingStreamTarget, UIMessage } from '../../features/ai-chat/types';
+import { getFriendlyError, getStreamLabel, WELCOME_PROMPTS } from '../../features/ai-chat/utils/chatUi';
 
-const QUICK_PROMPTS = [
-  '分析 900 m³/h 工况下的能耗瓶颈，并给出优化建议',
-  '比较两套泵站运行方案的成本与安全性差异',
-  '结合当前数据给出一份可执行的节能调度建议',
-];
-
-const INITIAL_MESSAGE: ChatMessageItem = {
-  role: 'assistant',
-  content:
-    '我是管道能耗分析智能体。你可以直接输入项目工况、优化目标或诊断问题，我会调用知识库、计算服务和数据库完成分析。',
-};
-
-const STATUS_LABEL: Record<string, string> = {
-  idle: '空闲',
-  planning: '规划中',
-  executing: '执行中',
-  waiting_hitl: '等待人工确认',
-  completed: '已完成',
-  error: '失败',
-};
-
-const STATUS_COLOR: Record<string, string> = {
-  idle: 'default',
-  planning: 'processing',
-  executing: 'processing',
-  waiting_hitl: 'warning',
-  completed: 'success',
-  error: 'error',
-};
+const BUSY_STATES = new Set(['planning', 'executing', 'waiting_hitl']);
 
 export default function AIChat() {
   const [draft, setDraft] = useState('');
-  const [messages, setMessages] = useState<ChatMessageItem[]>([INITIAL_MESSAGE]);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [contextOpen, setContextOpen] = useState(true);
+  const [pendingTarget, setPendingTarget] = useState<PendingStreamTarget | null>(null);
+  const {
+    conversations,
+    activeConversation,
+    activeConversationId,
+    setActiveConversationId,
+    createNewConversation,
+    removeConversation,
+    setConversationMode,
+    appendExchange,
+    updateAssistantMessage,
+  } = useChatConversations();
+
   const {
     activeTools,
     connected,
     currentStep,
     dismissHITL,
+    errorMessage,
     finalResponse,
     hitlRequest,
-    lastToolSearch,
     logs,
     metrics,
     plan,
     reset,
     startChat,
     status,
+    stop,
     streaming,
     submitHITL,
-  } = useAgentTrace('pipeline-web-session');
+  } = useAgentTrace(activeConversationId ?? 'chat-default');
 
-  const busy = ['planning', 'executing', 'waiting_hitl'].includes(status);
+  const busy = BUSY_STATES.has(status);
+  const messages = activeConversation?.messages ?? [];
+  const streamLabel = useMemo(() => getStreamLabel(status, activeTools), [activeTools, status]);
 
-  // 滚动到底部 Hook
   const { ref: messagesRef, isAtBottom, scrollToBottom } = useScrollToBottom<HTMLDivElement>(
-    [messages, finalResponse, streaming],
-    { enabled: true, behavior: 'smooth', threshold: 100 }
+    [activeConversationId, messages.length, finalResponse, status],
+    { enabled: true, behavior: 'smooth', threshold: 120 },
   );
 
   useEffect(() => {
-    setMessages((prev) => {
-      if (prev.length === 0 || prev[prev.length - 1].role !== 'assistant') {
-        return prev;
-      }
+    reset();
+  }, [activeConversationId, reset]);
 
-      const next = [...prev];
-      const lastIndex = next.length - 1;
-      const last = next[lastIndex];
-      const errorText = logs.length > 0 ? logs[logs.length - 1].text : 'Agent 服务执行失败';
-      const nextContent = status === 'error' && !finalResponse ? `请求失败：${errorText}` : finalResponse;
-      const nextStreaming = streaming || status === 'planning' || status === 'executing' || status === 'waiting_hitl';
+  useEffect(() => {
+    if (!pendingTarget) return;
+    if (!activeConversationId || pendingTarget.conversationId !== activeConversationId) return;
 
-      if (
-        last.content === nextContent &&
-        last.streaming === nextStreaming &&
-        last.tools === activeTools
-      ) {
-        return prev;
-      }
+    const nextStatus = status === 'error'
+      ? 'error'
+      : status === 'stopped'
+        ? 'stopped'
+        : streaming || busy
+          ? 'streaming'
+          : 'completed';
 
-      next[lastIndex] = {
-        ...last,
-        content: nextContent,
-        streaming: nextStreaming,
-        tools: activeTools,
-      };
-      return next;
+    updateAssistantMessage(pendingTarget.conversationId, pendingTarget.assistantMessageId, {
+      content: finalResponse,
+      status: nextStatus,
+      toolCalls: activeTools,
+      requestText: pendingTarget.requestText,
+      error: status === 'error' ? getFriendlyError(errorMessage ?? logs[logs.length - 1]?.text) : null,
     });
-  }, [activeTools, finalResponse, logs, status, streaming]);
+
+  }, [
+    activeConversationId,
+    activeTools,
+    busy,
+    errorMessage,
+    finalResponse,
+    logs,
+    pendingTarget,
+    status,
+    streaming,
+    updateAssistantMessage,
+  ]);
+
+  const activeMode = activeConversation?.mode ?? 'standard';
 
   const sendMessage = (text: string) => {
     const content = text.trim();
-    if (!content || busy) {
-      return;
-    }
+    if (!content || busy) return;
 
-    setMessages((prev) => [
-      ...prev,
-      { role: 'user', content },
-      { role: 'assistant', content: '', streaming: true, tools: [] },
-    ]);
+    const targetConversationId = activeConversationId ?? createNewConversation(activeMode);
+    const assistantMessageId = appendExchange(targetConversationId, content);
+    setPendingTarget({
+      conversationId: targetConversationId,
+      assistantMessageId,
+      requestText: content,
+    });
     setDraft('');
     startChat(content);
   };
 
-  const statusTagColor = STATUS_COLOR[status] ?? 'default';
-  const toolSearchSummary = useMemo(() => {
-    if (!lastToolSearch || lastToolSearch.selected_tools.length === 0) {
-      return '等待工具选择';
+  const handleRetry = (message: UIMessage) => {
+    if (!message.requestText || busy) return;
+    sendMessage(message.requestText);
+  };
+
+  const handleSelectConversation = (conversationId: string) => {
+    if (conversationId === activeConversationId) {
+      setSidebarOpen(false);
+      return;
     }
-    return lastToolSearch.selected_tools.join(' / ');
-  }, [lastToolSearch]);
+    if (busy || streaming) {
+      stop();
+    }
+    setActiveConversationId(conversationId);
+    setSidebarOpen(false);
+  };
+
+  const handleCreateConversation = () => {
+    if (busy || streaming) {
+      stop();
+    }
+    createNewConversation(activeMode);
+    setDraft('');
+    setSidebarOpen(false);
+  };
+
+  const handleDeleteConversation = (conversationId: string) => {
+    if (conversationId === activeConversationId && (busy || streaming)) {
+      stop();
+    }
+    removeConversation(conversationId);
+  };
 
   return (
-    <AnimatedPage>
-      <div className="page-header">
-        <h2><RobotOutlined /> 智能分析助手</h2>
-        <p>基于真实 LangGraph Trace、工具调用和 HITL 审批链路的生产化 AI 分析界面。</p>
-      </div>
+    <AnimatedPage className="h-[calc(100vh-var(--header-height))] overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(226,232,240,0.62),transparent_30%),linear-gradient(180deg,#fafafa_0%,#f5f7fb_100%)] text-neutral-900">
+      <div className="flex h-full w-full overflow-hidden">
+        <ConversationSidebar
+          conversations={conversations}
+          activeConversationId={activeConversationId}
+          open={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
+          onCreate={handleCreateConversation}
+          onSelect={handleSelectConversation}
+          onDelete={handleDeleteConversation}
+        />
 
-      <Row gutter={16}>
-        <Col xs={24} xl={14}>
-          <Space direction="vertical" style={{ width: '100%' }} size="middle">
-            <Card className="page-card">
-              <Space wrap>
-                <Tag color={statusTagColor}>{STATUS_LABEL[status] ?? status}</Tag>
-                <Tag color={connected ? 'success' : 'default'}>{connected ? '流式连接已建立' : '等待连接'}</Tag>
-                <Tag color="blue">工具搜索：{toolSearchSummary}</Tag>
-              </Space>
-              <div style={{ marginTop: 16, display: 'grid', gap: 12 }}>
-                {QUICK_PROMPTS.map((prompt) => (
-                  <Button
-                    key={prompt}
-                    block
-                    disabled={busy}
-                    icon={<ThunderboltOutlined />}
-                    onClick={() => sendMessage(prompt)}
-                  >
-                    {prompt}
-                  </Button>
-                ))}
-              </div>
-            </Card>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <ChatTopbar
+            title={activeConversation?.title ?? '新会话'}
+            mode={activeMode}
+            connected={connected}
+            contextOpen={contextOpen}
+            onToggleSidebar={() => setSidebarOpen(true)}
+            onToggleContext={() => setContextOpen((prev) => !prev)}
+            onModeChange={(mode) => {
+              if (activeConversationId) {
+                setConversationMode(activeConversationId, mode);
+              }
+            }}
+          />
 
-            <Card className="page-card" bodyStyle={{ padding: 16, position: 'relative' }}>
-              <div
-                ref={messagesRef}
-                style={{
-                  display: 'grid',
-                  gap: 12,
-                  minHeight: 520,
-                  maxHeight: 600,
-                  overflowY: 'auto',
-                  paddingRight: 8,
-                }}
-              >
-                {messages.map((item, index) => (
-                  <ChatMessage
-                    key={`${item.role}-${index}`}
-                    role={item.role}
-                    content={item.content}
-                    streaming={item.streaming}
-                    tools={item.tools}
-                  />
-                ))}
-                {busy && !finalResponse && <MessageSkeleton />}
+          <div className="flex min-h-0 flex-1">
+            <section className="flex min-w-0 flex-1 flex-col">
+              <div ref={messagesRef} className="min-h-0 flex-1 overflow-y-auto">
+                <div className="mx-auto flex min-h-full w-full max-w-[920px] flex-col px-4 pb-12 pt-6 md:px-6">
+                  {messages.length === 0 ? (
+                    <EmptyStateWelcome prompts={WELCOME_PROMPTS} onPromptSelect={sendMessage} />
+                  ) : (
+                    <div className="mx-auto w-full max-w-[820px] space-y-6 pb-10">
+                      {messages.map((message) => (
+                        <ChatMessageItem
+                          key={message.id}
+                          message={message}
+                          streamingLabel={message.status === 'streaming' ? streamLabel : null}
+                          onRetry={handleRetry}
+                          onReusePrompt={(prompt) => setDraft(prompt)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
-              {/* 滚动到底部按钮 */}
-              {!isAtBottom && (
-                <FloatButton
-                  icon={<DownOutlined />}
-                  onClick={scrollToBottom}
-                  style={{ position: 'absolute', right: 24, bottom: 24 }}
-                  tooltip="滚动到底部"
-                />
-              )}
-            </Card>
-
-            <Card className="page-card">
-              <Input.TextArea
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                placeholder="输入你的项目问题，例如：分析某条管道在当前流量下的能耗瓶颈，并给出优化建议。"
-                autoSize={{ minRows: 4, maxRows: 8 }}
-                onPressEnter={(event) => {
-                  if (!event.shiftKey) {
-                    event.preventDefault();
-                    sendMessage(draft);
+              <ComposerDock
+                draft={draft}
+                mode={activeMode}
+                busy={busy || streaming}
+                onDraftChange={setDraft}
+                onModeChange={(mode) => {
+                  if (activeConversationId) {
+                    setConversationMode(activeConversationId, mode);
                   }
                 }}
+                onSubmit={() => sendMessage(draft)}
+                onStop={stop}
               />
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12, gap: 12 }}>
-                <Typography.Text type="secondary">
-                  Enter 发送，Shift + Enter 换行；需要人工确认时会弹出审批对话框。
-                </Typography.Text>
-                <Space>
-                  <Button icon={<ClearOutlined />} onClick={() => {
-                    reset();
-                    setDraft('');
-                    setMessages([INITIAL_MESSAGE]);
-                  }}>
-                    清空界面
-                  </Button>
-                  <Button
-                    type="primary"
-                    icon={<SendOutlined />}
-                    disabled={!draft.trim() || busy}
-                    onClick={() => sendMessage(draft)}
-                  >
-                    发送
-                  </Button>
-                </Space>
-              </div>
-            </Card>
-          </Space>
-        </Col>
+            </section>
 
-        <Col xs={24} xl={10}>
-          <Card className="page-card" title="执行追踪" style={{ height: '100%' }}>
-            <TracePanel
-              plan={plan}
-              currentStep={currentStep}
-              logs={logs}
-              metrics={metrics}
-              activeTools={activeTools}
-              toolSearch={lastToolSearch}
-            />
-          </Card>
-        </Col>
-      </Row>
+            <aside
+              className={[
+                'hidden border-l border-neutral-200/70 bg-white/50 transition-all duration-200 xl:block',
+                contextOpen ? 'w-[320px]' : 'w-0 overflow-hidden border-l-0',
+              ].join(' ')}
+            >
+              {contextOpen ? (
+                <ContextRail
+                  plan={plan}
+                  logs={logs}
+                  metrics={metrics}
+                  activeTools={activeTools}
+                  currentStep={currentStep}
+                />
+              ) : null}
+            </aside>
+          </div>
+        </div>
+      </div>
 
-      <HITLDialog
-        request={hitlRequest}
-        onSubmit={submitHITL}
-        onCancel={dismissHITL}
-      />
+      {!isAtBottom && messages.length > 0 ? (
+        <button
+          type="button"
+          className="absolute bottom-36 right-6 inline-flex h-11 w-11 items-center justify-center rounded-full bg-white text-neutral-700 shadow-[0_10px_30px_rgba(15,23,42,0.12)] ring-1 ring-black/5 transition hover:text-neutral-950"
+          onClick={scrollToBottom}
+          aria-label="滚动到底部"
+        >
+          <ChevronDown className="h-5 w-5" />
+        </button>
+      ) : null}
+
+      <HITLDialog request={hitlRequest} onSubmit={submitHITL} onCancel={dismissHITL} />
     </AnimatedPage>
   );
 }

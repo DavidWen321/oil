@@ -14,7 +14,11 @@ interface ChatMessageProps {
 
 function ChatMessage({ role, content, streaming, tools }: ChatMessageProps) {
   if (role === 'user') {
-    return <div className={styles.userMsg}>{content}</div>;
+    return (
+      <div className={`${styles.messageRow} ${styles.messageRowUser}`}>
+        <div className={styles.userMsg}>{content}</div>
+      </div>
+    );
   }
 
   // Assistant message
@@ -27,10 +31,15 @@ function ChatMessage({ role, content, streaming, tools }: ChatMessageProps) {
     : styles.assistantMsg;
 
   return (
-    <div className={assistantClassName}>
-      {hasTools && <ToolCallCard tools={tools!} />}
-      <ThinkingIndicator visible={showThinking} />
-      {content ? <StreamingMarkdown content={content} streaming={isStreaming} /> : null}
+    <div className={`${styles.messageRow} ${styles.messageRowAssistant}`}>
+      <div className={styles.assistantAvatar}>AI</div>
+      <div className={styles.assistantBody}>
+        <div className={assistantClassName}>
+          {hasTools && <ToolCallCard tools={tools!} />}
+          <ThinkingIndicator visible={showThinking} />
+          {content ? <StreamingMarkdown content={content} streaming={isStreaming} /> : null}
+        </div>
+      </div>
     </div>
   );
 }
