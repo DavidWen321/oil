@@ -4,6 +4,7 @@
   | 'executing'
   | 'waiting_hitl'
   | 'completed'
+  | 'stopped'
   | 'error';
 
 export interface PlanStep {
@@ -103,6 +104,7 @@ export interface AgentTraceState {
   sessionId: string;
   activeTools: ToolExecutionEvent[];
   lastToolSearch: ToolSearchSnapshot | null;
+  errorMessage?: string | null;
 }
 
 export interface ReportSection {
@@ -128,10 +130,6 @@ export interface ReportGeneratePayload {
   java_download_url?: string | null;
   java_download_url_pdf?: string | null;
 }
-
-// ═══════════════════════════════════════════════════════════════
-// 新增：工具执行事件类型（配合真流式）
-// ═══════════════════════════════════════════════════════════════
 
 export interface ToolExecutionEvent {
   tool: string;

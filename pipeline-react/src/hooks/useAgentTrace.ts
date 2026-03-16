@@ -64,6 +64,7 @@ function initialState(sessionId: string): AgentTraceState {
     sessionId,
     activeTools: [],
     lastToolSearch: null,
+    errorMessage: null,
   };
 }
 
@@ -246,6 +247,48 @@ export function useAgentTrace(sessionId: string) {
             }),
           };
         }
+        case 'plan_step_start': {
+          const nextPlan: PlanStep[] = prev.plan.map((step): PlanStep =>
+            step.step_number === stepNumber ? { ...step, status: 'in_progress' } : step
+          );
+          return {
+            ...prev,
+            traceId: eventTraceId ?? prev.traceId,
+            sessionId: eventSessionId ?? prev.sessionId,
+            plan: nextPlan,
+            currentStep: stepNumber ?? prev.currentStep,
+            status: 'executing',
+            logs: appendLog(prev.logs, {
+              timestamp,
+              type: event.event,
+              text: `Step ${stepNumber}: ${String(event.data.description ?? '')}`,
+              stepNumber,
+              agent,
+            }),
+          };
+        }
+        case 'plan_step_done': {
+          const duration =
+            typeof event.data.duration_ms === 'number' ? event.data.duration_ms : undefined;
+          const nextPlan: PlanStep[] = prev.plan.map((step): PlanStep =>
+            step.step_number === stepNumber
+              ? { ...step, status: 'completed', duration_ms: duration ?? step.duration_ms }
+              : step
+          );
+          return {
+            ...prev,
+            traceId: eventTraceId ?? prev.traceId,
+            sessionId: eventSessionId ?? prev.sessionId,
+            plan: nextPlan,
+            logs: appendLog(prev.logs, {
+              timestamp,
+              type: event.event,
+              text: `Step ${stepNumber} completed`,
+              stepNumber,
+              agent,
+            }),
+          };
+        }
         case 'step_started': {
           const nextPlan: PlanStep[] = prev.plan.map((step): PlanStep =>
             step.step_number === stepNumber ? { ...step, status: 'in_progress' } : step
@@ -302,6 +345,7 @@ export function useAgentTrace(sessionId: string) {
             sessionId: eventSessionId ?? prev.sessionId,
             plan: nextPlan,
             status: 'error',
+            errorMessage: String(event.data.error ?? 'failed'),
             logs: appendLog(prev.logs, {
               timestamp,
               type: event.event,
@@ -331,6 +375,7 @@ export function useAgentTrace(sessionId: string) {
             traceId: eventTraceId ?? prev.traceId,
             sessionId: eventSessionId ?? prev.sessionId,
             status: 'executing',
+            errorMessage: null,
             hitlRequest: null,
             logs: appendLog(prev.logs, {
               timestamp,
@@ -345,6 +390,7 @@ export function useAgentTrace(sessionId: string) {
             traceId: eventTraceId ?? prev.traceId,
             sessionId: eventSessionId ?? prev.sessionId,
             status: 'waiting_hitl',
+            errorMessage: null,
             hitlRequest: event.data as unknown as HITLRequest,
             logs: appendLog(prev.logs, {
               timestamp,
@@ -369,6 +415,7 @@ export function useAgentTrace(sessionId: string) {
             traceId: eventTraceId ?? prev.traceId,
             sessionId: eventSessionId ?? prev.sessionId,
             status: 'executing',
+            errorMessage: null,
             activeTools: [...prev.activeTools, newTool],
             logs: appendLog(prev.logs, {
               timestamp,
@@ -431,6 +478,7 @@ export function useAgentTrace(sessionId: string) {
             traceId: eventTraceId ?? prev.traceId,
             sessionId: eventSessionId ?? prev.sessionId,
             status: 'executing',
+            errorMessage: null,
             activeTools: duplicated ? prev.activeTools : [...prev.activeTools, newTool],
             logs: appendLog(prev.logs, {
               timestamp,
@@ -549,6 +597,7 @@ export function useAgentTrace(sessionId: string) {
             traceId: eventTraceId ?? prev.traceId,
             sessionId: eventSessionId ?? prev.sessionId,
             status: 'completed',
+            errorMessage: null,
             finalResponse: response || streamedResponse,
             logs: appendLog(prev.logs, {
               timestamp,
@@ -568,6 +617,7 @@ export function useAgentTrace(sessionId: string) {
             traceId: eventTraceId ?? prev.traceId,
             sessionId: eventSessionId ?? prev.sessionId,
             status: 'completed',
+            errorMessage: null,
             finalResponse: prev.finalResponse + buffered,
             metrics,
             logs: appendLog(prev.logs, {
@@ -591,6 +641,7 @@ export function useAgentTrace(sessionId: string) {
             traceId: eventTraceId ?? prev.traceId,
             sessionId: eventSessionId ?? prev.sessionId,
             status: 'completed',
+            errorMessage: null,
             finalResponse: response || streamedResponse,
             logs: appendLog(prev.logs, {
               timestamp,
@@ -610,6 +661,7 @@ export function useAgentTrace(sessionId: string) {
             traceId: eventTraceId ?? prev.traceId,
             sessionId: eventSessionId ?? prev.sessionId,
             status: 'completed',
+            errorMessage: null,
             finalResponse: prev.finalResponse + buffered,
             metrics,
             logs: appendLog(prev.logs, {
@@ -626,6 +678,7 @@ export function useAgentTrace(sessionId: string) {
             traceId: eventTraceId ?? prev.traceId,
             sessionId: eventSessionId ?? prev.sessionId,
             status: 'error',
+            errorMessage: String(event.data.error ?? event.data.raw ?? ''),
             finalResponse: prev.finalResponse + buffered,
             logs: appendLog(prev.logs, {
               timestamp,
@@ -655,6 +708,7 @@ export function useAgentTrace(sessionId: string) {
     setState((prev) => ({
       ...prev,
       status: 'error',
+      errorMessage: error.message,
       logs: appendLog(prev.logs, {
         timestamp: new Date().toISOString(),
         type: 'error',
@@ -668,6 +722,7 @@ export function useAgentTrace(sessionId: string) {
     onEvent,
     onError,
   });
+  const { connect, connected, disconnect, streaming } = sse;
 
   const startChat = useCallback(
     (message: string) => {
@@ -680,7 +735,7 @@ export function useAgentTrace(sessionId: string) {
 
       const token = useUserStore.getState().token;
       setState(initialState(sessionId));
-      sse.connect({
+      connect({
         method: 'POST',
         headers: token
           ? {
@@ -694,7 +749,7 @@ export function useAgentTrace(sessionId: string) {
         },
       });
     },
-    [sessionId, sse.connect]
+    [connect, sessionId]
   );
 
   const submitHITL = useCallback(
@@ -786,8 +841,27 @@ export function useAgentTrace(sessionId: string) {
     setState((prev) => ({ ...prev, hitlRequest: null }));
   }, []);
 
+  const stop = useCallback(() => {
+    const buffered = drainBufferedChunks();
+    disconnect();
+    setState((prev) => {
+      const nextResponse = prev.finalResponse + buffered;
+      return {
+        ...prev,
+        finalResponse: nextResponse,
+        status: nextResponse ? 'stopped' : 'idle',
+        errorMessage: null,
+        logs: appendLog(prev.logs, {
+          timestamp: new Date().toISOString(),
+          type: 'stopped',
+          text: 'generation stopped by user',
+        }),
+      };
+    });
+  }, [disconnect, drainBufferedChunks]);
+
   const reset = useCallback(() => {
-    sse.disconnect();
+    disconnect();
     chunkBufferRef.current = '';
     smoothQueueRef.current = '';
     if (rafIdRef.current !== null) {
@@ -795,7 +869,7 @@ export function useAgentTrace(sessionId: string) {
       rafIdRef.current = null;
     }
     setState(initialState(sessionId));
-  }, [sessionId, sse.disconnect]);
+  }, [disconnect, sessionId]);
 
   // Cleanup rAF on unmount
   useEffect(() => {
@@ -811,14 +885,15 @@ export function useAgentTrace(sessionId: string) {
   return useMemo(
     () => ({
       ...state,
-      connected: sse.connected,
-      streaming: sse.streaming,
+      connected,
+      streaming,
       startChat,
+      stop,
       submitHITL,
       dismissHITL,
       reset,
     }),
-    [reset, sse.connected, sse.streaming, startChat, state, submitHITL, dismissHITL]
+    [connected, dismissHITL, reset, startChat, state, stop, streaming, submitHITL]
   );
 }
 
