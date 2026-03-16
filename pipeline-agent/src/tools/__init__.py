@@ -13,7 +13,7 @@ from .database_tools import (
     query_pump_stations,
     query_oil_properties,
     get_calculation_parameters,
-    DATABASE_AGENT_TOOLS
+    execute_safe_sql
 )
 
 from .java_service_tools import (
@@ -52,7 +52,6 @@ ALL_TOOLS = DATABASE_TOOLS + JAVA_SERVICE_TOOLS + CALCULATION_TOOLS + EXTENDED_T
 __all__ = [
     # 工具集合
     "DATABASE_TOOLS",
-    "DATABASE_AGENT_TOOLS",
     "JAVA_SERVICE_TOOLS",
     "CALCULATION_TOOLS",
     "EXTENDED_TOOLS",
@@ -66,6 +65,7 @@ __all__ = [
     "query_pump_stations",
     "query_oil_properties",
     "get_calculation_parameters",
+    "execute_safe_sql",
     # Java服务工具
     "call_hydraulic_analysis",
     "call_pump_optimization",

@@ -3,14 +3,13 @@ Knowledge Agent
 负责知识库检索和问答
 """
 
-import threading
 from typing import Optional, Dict, Any, List
 
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
-from src.llm import get_cached_llm
+from src.config import settings
 from src.utils import logger
 from src.rag import get_rag_pipeline, RAGResponse
 from src.models.enums import RetrievalQuality
@@ -36,7 +35,13 @@ class KnowledgeAgent:
     def llm(self) -> ChatOpenAI:
         """获取LLM实例"""
         if self._llm is None:
-            self._llm = get_cached_llm("knowledge_qa")
+            self._llm = ChatOpenAI(
+                api_key=settings.OPENAI_API_KEY,
+                base_url=settings.OPENAI_API_BASE,
+                model=settings.LLM_MODEL,
+                temperature=0.3,
+                max_tokens=4096,
+            )
         return self._llm
 
     @property
@@ -185,14 +190,11 @@ class KnowledgeAgent:
 
 # 全局实例
 _knowledge_agent: Optional[KnowledgeAgent] = None
-_knowledge_agent_lock = threading.Lock()
 
 
 def get_knowledge_agent() -> KnowledgeAgent:
     """获取Knowledge Agent实例"""
     global _knowledge_agent
     if _knowledge_agent is None:
-        with _knowledge_agent_lock:
-            if _knowledge_agent is None:
-                _knowledge_agent = KnowledgeAgent()
+        _knowledge_agent = KnowledgeAgent()
     return _knowledge_agent

@@ -1,4 +1,4 @@
-﻿// ========== 閫氱敤绫诲瀷 ==========
+// ========== 通用类型 ==========
 
 export interface R<T> {
   code: number;
@@ -18,7 +18,7 @@ export interface PageResult<T> {
   pageSize: number;
 }
 
-// ========== 鐢ㄦ埛璁よ瘉 ==========
+// ========== 用户认证 ==========
 
 export interface LoginParams {
   username: string;
@@ -40,7 +40,7 @@ export interface UserInfo {
   roles: string[];
 }
 
-// ========== 鏁版嵁绠＄悊 ==========
+// ========== 数据管理 ==========
 
 export interface Project {
   proId: number;
@@ -91,136 +91,86 @@ export interface OilProperty {
   updateTime?: string;
 }
 
-// ========== 姓力分析 ==========
+// ========== 水力分析 ==========
 
 export interface HydraulicAnalysisParams {
-  pipelineId?: number;
-  oilId?: number;
+  pipelineId: number;
   flowRate: number;
-  density: number;
-  viscosity: number;
-  length: number;
-  diameter: number;
-  thickness: number;
-  roughness: number;
-  startAltitude: number;
-  endAltitude: number;
   inletPressure: number;
-  pump480Num: number;
-  pump375Num: number;
-  pump480Head: number;
-  pump375Head: number;
+  oilDensity: number;
+  oilViscosity: number;
+  pipelineLength: number;
+  innerDiameter: number;
+  roughness: number;
+  elevationDiff: number;
 }
 
 export interface HydraulicAnalysisResult {
-  frictionHeadLoss: number;
+  calculationId: string;
   reynoldsNumber: number;
   flowRegime: string;
-  hydraulicSlope: number;
-  totalHead: number;
-  firstStationOutPressure: number;
-  endStationInPressure: number;
+  frictionFactor: number;
+  frictionHeadLoss: number;
+  hydraulicGradient: number;
+  inletPressure: number;
+  outletPressure: number;
+  velocity: number;
+  flowRate: number;
+  feasible: boolean;
+  message: string;
 }
 
 // ========== 泵站优化 ==========
 
 export interface OptimizationParams {
-  projectId?: number;
+  pipelineId: number;
   flowRate: number;
-  density: number;
-  viscosity: number;
-  length: number;
-  diameter: number;
-  thickness: number;
-  roughness: number;
-  startAltitude: number;
-  endAltitude: number;
   inletPressure: number;
-  pump480Head: number;
-  pump375Head: number;
-  pumpEfficiency?: number;
-  motorEfficiency?: number;
-  workingDays?: number;
-  electricityPrice?: number;
+  oilDensity: number;
+  oilViscosity: number;
+  pipelineLength: number;
+  innerDiameter: number;
+  elevationDiff: number;
 }
 
 export interface OptimizationResult {
-  pump480Num: number;
-  pump375Num: number;
-  totalHead: number;
-  totalPressureDrop: number;
-  endStationInPressure: number;
-  isFeasible: boolean;
-  totalEnergyConsumption: number;
-  totalCost: number;
-  description: string;
+  calculationId: string;
+  optimalScheme: PumpScheme;
+  allSchemes: PumpScheme[];
+  message: string;
+}
+
+export interface PumpScheme {
+  schemeId: number;
+  pumpCombination: string;
+  totalPower: number;
+  efficiency: number;
+  outletPressure: number;
+  feasible: boolean;
+  energyConsumption: number;
 }
 
 // ========== 敏感性分析 ==========
 
-export interface SensitivityVariableConfig {
-  variableType: string;
-  variableName: string;
-  unit: string;
-  startPercent: number;
-  endPercent: number;
-  stepPercent: number;
-}
-
-export interface SensitivityVariableInfo {
-  code: string;
-  name: string;
-  unit: string;
-  minChangePercent: number;
-  maxChangePercent: number;
-}
-
 export interface SensitivityParams {
-  projectId?: number;
-  projectName?: string;
   baseParams: HydraulicAnalysisParams;
-  variables: SensitivityVariableConfig[];
-  analysisType: 'SINGLE' | 'MULTI' | 'CROSS';
+  variableType: string;
+  variableRange: number[];
+  steps: number;
 }
 
 export interface SensitivityResult {
-  baseResult: HydraulicAnalysisResult;
-  variableResults: VariableSensitivityResult[];
-  sensitivityRanking: SensitivityRanking[];
-  duration: number;
-  totalCalculations: number;
-}
-
-export interface VariableSensitivityResult {
+  analysisId: string;
   variableType: string;
-  variableName: string;
-  unit: string;
-  baseValue: number;
   dataPoints: SensitivityPoint[];
-  sensitivityCoefficient: number;
+  sensitivity: number;
   trend: string;
-  maxImpactPercent: number;
 }
 
 export interface SensitivityPoint {
-  changePercent: number;
   variableValue: number;
-  frictionHeadLoss: number;
-  frictionChangePercent: number;
-  endStationPressure: number;
-  pressureChangePercent: number;
-  hydraulicSlope: number;
-  reynoldsNumber: number;
-  flowRegime: string;
-  fullResult: HydraulicAnalysisResult;
-}
-
-export interface SensitivityRanking {
-  rank: number;
-  variableType: string;
-  variableName: string;
-  sensitivityCoefficient: number;
-  description: string;
+  resultValue: number;
+  changePercent: number;
 }
 
 // ========== 故障诊断 ==========
@@ -299,7 +249,7 @@ export interface DiagnosisMetrics {
   energyStatus: string;
 }
 
-// ========== 澶氭柟妗堝姣?==========
+// ========== 多方案对比 ==========
 
 export interface ComparisonRequest {
   projectId: number;
@@ -391,7 +341,7 @@ export interface RecommendedScheme {
   };
 }
 
-// ========== 纰虫帓鏀炬牳绠?==========
+// ========== 碳排放核算 ==========
 
 export interface CarbonCalculationRequest {
   projectId: number;
@@ -464,7 +414,7 @@ export interface CarbonQuota {
   projectedTradingAmount: number;
 }
 
-// ========== 瀹炴椂鐩戞帶 ==========
+// ========== 实时监控 ==========
 
 export interface MonitorDataPoint {
   dataId: string;
@@ -521,7 +471,7 @@ export interface AlarmRule {
   description: string;
 }
 
-// ========== 鍓嶇鐩戞帶绫诲瀷 ==========
+// ========== 前端监控类型 ==========
 
 export interface MonitorData {
   pipelineId: number;
@@ -557,4 +507,3 @@ export interface AlarmInfo {
 }
 
 export * from './agent';
-

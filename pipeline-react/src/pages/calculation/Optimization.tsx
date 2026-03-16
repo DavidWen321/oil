@@ -1,160 +1,66 @@
-﻿import { useEffect, useMemo, useState } from 'react';
-import {
-  Button,
-  Card,
-  Col,
-  Descriptions,
-  Form,
-  InputNumber,
-  Row,
-  Select,
-  Space,
-  Statistic,
-  Tag,
-  message,
-} from 'antd';
-import { CalculatorOutlined, SettingOutlined } from '@ant-design/icons';
+import { useState } from 'react';
+import { Card, Form, InputNumber, Button, Row, Col, Table, Tag, Space, message } from 'antd';
+import { SettingOutlined, TrophyOutlined } from '@ant-design/icons';
 import ReactECharts from 'echarts-for-react';
-import { calculationApi, oilPropertyApi, pipelineApi, projectApi, pumpStationApi } from '../../api';
-import type { OilProperty, OptimizationParams, OptimizationResult, Pipeline, Project, PumpStation } from '../../types';
 import AnimatedPage from '../../components/common/AnimatedPage';
 import styles from './Optimization.module.css';
 
-const INITIAL_VALUES: OptimizationParams = {
-  flowRate: 850,
-  density: 860,
-  viscosity: 0.00002,
-  length: 150,
-  diameter: 508,
-  thickness: 8,
-  roughness: 0.00003,
-  startAltitude: 0,
-  endAltitude: 35,
-  inletPressure: 6.5,
-  pump480Head: 280,
-  pump375Head: 220,
-  pumpEfficiency: 0.8,
-  motorEfficiency: 0.95,
-  workingDays: 350,
-  electricityPrice: 0.8,
-};
+interface PumpScheme {
+  schemeId: number;
+  pumpCombination: string;
+  totalPower: number;
+  efficiency: number;
+  outletPressure: number;
+  feasible: boolean;
+  energyConsumption: number;
+  isOptimal?: boolean;
+}
 
 export default function Optimization() {
-  const [form] = Form.useForm<OptimizationParams>();
   const [loading, setLoading] = useState(false);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
-  const [oils, setOils] = useState<OilProperty[]>([]);
-  const [stations, setStations] = useState<PumpStation[]>([]);
-  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
-  const [result, setResult] = useState<OptimizationResult | null>(null);
+  const [schemes, setSchemes] = useState<PumpScheme[]>([]);
+  const [optimalScheme, setOptimalScheme] = useState<PumpScheme | null>(null);
+  const [form] = Form.useForm();
 
-  const loadBaseData = async () => {
-    const [projectRes, oilRes, stationRes] = await Promise.all([
-      projectApi.list(),
-      oilPropertyApi.list(),
-      pumpStationApi.list(),
-    ]);
-
-    const projectList = projectRes.data ?? [];
-    setProjects(projectList);
-    setOils(oilRes.data ?? []);
-    setStations(stationRes.data ?? []);
-
-    if (projectList.length > 0) {
-      setSelectedProjectId(projectList[0].proId);
-    }
-  };
-
-  const loadPipelines = async (projectId: number) => {
-    const response = await pipelineApi.listByProject(projectId);
-    setPipelines(response.data ?? []);
-  };
-
-  useEffect(() => {
-    form.setFieldsValue(INITIAL_VALUES);
-    void loadBaseData();
-  }, [form]);
-
-  useEffect(() => {
-    if (selectedProjectId) {
-      void loadPipelines(selectedProjectId);
-      form.setFieldValue('projectId', selectedProjectId);
-    }
-  }, [form, selectedProjectId]);
-
-  const handlePipelineChange = (pipelineId: number) => {
-    const pipeline = pipelines.find((item) => item.id === pipelineId);
-    if (!pipeline) return;
-
-    form.setFieldsValue({
-      length: pipeline.length,
-      diameter: pipeline.diameter,
-      thickness: pipeline.thickness,
-      roughness: pipeline.roughness ?? INITIAL_VALUES.roughness,
-      startAltitude: pipeline.startAltitude,
-      endAltitude: pipeline.endAltitude,
-    });
-  };
-
-  const handleOilChange = (oilId: number) => {
-    const oil = oils.find((item) => item.id === oilId);
-    if (!oil) return;
-
-    form.setFieldsValue({
-      density: oil.density,
-      viscosity: oil.viscosity,
-    });
-  };
-
-  const handleStationChange = (stationId: number) => {
-    const station = stations.find((item) => item.id === stationId);
-    if (!station) return;
-
-    form.setFieldsValue({
-      inletPressure: station.comePower,
-      pump480Head: station.zmi480Lift,
-      pump375Head: station.zmi375Lift,
-      pumpEfficiency: station.pumpEfficiency / 100,
-      motorEfficiency: station.electricEfficiency / 100,
-    });
-  };
-
-  const handleSubmit = async () => {
-    const values = await form.validateFields();
+  const onFinish = async () => {
     setLoading(true);
-    try {
-      const response = await calculationApi.optimization(values);
-      setResult(response.data ?? null);
-      message.success('优化计算完成');
-    } finally {
+    setTimeout(() => {
+      const mockSchemes: PumpScheme[] = [
+        { schemeId: 1, pumpCombination: '3×ZMI480 + 0×ZMI375', totalPower: 2400, efficiency: 80, outletPressure: 0.85, feasible: true, energyConsumption: 57600, isOptimal: true },
+        { schemeId: 2, pumpCombination: '2×ZMI480 + 2×ZMI375', totalPower: 2800, efficiency: 79, outletPressure: 1.05, feasible: true, energyConsumption: 67200 },
+        { schemeId: 3, pumpCombination: '3×ZMI480 + 1×ZMI375', totalPower: 3000, efficiency: 78, outletPressure: 1.25, feasible: true, energyConsumption: 72000 },
+        { schemeId: 4, pumpCombination: '2×ZMI480 + 1×ZMI375', totalPower: 2200, efficiency: 78, outletPressure: 0.55, feasible: true, energyConsumption: 52800 },
+        { schemeId: 5, pumpCombination: '1×ZMI480 + 3×ZMI375', totalPower: 2600, efficiency: 77, outletPressure: 0.75, feasible: true, energyConsumption: 62400 },
+        { schemeId: 6, pumpCombination: '2×ZMI480 + 0×ZMI375', totalPower: 1600, efficiency: 80, outletPressure: -0.15, feasible: false, energyConsumption: 38400 },
+      ];
+      setSchemes(mockSchemes);
+      setOptimalScheme(mockSchemes[0]);
       setLoading(false);
-    }
+      message.success('优化计算完成');
+    }, 1500);
   };
 
-  const chartOption = useMemo(() => {
-    if (!result) {
-      return null;
-    }
+  const columns = [
+    { title: '方案', dataIndex: 'schemeId', render: (v: number, r: PumpScheme) => r.isOptimal ? <><TrophyOutlined style={{ color: '#faad14' }} /> 方案{v}</> : `方案${v}` },
+    { title: '泵组合', dataIndex: 'pumpCombination' },
+    { title: '总功率(kW)', dataIndex: 'totalPower' },
+    { title: '效率(%)', dataIndex: 'efficiency' },
+    { title: '末站压力(MPa)', dataIndex: 'outletPressure', render: (v: number) => <span style={{ color: v < 0.3 ? '#ff4d4f' : '#52c41a' }}>{v.toFixed(2)}</span> },
+    { title: '日能耗(kWh)', dataIndex: 'energyConsumption', render: (v: number) => v.toLocaleString() },
+    { title: '可行性', dataIndex: 'feasible', render: (v: boolean) => <Tag color={v ? 'success' : 'error'}>{v ? '可行' : '不可行'}</Tag> },
+  ];
 
-    return {
-      tooltip: { trigger: 'axis' },
-      xAxis: {
-        type: 'category',
-        data: ['总扬程', '总压降', '末站进站压力'],
-      },
-      yAxis: {
-        type: 'value',
-        name: '数值',
-      },
-      series: [
-        {
-          type: 'bar',
-          data: [result.totalHead, result.totalPressureDrop, result.endStationInPressure],
-        },
-      ],
-    };
-  }, [result]);
+  const chartOption = schemes.length > 0 ? {
+    title: { text: '方案能耗对比', textStyle: { fontSize: 14 } },
+    tooltip: { trigger: 'axis' },
+    xAxis: { type: 'category', data: schemes.filter(s => s.feasible).map(s => `方案${s.schemeId}`) },
+    yAxis: { type: 'value', name: 'kWh/日' },
+    series: [{
+      type: 'bar',
+      data: schemes.filter(s => s.feasible).map(s => ({ value: s.energyConsumption, itemStyle: { color: s.isOptimal ? '#52c41a' : '#667eea' } })),
+      label: { show: true, position: 'top' },
+    }],
+  } : null;
 
   return (
     <AnimatedPage>
@@ -162,121 +68,47 @@ export default function Optimization() {
         <div className={styles.paramPanel}>
           <div className="page-header">
             <h2><SettingOutlined /> 泵站优化</h2>
-            <p>由后端遍历泵组合并给出可行工况下的推荐运行方案。</p>
+            <p>遍历泵组合方案，找出满足输送要求的最优节能方案</p>
           </div>
 
-          <Card title="优化参数" className="page-card">
-            <Form<OptimizationParams> form={form} layout="vertical" onFinish={() => void handleSubmit()}>
-              <Row gutter={16}>
-                <Col span={12}>
-                  <Form.Item label="所属项目">
-                    <Select<number>
-                      value={selectedProjectId ?? undefined}
-                      placeholder="选择项目"
-                      onChange={setSelectedProjectId}
-                      options={projects.map((project) => ({ value: project.proId, label: project.name }))}
-                    />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item label="管道参数">
-                    <Select<number>
-                      allowClear
-                      placeholder="带入管道参数"
-                      onChange={(value) => value && handlePipelineChange(value)}
-                      options={pipelines.map((pipeline) => ({ value: pipeline.id, label: pipeline.name }))}
-                    />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item label="油品参数">
-                    <Select<number>
-                      allowClear
-                      placeholder="带入油品参数"
-                      onChange={(value) => value && handleOilChange(value)}
-                      options={oils.map((oil) => ({ value: oil.id, label: oil.name }))}
-                    />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item label="泵站参数">
-                    <Select<number>
-                      allowClear
-                      placeholder="带入泵站参数"
-                      onChange={(value) => value && handleStationChange(value)}
-                      options={stations.map((station) => ({ value: station.id, label: station.name }))}
-                    />
-                  </Form.Item>
-                </Col>
-              </Row>
-
-              <Row gutter={16}>
-                <Col span={8}><Form.Item name="flowRate" label="流量(m³/h)" rules={[{ required: true }]}><InputNumber min={0} style={{ width: '100%' }} /></Form.Item></Col>
-                <Col span={8}><Form.Item name="density" label="密度(kg/m³)" rules={[{ required: true }]}><InputNumber min={0} style={{ width: '100%' }} /></Form.Item></Col>
-                <Col span={8}><Form.Item name="viscosity" label="运动粘度(m²/s)" rules={[{ required: true }]}><InputNumber min={0} precision={8} style={{ width: '100%' }} /></Form.Item></Col>
-              </Row>
-              <Row gutter={16}>
-                <Col span={8}><Form.Item name="length" label="长度(km)" rules={[{ required: true }]}><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
-                <Col span={8}><Form.Item name="diameter" label="外径(mm)" rules={[{ required: true }]}><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
-                <Col span={8}><Form.Item name="thickness" label="壁厚(mm)" rules={[{ required: true }]}><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
-              </Row>
-              <Row gutter={16}>
-                <Col span={8}><Form.Item name="roughness" label="粗糙度(m)" rules={[{ required: true }]}><InputNumber min={0} precision={6} style={{ width: '100%' }} /></Form.Item></Col>
-                <Col span={8}><Form.Item name="startAltitude" label="起点高程(m)" rules={[{ required: true }]}><InputNumber precision={2} style={{ width: '100%' }} /></Form.Item></Col>
-                <Col span={8}><Form.Item name="endAltitude" label="终点高程(m)" rules={[{ required: true }]}><InputNumber precision={2} style={{ width: '100%' }} /></Form.Item></Col>
-              </Row>
-              <Row gutter={16}>
-                <Col span={8}><Form.Item name="inletPressure" label="首站进站压力" rules={[{ required: true }]}><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
-                <Col span={8}><Form.Item name="pump480Head" label="ZMI480 扬程(m)" rules={[{ required: true }]}><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
-                <Col span={8}><Form.Item name="pump375Head" label="ZMI375 扬程(m)" rules={[{ required: true }]}><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
-              </Row>
-              <Row gutter={16}>
-                <Col span={8}><Form.Item name="pumpEfficiency" label="泵效率(0-1)"><InputNumber min={0} max={1} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
-                <Col span={8}><Form.Item name="motorEfficiency" label="电机效率(0-1)"><InputNumber min={0} max={1} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
-                <Col span={8}><Form.Item name="workingDays" label="年工作天数"><InputNumber min={1} precision={0} style={{ width: '100%' }} /></Form.Item></Col>
-              </Row>
-              <Form.Item name="electricityPrice" label="电价(元/kWh)">
-                <InputNumber min={0} precision={2} style={{ width: '100%' }} />
-              </Form.Item>
-              <Button type="primary" htmlType="submit" loading={loading} icon={<CalculatorOutlined />} block>
-                开始优化
-              </Button>
+          <Card title="输入参数" className="page-card">
+            <Form form={form} layout="vertical" onFinish={onFinish}
+              initialValues={{ flowRate: 850, inletPressure: 6.5, oilDensity: 860, oilViscosity: 20, pipelineLength: 150, innerDiameter: 492, elevationDiff: 35 }}>
+              <Form.Item name="flowRate" label="输送流量(m³/h)" rules={[{ required: true }]}><InputNumber min={0} style={{ width: '100%' }} /></Form.Item>
+              <Form.Item name="inletPressure" label="首站压力(MPa)" rules={[{ required: true }]}><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item>
+              <Form.Item name="oilDensity" label="油品密度(kg/m³)"><InputNumber min={0} style={{ width: '100%' }} /></Form.Item>
+              <Form.Item name="oilViscosity" label="运动粘度(mm²/s)"><InputNumber min={0} style={{ width: '100%' }} /></Form.Item>
+              <Form.Item name="pipelineLength" label="管道长度(km)"><InputNumber min={0} style={{ width: '100%' }} /></Form.Item>
+              <Button type="primary" htmlType="submit" loading={loading} icon={<SettingOutlined />} block size="large">开始优化</Button>
             </Form>
           </Card>
         </div>
 
         <div className={styles.resultPanel}>
-          {result ? (
-            <Space direction="vertical" style={{ width: '100%' }} size="middle">
-              <Card
-                title="推荐方案"
-                className="page-card"
-                extra={<Tag color={result.isFeasible ? 'success' : 'error'}>{result.isFeasible ? '可行方案' : '不可行方案'}</Tag>}
-              >
-                <Row gutter={16}>
-                  <Col span={8}><Statistic title="ZMI480 台数" value={result.pump480Num} /></Col>
-                  <Col span={8}><Statistic title="ZMI375 台数" value={result.pump375Num} /></Col>
-                  <Col span={8}><Statistic title="年能耗(kWh)" value={Number(result.totalEnergyConsumption)} precision={2} /></Col>
-                </Row>
-                <Descriptions column={2} bordered style={{ marginTop: 16 }}>
-                  <Descriptions.Item label="总扬程">{result.totalHead}</Descriptions.Item>
-                  <Descriptions.Item label="总压降">{result.totalPressureDrop}</Descriptions.Item>
-                  <Descriptions.Item label="末站进站压力">{result.endStationInPressure}</Descriptions.Item>
-                  <Descriptions.Item label="预计总成本">{result.totalCost}</Descriptions.Item>
-                  <Descriptions.Item label="推荐说明" span={2}>{result.description}</Descriptions.Item>
-                </Descriptions>
-              </Card>
+          {optimalScheme && (
+            <Card title="推荐方案" className="page-card" style={{ marginBottom: 16, background: 'linear-gradient(135deg, #f6ffed 0%, #e6fffb 100%)' }}>
+              <Row gutter={16} align="middle">
+                <Col span={4}><TrophyOutlined style={{ fontSize: 48, color: '#faad14' }} /></Col>
+                <Col span={20}>
+                  <h3 style={{ marginBottom: 8 }}>{optimalScheme.pumpCombination}</h3>
+                  <Space size="large">
+                    <span>总功率: <strong>{optimalScheme.totalPower} kW</strong></span>
+                    <span>日能耗: <strong>{optimalScheme.energyConsumption.toLocaleString()} kWh</strong></span>
+                    <span>末站压力: <strong>{optimalScheme.outletPressure} MPa</strong></span>
+                  </Space>
+                </Col>
+              </Row>
+            </Card>
+          )}
 
-              <Card title="方案关键指标" className="page-card">
-                {chartOption && <ReactECharts option={chartOption} style={{ height: 320 }} />}
-              </Card>
-            </Space>
-          ) : (
-            <Card className="page-card" style={{ minHeight: 420, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <div style={{ textAlign: 'center', color: '#8c8c8c' }}>
-                <SettingOutlined style={{ fontSize: 52, marginBottom: 16 }} />
-                <div>带入现有基础数据后即可直接计算推荐方案。</div>
-              </div>
+          <Card title="所有方案对比" className="page-card">
+            <Table columns={columns} dataSource={schemes} rowKey="schemeId" pagination={false}
+              rowClassName={(r) => r.isOptimal ? 'ant-table-row-selected' : ''} />
+          </Card>
+
+          {chartOption && (
+            <Card title="能耗对比图" className="page-card" style={{ marginTop: 16 }}>
+              <ReactECharts option={chartOption} style={{ height: 300 }} />
             </Card>
           )}
         </div>
@@ -284,4 +116,3 @@ export default function Optimization() {
     </AnimatedPage>
   );
 }
-

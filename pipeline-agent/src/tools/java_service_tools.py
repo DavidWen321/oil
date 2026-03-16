@@ -4,7 +4,6 @@ Java服务调用工具
 """
 
 import json
-import threading
 import time
 from typing import Optional, Dict, Any
 
@@ -24,7 +23,6 @@ class JavaServiceClient:
         self.timeout = settings.JAVA_REQUEST_TIMEOUT
         self.token: Optional[str] = None
         self._token_expires_at: float = 0.0
-        self._token_lock = threading.Lock()
 
     async def _get_token(self) -> str:
         """获取认证Token"""
@@ -52,36 +50,29 @@ class JavaServiceClient:
             return self.token
 
     def _get_token_sync(self) -> str:
-        """同步获取认证Token。使用锁避免并发刷新覆盖。"""
+        """同步获取认证Token"""
         if self.token and time.time() < self._token_expires_at:
             return self.token
 
-        with self._token_lock:
-            if self.token and time.time() < self._token_expires_at:
-                return self.token
-
-            with httpx.Client(timeout=self.timeout) as client:
-                response = client.post(
-                    f"{self.base_url}/auth/login",
-                    json={
-                        "username": settings.JAVA_AUTH_USERNAME,
-                        "password": settings.JAVA_AUTH_PASSWORD,
-                    },
-                )
-                response.raise_for_status()
-                data = response.json()
-                token_data = data.get("data", {}) if isinstance(data, dict) else {}
-                token = (
-                    token_data.get("access_token")
-                    or token_data.get("token")
-                    or data.get("access_token")
-                    or data.get("token")
-                )
-                if not token:
-                    raise RuntimeError("Java auth token missing in login response")
-                self.token = token
-                self._token_expires_at = time.time() + 7200
-                return token
+        with httpx.Client(timeout=self.timeout) as client:
+            response = client.post(
+                f"{self.base_url}/auth/login",
+                json={
+                    "username": settings.JAVA_AUTH_USERNAME,
+                    "password": settings.JAVA_AUTH_PASSWORD,
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+            token_data = data.get("data", {}) if isinstance(data, dict) else {}
+            self.token = (
+                token_data.get("access_token")
+                or token_data.get("token")
+                or data.get("access_token")
+                or data.get("token")
+            )
+            self._token_expires_at = time.time() + 7200
+            return self.token
 
     def _get_headers(self) -> Dict[str, str]:
         """获取请求头"""
@@ -131,16 +122,13 @@ class JavaServiceClient:
 
 # 创建全局客户端实例
 _java_client: Optional[JavaServiceClient] = None
-_java_client_lock = threading.Lock()
 
 
 def get_java_client() -> JavaServiceClient:
     """获取Java客户端单例"""
     global _java_client
     if _java_client is None:
-        with _java_client_lock:
-            if _java_client is None:
-                _java_client = JavaServiceClient()
+        _java_client = JavaServiceClient()
     return _java_client
 
 
@@ -214,7 +202,7 @@ def call_hydraulic_analysis(
         if oil_id is not None:
             request_data["oilId"] = oil_id
 
-        logger.info(f"调用水力分析API: flow_rate={flow_rate}, length={length}, diameter={diameter}, pipeline_id={pipeline_id}, oil_id={oil_id}")
+        logger.info(f"调用水力分析API: {request_data}")
 
         response = client.call_api(
             "/calculation/hydraulic-analysis",
@@ -330,7 +318,7 @@ def call_pump_optimization(
         if project_id is not None:
             request_data["projectId"] = project_id
 
-        logger.info(f"调用泵站优化API: flow_rate={flow_rate}, pipeline_id={pipeline_id}, project_id={project_id}")
+        logger.info(f"调用泵站优化API: {request_data}")
 
         response = client.call_api(
             "/calculation/optimization",

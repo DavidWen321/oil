@@ -1,13 +1,8 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- *  Dashboard - Apple风格浅色主题响应式设计
- *  Design: Apple HIG + Linear + Stripe Light Theme
- * ═══════════════════════════════════════════════════════════════════════════
- */
+﻿/**
+ * 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺? *  Dashboard - Apple椋庢牸娴呰壊涓婚鍝嶅簲寮忚璁? *  Design: Apple HIG + Linear + Stripe Light Theme
+ * 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺? */
 
-/* ═══════════════════════════════════════════════════════════════════════════
- * 1. 主容器
- * ═══════════════════════════════════════════════════════════════════════════ */
+/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺? * 1. 涓诲鍣? * 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?*/
 .dashboard {
   min-height: 100%;
   background: var(--bg-subtle);
@@ -24,9 +19,8 @@
   margin: 0 auto;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
- * 2. 页面头部
- * ═══════════════════════════════════════════════════════════════════════════ */
+/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺? * 2. 椤甸潰澶撮儴
+ * 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?*/
 .header {
   margin-bottom: var(--space-8);
 }
@@ -110,7 +104,7 @@
   box-shadow: 0 4px 12px rgba(0, 122, 255, 0.25);
 }
 
-/* 实时指示器 */
+/* 瀹炴椂鎸囩ず鍣?*/
 .liveIndicator {
   display: inline-flex;
   align-items: center;
@@ -143,16 +137,16 @@
   font-weight: var(--font-semibold);
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
- * 3. 统计卡片
- * ═══════════════════════════════════════════════════════════════════════════ */
+/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺? * 3. 缁熻鍗＄墖
+ * 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?*/
 .statsGrid {
+  gap: var(--space-5);
   margin-bottom: var(--space-8);
 }
 
 .statCard {
   position: relative;
-  padding: var(--space-6);
+  padding: var(--space-5);
   background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-xl);
@@ -190,7 +184,7 @@
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: var(--space-4);
+  margin-bottom: var(--space-3);
 }
 
 .statLabel {
@@ -232,25 +226,31 @@
 }
 
 .statValue {
-  font-size: var(--text-4xl);
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  font-size: clamp(2.625rem, 2.8vw, 3.375rem);
   font-weight: var(--font-bold);
   color: var(--text-primary);
-  line-height: 1;
-  margin-bottom: var(--space-2);
+  line-height: 0.96;
+  margin-bottom: var(--space-3);
   letter-spacing: var(--tracking-tight);
 }
 
 .statUnit {
-  font-size: var(--text-lg);
+  font-size: var(--text-base);
   color: var(--text-tertiary);
-  font-weight: var(--font-regular);
-  margin-left: var(--space-1);
+  font-weight: var(--font-medium);
+  margin-left: 0;
+  line-height: 1.2;
 }
 
 .statFooter {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  flex-wrap: wrap;
+  gap: var(--space-3);
 }
 
 .statTrend {
@@ -283,18 +283,21 @@
   color: var(--text-muted);
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
- * 4. 图表区域
- * ═══════════════════════════════════════════════════════════════════════════ */
+/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺? * 4. 鍥捐〃鍖哄煙
+ * 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?*/
 .chartsSection {
+  gap: var(--space-5);
+  align-items: stretch;
   margin-bottom: var(--space-8);
 }
 
 .chartCard {
+  display: flex;
+  flex-direction: column;
   background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-xl);
-  padding: var(--space-6);
+  padding: var(--space-5);
   transition: border-color var(--duration-normal) var(--ease-default);
 }
 
@@ -310,8 +313,8 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: var(--space-5);
-  padding-bottom: var(--space-4);
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-3);
   border-bottom: 1px solid var(--border-subtle);
 }
 
@@ -370,17 +373,30 @@
   container-type: inline-size;
   container-name: chart;
   position: relative;
-  height: 320px;
+  flex: 1;
+  min-height: 0;
+  height: 288px;
 }
 
 .chartContainerLarge {
-  height: 400px;
+  height: 360px;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
- * 5. 底部区域
- * ═══════════════════════════════════════════════════════════════════════════ */
+/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺? * 5. 搴曢儴鍖哄煙
+ * 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?*/
 .bottomSection {
+}
+
+@media (min-width: 1280px) {
+  .chartsSection {
+    grid-template-columns: minmax(0, 1.18fr) minmax(0, 0.92fr);
+  }
+}
+
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .chartsSection {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @container chart (max-width: 480px) {
@@ -403,7 +419,7 @@
   }
 }
 
-/* 预警卡片 */
+/* 棰勮鍗＄墖 */
 .alertCard {
   background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
@@ -545,7 +561,7 @@
   transform: translateX(4px);
 }
 
-/* 设备卡片 */
+/* 璁惧鍗＄墖 */
 .deviceCard {
   background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
@@ -695,34 +711,32 @@
   margin-left: var(--space-1);
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
- * 6. 响应式设计 - 细粒度控制
- * ═══════════════════════════════════════════════════════════════════════════ */
+/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺? * 6. 鍝嶅簲寮忚璁?- 缁嗙矑搴︽帶鍒? * 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?*/
 
-/* 2K+ 大屏幕 */
+/* 2K+ 澶у睆骞?*/
 @media (min-width: 1536px) {
   .statsGrid {
-    gap: var(--space-8);
+    gap: var(--space-6);
   }
 
   .statCard {
-    padding: var(--space-8);
+    padding: var(--space-6);
   }
 
   .statValue {
-    font-size: var(--text-5xl);
+    font-size: clamp(2.875rem, 2.5vw, 3.5rem);
   }
 
 }
 
-/* 桌面端 (1280px - 1535px) */
+/* 妗岄潰绔?(1280px - 1535px) */
 @media (min-width: 1280px) and (max-width: 1535px) {
   .statsGrid {
     gap: var(--space-5);
   }
 }
 
-/* 小桌面 (1024px - 1279px) */
+/* 灏忔闈?(1024px - 1279px) */
 @media (min-width: 1024px) and (max-width: 1279px) {
   .statsGrid {
     gap: var(--space-5);
@@ -737,7 +751,7 @@
   }
 }
 
-/* 平板横屏 (768px - 1023px) */
+/* 骞虫澘妯睆 (768px - 1023px) */
 @media (min-width: 768px) and (max-width: 1023px) {
   .header {
     margin-bottom: var(--space-6);
@@ -790,7 +804,7 @@
 
 }
 
-/* 平板竖屏 (640px - 767px) */
+/* 骞虫澘绔栧睆 (640px - 767px) */
 @media (min-width: 640px) and (max-width: 767px) {
   .dashboard {
     padding: var(--space-5);
@@ -864,7 +878,7 @@
 
 }
 
-/* 移动端 (< 640px) */
+/* 绉诲姩绔?(< 640px) */
 @media (max-width: 639px) {
   .dashboard {
     padding: var(--space-4);
@@ -1009,7 +1023,7 @@
   }
 }
 
-/* 超小屏幕 (< 375px) */
+/* 瓒呭皬灞忓箷 (< 375px) */
 @media (max-width: 374px) {
   .dashboard {
     padding: var(--space-3);
@@ -1045,9 +1059,8 @@
   }
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
- * 7. 减少动画偏好
- * ═══════════════════════════════════════════════════════════════════════════ */
+/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺? * 7. 鍑忓皯鍔ㄧ敾鍋忓ソ
+ * 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?*/
 @media (prefers-reduced-motion: reduce) {
   .dashboard {
     animation: none;
@@ -1066,3 +1079,5 @@
     animation: none;
   }
 }
+
+

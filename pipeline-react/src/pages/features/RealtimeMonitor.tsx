@@ -1,548 +1,365 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  Button,
-  Card,
-  Col,
-  Descriptions,
-  InputNumber,
-  Modal,
-  Row,
-  Select,
-  Space,
-  Statistic,
-  Table,
-  Tag,
-  message,
-} from 'antd';
-import {
-  BellOutlined,
-  DashboardOutlined,
-  PauseCircleOutlined,
-  PlayCircleOutlined,
-  ReloadOutlined,
-  WarningOutlined,
-} from '@ant-design/icons';
+import { useState, useEffect, useCallback } from 'react';
+import { Card, Row, Col, Table, Tag, Button, Space, Alert, Badge, Statistic, Switch, Slider, message, Modal, Descriptions, Timeline } from 'antd';
+import { DashboardOutlined, BellOutlined, WarningOutlined, CheckCircleOutlined, SyncOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
 import ReactECharts from 'echarts-for-react';
+import { useMonitorStore } from '../../stores/monitorStore';
+import type { MonitorData, AlarmInfo } from '../../types';
 import AnimatedPage from '../../components/common/AnimatedPage';
-import { useWebSocket } from '../../hooks/useWebSocket';
-import { monitorApi, pipelineApi, projectApi } from '../../api';
-import type { AlarmMessage, AlarmRule, MonitorDataPoint, Pipeline, Project } from '../../types';
-
-const SCENARIO_OPTIONS = [
-  { value: 'NORMAL', label: '正常工况' },
-  { value: 'PRESSURE_HIGH', label: '高压预警' },
-  { value: 'LEAKAGE', label: '泄漏疑似' },
-  { value: 'PUMP_FAULT', label: '泵站异常' },
-];
-
-function levelColor(level?: string) {
-  if (!level) {
-    return 'default';
-  }
-  if (level.includes('EMERGENCY') || level.includes('CRITICAL')) {
-    return 'error';
-  }
-  if (level.includes('WARNING')) {
-    return 'warning';
-  }
-  return 'processing';
-}
-
-function dedupeHistory(history: MonitorDataPoint[], incoming: MonitorDataPoint) {
-  const next = [...history, incoming];
-  const deduped = next.filter((item, index, array) => {
-    const firstIndex = array.findIndex((current) => current.timestamp === item.timestamp);
-    return firstIndex === index;
-  });
-  return deduped.slice(-20);
-}
-
-function reconcileAlarm(list: AlarmMessage[], alarm: AlarmMessage) {
-  const next = list.filter((item) => item.alarmId !== alarm.alarmId);
-  if (alarm.status !== 'RESOLVED') {
-    next.unshift(alarm);
-  }
-  return next.sort(
-    (left, right) => new Date(right.alarmTime).getTime() - new Date(left.alarmTime).getTime(),
-  );
-}
 
 export default function RealtimeMonitor() {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
-  const [rules, setRules] = useState<AlarmRule[]>([]);
-  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
-  const [selectedPipelineId, setSelectedPipelineId] = useState<number | null>(null);
-  const [intervalSeconds, setIntervalSeconds] = useState(5);
-  const [loading, setLoading] = useState(false);
-  const [running, setRunning] = useState(false);
-  const [currentData, setCurrentData] = useState<MonitorDataPoint | null>(null);
-  const [history, setHistory] = useState<MonitorDataPoint[]>([]);
-  const [alarms, setAlarms] = useState<AlarmMessage[]>([]);
-  const [selectedAlarm, setSelectedAlarm] = useState<AlarmMessage | null>(null);
+  const { data, alarms, connected, setData, addAlarm, clearAlarms } = useMonitorStore();
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [refreshInterval, setRefreshInterval] = useState(5);
+  const [selectedAlarm, setSelectedAlarm] = useState<AlarmInfo | null>(null);
+  const [historyData, setHistoryData] = useState<{ time: string; pressure: number; flow: number; power: number }[]>([]);
 
-  const applyDataPoint = useCallback((data: MonitorDataPoint) => {
-    setCurrentData(data);
-    setHistory((prev) => dedupeHistory(prev, data));
-  }, []);
+  // 模拟实时数据更新
+  const generateMockData = useCallback(() => {
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString();
 
-  const applyAlarm = useCallback((alarm: AlarmMessage) => {
-    setAlarms((prev) => reconcileAlarm(prev, alarm));
-  }, []);
-
-  const { connected } = useWebSocket({
-    pipelineId: selectedPipelineId,
-    scope: 'pipeline',
-    subscribeMonitor: selectedPipelineId != null,
-    subscribeAlarms: selectedPipelineId != null,
-    onMonitorData: (data) => {
-      if (selectedPipelineId == null || data.pipelineId !== selectedPipelineId) {
-        return;
-      }
-      applyDataPoint(data);
-    },
-    onAlarm: (alarm) => {
-      if (selectedPipelineId == null || alarm.pipelineId !== selectedPipelineId) {
-        return;
-      }
-      applyAlarm(alarm);
-    },
-    onAlarmUpdate: (alarm) => {
-      if (selectedPipelineId == null || alarm.pipelineId !== selectedPipelineId) {
-        return;
-      }
-      applyAlarm(alarm);
-    },
-  });
-
-  const loadBaseData = async () => {
-    const [projectRes, ruleRes] = await Promise.all([
-      projectApi.list(),
-      monitorApi.getAlarmRules(),
-    ]);
-
-    const projectList = projectRes.data ?? [];
-    setProjects(projectList);
-    setRules(ruleRes.data ?? []);
-
-    if (projectList.length > 0) {
-      setSelectedProjectId(projectList[0].proId);
-    }
-  };
-
-  const loadPipelines = async (projectId: number) => {
-    const response = await pipelineApi.listByProject(projectId);
-    const pipelineList = response.data ?? [];
-    setPipelines(pipelineList);
-    setSelectedPipelineId(pipelineList.length > 0 ? pipelineList[0].id : null);
-    setCurrentData(null);
-    setHistory([]);
-    setAlarms([]);
-  };
-
-  const fetchSnapshot = async (pipelineId: number) => {
-    const [dataRes, alarmRes] = await Promise.all([
-      monitorApi.getCurrentData(pipelineId).catch(() => null),
-      monitorApi.getActiveAlarms(pipelineId).catch(() => null),
-    ]);
-
-    const nextData = dataRes?.data ?? null;
-    const nextAlarms = alarmRes?.data ?? [];
-
-    setCurrentData(nextData);
-    if (nextData) {
-      setHistory((prev) => dedupeHistory(prev, nextData));
-    }
-    setAlarms(nextAlarms);
-  };
-
-  useEffect(() => {
-    void loadBaseData();
-  }, []);
-
-  useEffect(() => {
-    if (selectedProjectId) {
-      void loadPipelines(selectedProjectId);
-    }
-  }, [selectedProjectId]);
-
-  useEffect(() => {
-    if (selectedPipelineId) {
-      void fetchSnapshot(selectedPipelineId);
-    }
-  }, [selectedPipelineId]);
-
-  useEffect(() => {
-    if (!running || !selectedPipelineId || connected) {
-      return undefined;
-    }
-
-    const timer = window.setInterval(() => {
-      void fetchSnapshot(selectedPipelineId);
-    }, intervalSeconds * 1000);
-
-    return () => {
-      window.clearInterval(timer);
+    const newData: MonitorData = {
+      pipelineId: 1,
+      timestamp: now.toISOString(),
+      inletPressure: 6.2 + Math.random() * 0.8,
+      outletPressure: 0.7 + Math.random() * 0.3,
+      flowRate: 820 + Math.random() * 60,
+      oilTemperature: 45 + Math.random() * 10,
+      pumpStatus: [
+        { pumpId: 1, name: 'ZMI480-1', running: true, current: 85 + Math.random() * 10, frequency: 50, vibration: 2.5 + Math.random() },
+        { pumpId: 2, name: 'ZMI480-2', running: true, current: 82 + Math.random() * 10, frequency: 50, vibration: 2.3 + Math.random() },
+        { pumpId: 3, name: 'ZMI480-3', running: Math.random() > 0.3, current: Math.random() > 0.3 ? 78 + Math.random() * 10 : 0, frequency: 50, vibration: 2.1 + Math.random() },
+        { pumpId: 4, name: 'ZMI375-1', running: false, current: 0, frequency: 0, vibration: 0 },
+      ],
+      energyConsumption: 2350 + Math.random() * 200,
+      systemEfficiency: 76 + Math.random() * 8,
     };
-  }, [connected, intervalSeconds, running, selectedPipelineId]);
+
+    setData(newData);
+
+    // 更新历史数据
+    setHistoryData(prev => {
+      const updated = [...prev, { time: timeStr, pressure: newData.inletPressure, flow: newData.flowRate, power: newData.energyConsumption }];
+      return updated.slice(-20); // 保留最近20个点
+    });
+
+    // 随机生成告警
+    if (Math.random() > 0.85) {
+      const alarmTypes = [
+        { type: 'PRESSURE_HIGH', level: 'warning', message: '首站压力偏高', value: newData.inletPressure.toFixed(2) + ' MPa' },
+        { type: 'FLOW_ABNORMAL', level: 'warning', message: '流量波动异常', value: newData.flowRate.toFixed(0) + ' m³/h' },
+        { type: 'PUMP_VIBRATION', level: 'critical', message: '泵站振动超标', value: '3.8 mm/s' },
+        { type: 'TEMP_HIGH', level: 'info', message: '油温偏高', value: newData.oilTemperature.toFixed(1) + '°C' },
+      ];
+      const randomAlarm = alarmTypes[Math.floor(Math.random() * alarmTypes.length)];
+      addAlarm({
+        alarmId: 'alarm-' + Date.now(),
+        pipelineId: 1,
+        alarmType: randomAlarm.type,
+        alarmLevel: randomAlarm.level as 'info' | 'warning' | 'critical',
+        message: randomAlarm.message,
+        value: randomAlarm.value,
+        threshold: '阈值范围',
+        timestamp: now.toISOString(),
+        acknowledged: false,
+      });
+    }
+  }, [setData, addAlarm]);
 
   useEffect(() => {
-    return () => {
-      if (running && selectedPipelineId) {
-        void monitorApi.stopSimulation(selectedPipelineId);
-      }
-    };
-  }, [running, selectedPipelineId]);
-
-  const handleStart = async () => {
-    if (!selectedPipelineId) {
-      message.warning('请先选择管道');
-      return;
+    let timer: ReturnType<typeof setInterval>;
+    if (autoRefresh) {
+      generateMockData(); // 立即执行一次
+      timer = setInterval(generateMockData, refreshInterval * 1000);
     }
+    return () => clearInterval(timer);
+  }, [autoRefresh, refreshInterval, generateMockData]);
 
-    setLoading(true);
-    try {
-      await monitorApi.startSimulation(selectedPipelineId, intervalSeconds * 1000);
-      setRunning(true);
-      window.setTimeout(() => {
-        void fetchSnapshot(selectedPipelineId);
-      }, 600);
-      message.success(connected ? '监控推送已启动' : '监控模拟已启动，当前使用接口兜底刷新');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleStop = async () => {
-    if (!selectedPipelineId) {
-      return;
-    }
-
-    setLoading(true);
-    try {
-      await monitorApi.stopSimulation(selectedPipelineId);
-      setRunning(false);
-      message.success('监控模拟已停止');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleRefresh = async () => {
-    if (!selectedPipelineId) {
-      message.warning('请先选择管道');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      await fetchSnapshot(selectedPipelineId);
-      message.success('监控数据已刷新');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleInjectScenario = async (scenario: string) => {
-    if (!selectedPipelineId) {
-      message.warning('请先选择管道');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const response = await monitorApi.simulateData(selectedPipelineId, scenario);
-      if (response.data) {
-        await monitorApi.receiveData(response.data);
-      }
-      if (!connected) {
-        await fetchSnapshot(selectedPipelineId);
-      }
-      message.success('场景数据已注入');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleAcknowledge = async (alarmId: string) => {
-    await monitorApi.acknowledgeAlarm(alarmId, 'web-user');
-    if (!connected && selectedPipelineId) {
-      await fetchSnapshot(selectedPipelineId);
-    }
-    message.success('告警已确认');
-  };
-
-  const handleResolve = async (alarmId: string) => {
-    await monitorApi.resolveAlarm(alarmId);
-    setAlarms((prev) => prev.filter((item) => item.alarmId !== alarmId));
-    if (!connected && selectedPipelineId) {
-      await fetchSnapshot(selectedPipelineId);
-    }
-    message.success('告警已处置');
-  };
-
-  const pressureOption = useMemo(() => ({
+  // 压力趋势图
+  const pressureChartOption = {
+    title: { text: '压力趋势', textStyle: { fontSize: 14 } },
     tooltip: { trigger: 'axis' },
-    legend: { data: ['首站压力', '末站压力'] },
-    xAxis: {
-      type: 'category',
-      data: history.map((item) => new Date(item.timestamp).toLocaleTimeString()),
-    },
-    yAxis: {
-      type: 'value',
-      name: 'MPa',
-    },
-    series: [
-      {
-        name: '首站压力',
-        type: 'line',
-        smooth: true,
-        data: history.map((item) => item.inletPressure),
-      },
-      {
-        name: '末站压力',
-        type: 'line',
-        smooth: true,
-        data: history.map((item) => item.outletPressure),
-      },
-    ],
-  }), [history]);
+    legend: { data: ['首站压力'], right: 10, top: 0 },
+    grid: { left: '3%', right: '4%', bottom: '3%', top: 40, containLabel: true },
+    xAxis: { type: 'category', data: historyData.map(d => d.time), axisLabel: { rotate: 45 } },
+    yAxis: { type: 'value', name: 'MPa', min: 5, max: 8 },
+    series: [{ name: '首站压力', type: 'line', smooth: true, data: historyData.map(d => d.pressure.toFixed(2)), lineStyle: { color: '#667eea', width: 2 }, areaStyle: { color: 'rgba(102,126,234,0.2)' } }]
+  };
 
-  const energyOption = useMemo(() => ({
+  // 流量趋势图
+  const flowChartOption = {
+    title: { text: '流量趋势', textStyle: { fontSize: 14 } },
     tooltip: { trigger: 'axis' },
-    legend: { data: ['入口流量', '实时功率'] },
-    xAxis: {
-      type: 'category',
-      data: history.map((item) => new Date(item.timestamp).toLocaleTimeString()),
-    },
-    yAxis: [
-      {
-        type: 'value',
-        name: 'm³/h',
-      },
-      {
-        type: 'value',
-        name: 'kW',
-      },
-    ],
-    series: [
-      {
-        name: '入口流量',
-        type: 'bar',
-        data: history.map((item) => item.inletFlowRate),
-      },
-      {
-        name: '实时功率',
-        type: 'line',
-        smooth: true,
-        yAxisIndex: 1,
-        data: history.map((item) => item.realTimePower),
-      },
-    ],
-  }), [history]);
+    legend: { data: ['流量'], right: 10, top: 0 },
+    grid: { left: '3%', right: '4%', bottom: '3%', top: 40, containLabel: true },
+    xAxis: { type: 'category', data: historyData.map(d => d.time), axisLabel: { rotate: 45 } },
+    yAxis: { type: 'value', name: 'm³/h', min: 750, max: 950 },
+    series: [{ name: '流量', type: 'line', smooth: true, data: historyData.map(d => d.flow.toFixed(0)), lineStyle: { color: '#52c41a', width: 2 }, areaStyle: { color: 'rgba(82,196,26,0.2)' } }]
+  };
 
-  const alarmColumns = [
-    {
-      title: '时间',
-      dataIndex: 'alarmTime',
-      key: 'alarmTime',
-      render: (value: string) => new Date(value).toLocaleString(),
-    },
-    {
-      title: '级别',
-      dataIndex: 'alarmLevel',
-      key: 'alarmLevel',
-      render: (value: string) => <Tag color={levelColor(value)}>{value}</Tag>,
-    },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      key: 'status',
-      render: (value: string) => <Tag color={value === 'ACTIVE' ? 'red' : 'blue'}>{value}</Tag>,
-    },
-    {
-      title: '告警标题',
-      dataIndex: 'title',
-      key: 'title',
-    },
-    {
-      title: '指标',
-      dataIndex: 'metricName',
-      key: 'metricName',
-    },
-    {
-      title: '当前值',
-      dataIndex: 'currentValue',
-      key: 'currentValue',
-    },
-    {
-      title: '操作',
-      key: 'action',
-      render: (_: unknown, record: AlarmMessage) => (
-        <Space>
-          <Button size="small" onClick={() => setSelectedAlarm(record)}>详情</Button>
-          <Button size="small" disabled={record.status !== 'ACTIVE'} onClick={() => void handleAcknowledge(record.alarmId)}>确认</Button>
-          <Button size="small" type="primary" disabled={record.status === 'RESOLVED'} onClick={() => void handleResolve(record.alarmId)}>处置</Button>
-        </Space>
-      ),
-    },
+  // 能耗仪表盘
+  const gaugeOption = data ? {
+    series: [{
+      type: 'gauge',
+      startAngle: 210,
+      endAngle: -30,
+      center: ['50%', '72%'],
+      radius: '92%',
+      min: 0,
+      max: 3000,
+      splitNumber: 3,
+      itemStyle: { color: '#667eea' },
+      progress: { show: true, width: 18, roundCap: true },
+      pointer: { show: false },
+      axisLine: {
+        roundCap: true,
+        lineStyle: {
+          width: 18,
+          color: [[1, '#E8ECF5']],
+        },
+      },
+      axisTick: { show: false },
+      splitLine: { show: false },
+      axisLabel: { show: false },
+      anchor: { show: false },
+      title: {
+        color: '#6E6E73',
+        fontSize: 14,
+        offsetCenter: [0, '30%'],
+      },
+      detail: {
+        valueAnimation: true,
+        offsetCenter: [0, '-8%'],
+        formatter: (value: number) => '{value|' + Math.round(value) + '}\n{unit|kW}',
+        rich: {
+          value: {
+            fontSize: 34,
+            fontWeight: 700,
+            lineHeight: 38,
+            color: '#667eea',
+          },
+          unit: {
+            fontSize: 16,
+            fontWeight: 600,
+            lineHeight: 22,
+            color: '#667eea',
+          },
+        },
+      },
+      data: [{ value: Math.round(data.energyConsumption), name: '实时功率' }],
+    }],
+  } : null;
+
+  // 泵站状态列
+  const pumpColumns = [
+    { title: '设备', dataIndex: 'name' },
+    { title: '状态', dataIndex: 'running', render: (v: boolean) => <Badge status={v ? 'processing' : 'default'} text={v ? '运行中' : '停机'} /> },
+    { title: '电流(A)', dataIndex: 'current', render: (v: number) => v > 0 ? v.toFixed(1) : '-' },
+    { title: '振动(mm/s)', dataIndex: 'vibration', render: (v: number) => v > 0 ? <span style={{ color: v > 3 ? '#ff4d4f' : '#52c41a' }}>{v.toFixed(2)}</span> : '-' },
   ];
+
+  // 告警列
+  const alarmColumns = [
+    { title: '时间', dataIndex: 'timestamp', width: 100, render: (v: string) => new Date(v).toLocaleTimeString() },
+    { title: '级别', dataIndex: 'alarmLevel', width: 80, render: (v: string) => <Tag color={v === 'critical' ? 'red' : v === 'warning' ? 'orange' : 'blue'}>{v === 'critical' ? '严重' : v === 'warning' ? '警告' : '提示'}</Tag> },
+    { title: '告警信息', dataIndex: 'message' },
+    { title: '检测值', dataIndex: 'value', width: 120 },
+    { title: '状态', dataIndex: 'acknowledged', width: 80, render: (v: boolean) => v ? <Tag color="green">已确认</Tag> : <Tag color="orange">待处理</Tag> },
+    { title: '操作', width: 80, render: (_: any, record: AlarmInfo) => <Button type="link" size="small" onClick={() => setSelectedAlarm(record)}>详情</Button> },
+  ];
+
+  const acknowledgeAlarm = (_alarmId: string) => {
+    message.success('告警已确认');
+    setSelectedAlarm(null);
+  };
+
+  const getStatusColor = (value: number, min: number, max: number) => {
+    if (value < min || value > max) return '#ff4d4f';
+    if (value < min * 1.1 || value > max * 0.9) return '#faad14';
+    return '#52c41a';
+  };
 
   return (
     <AnimatedPage>
       <div className="page-header">
         <h2><DashboardOutlined /> 实时监控</h2>
-        <p>已升级为 WebSocket 推送优先、接口兜底的实时监控链路，支持异常场景注入与告警处置。</p>
+        <p>管道系统运行状态实时监控与预警</p>
       </div>
 
+      {/* 控制面板 */}
       <Card className="page-card" style={{ marginBottom: 16 }}>
-        <Row gutter={16} align="middle">
-          <Col xs={24} md={6}>
-            <Select<number>
-              style={{ width: '100%' }}
-              value={selectedProjectId ?? undefined}
-              placeholder="选择项目"
-              onChange={setSelectedProjectId}
-              options={projects.map((project) => ({ value: project.proId, label: project.name }))}
-            />
+        <Row justify="space-between" align="middle">
+          <Col>
+            <Space size="large">
+              <Badge status={connected ? 'processing' : 'error'} text={connected ? '已连接' : '未连接'} />
+              <span>自动刷新: <Switch checked={autoRefresh} onChange={setAutoRefresh} /></span>
+              <span>刷新间隔: <Slider style={{ width: 120, display: 'inline-block', marginLeft: 8 }} min={1} max={30} value={refreshInterval} onChange={setRefreshInterval} disabled={!autoRefresh} /></span>
+              <span>{refreshInterval}秒</span>
+            </Space>
           </Col>
-          <Col xs={24} md={6}>
-            <Select<number>
-              style={{ width: '100%' }}
-              value={selectedPipelineId ?? undefined}
-              placeholder="选择管道"
-              onChange={setSelectedPipelineId}
-              options={pipelines.map((pipeline) => ({ value: pipeline.id, label: pipeline.name }))}
-            />
-          </Col>
-          <Col xs={24} md={4}>
-            <InputNumber
-              min={2}
-              max={60}
-              value={intervalSeconds}
-              onChange={(value) => setIntervalSeconds(value ?? 5)}
-              style={{ width: '100%' }}
-              addonAfter="秒"
-            />
-          </Col>
-          <Col xs={24} md={8}>
-            <Space wrap>
-              <Button type="primary" loading={loading} icon={<PlayCircleOutlined />} onClick={() => void handleStart()}>
-                启动模拟
-              </Button>
-              <Button loading={loading} icon={<PauseCircleOutlined />} onClick={() => void handleStop()}>
-                停止模拟
-              </Button>
-              <Button loading={loading} icon={<ReloadOutlined />} onClick={() => void handleRefresh()}>
-                手动刷新
-              </Button>
+          <Col>
+            <Space>
+              <Button icon={<SyncOutlined spin={autoRefresh} />} onClick={generateMockData}>手动刷新</Button>
+              <Button icon={<BellOutlined />} onClick={() => clearAlarms()}>清除告警</Button>
             </Space>
           </Col>
         </Row>
-        <div style={{ marginTop: 12 }}>
-          <Space wrap>
-            <Tag color={running ? 'success' : 'default'}>{running ? '模拟运行中' : '模拟未启动'}</Tag>
-            <Tag color={connected ? 'success' : 'warning'}>{connected ? 'WebSocket 已连接' : 'WebSocket 未连接，使用轮询兜底'}</Tag>
-            <Tag color="blue">启用规则 {rules.filter((item) => item.enabled).length} 条</Tag>
-            {SCENARIO_OPTIONS.map((item) => (
-              <Button key={item.value} size="small" onClick={() => void handleInjectScenario(item.value)}>
-                注入{item.label}
-              </Button>
-            ))}
-          </Space>
-        </div>
       </Card>
 
+      {/* 实时告警 */}
+      {alarms.filter((a: AlarmInfo) => !a.acknowledged).length > 0 && (
+        <Alert
+          message={<><BellOutlined /> 当前有 {alarms.filter((a: AlarmInfo) => !a.acknowledged).length} 条未处理告警</>}
+          type={alarms.some((a: AlarmInfo) => a.alarmLevel === 'critical' && !a.acknowledged) ? 'error' : 'warning'}
+          showIcon
+          style={{ marginBottom: 16 }}
+          action={<Button size="small" type="primary" danger onClick={() => message.info('跳转到告警列表')}>查看详情</Button>}
+        />
+      )}
+
       <Row gutter={16}>
-        <Col xs={24} md={6}>
-          <Card className="page-card"><Statistic title="系统健康度" value={currentData?.healthScore ?? 0} suffix="分" /></Card>
-        </Col>
-        <Col xs={24} md={6}>
-          <Card className="page-card"><Statistic title="实时功率" value={currentData?.realTimePower ?? 0} suffix="kW" /></Card>
-        </Col>
-        <Col xs={24} md={6}>
-          <Card className="page-card"><Statistic title="单位能耗" value={currentData?.unitEnergy ?? 0} suffix="kWh/t·km" precision={4} /></Card>
-        </Col>
-        <Col xs={24} md={6}>
-          <Card className="page-card"><Statistic title="活动告警数" value={alarms.filter((item) => item.status === 'ACTIVE').length} suffix="条" /></Card>
-        </Col>
-      </Row>
-
-      <Row gutter={16} style={{ marginTop: 16 }}>
-        <Col xs={24} lg={12}>
-          <Card title="压力趋势" className="page-card">
-            <ReactECharts option={pressureOption} style={{ height: 280 }} />
+        {/* 核心指标 */}
+        <Col span={6}>
+          <Card className="page-card" style={{ textAlign: 'center' }}>
+            <Statistic
+              title="首站压力"
+              value={data?.inletPressure?.toFixed(2) || '-'}
+              suffix="MPa"
+              valueStyle={{ color: data ? getStatusColor(data.inletPressure, 5, 7) : '#666' }}
+              prefix={data && data.inletPressure > 7 ? <WarningOutlined /> : <CheckCircleOutlined />}
+            />
           </Card>
         </Col>
-        <Col xs={24} lg={12}>
-          <Card title="流量与功率" className="page-card">
-            <ReactECharts option={energyOption} style={{ height: 280 }} />
+        <Col span={6}>
+          <Card className="page-card" style={{ textAlign: 'center' }}>
+            <Statistic
+              title="末站压力"
+              value={data?.outletPressure?.toFixed(2) || '-'}
+              suffix="MPa"
+              valueStyle={{ color: data ? getStatusColor(data.outletPressure, 0.3, 1.5) : '#666' }}
+            />
           </Card>
         </Col>
-      </Row>
-
-      <Row gutter={16} style={{ marginTop: 16 }}>
-        <Col xs={24} lg={10}>
-          <Card title="当前工况" className="page-card">
-            <Descriptions column={1} size="small" bordered>
-              <Descriptions.Item label="管道名称">{currentData?.pipelineName ?? '-'}</Descriptions.Item>
-              <Descriptions.Item label="首站压力">{currentData?.inletPressure ?? '-'}</Descriptions.Item>
-              <Descriptions.Item label="末站压力">{currentData?.outletPressure ?? '-'}</Descriptions.Item>
-              <Descriptions.Item label="入口流量">{currentData?.inletFlowRate ?? '-'}</Descriptions.Item>
-              <Descriptions.Item label="出口流量">{currentData?.outletFlowRate ?? '-'}</Descriptions.Item>
-              <Descriptions.Item label="系统状态">
-                <Tag color={levelColor(currentData?.systemStatus)}>{currentData?.systemStatus ?? 'NO_DATA'}</Tag>
-              </Descriptions.Item>
-              <Descriptions.Item label="最近时间">{currentData?.timestamp ? new Date(currentData.timestamp).toLocaleString() : '-'}</Descriptions.Item>
-            </Descriptions>
+        <Col span={6}>
+          <Card className="page-card" style={{ textAlign: 'center' }}>
+            <Statistic
+              title="输送流量"
+              value={data?.flowRate?.toFixed(0) || '-'}
+              suffix="m³/h"
+              valueStyle={{ color: data ? getStatusColor(data.flowRate, 750, 900) : '#666' }}
+            />
           </Card>
         </Col>
-        <Col xs={24} lg={14}>
-          <Card
-            title={<><BellOutlined /> 告警中心</>}
-            className="page-card"
-            extra={<Tag color={alarms.some((item) => item.status === 'ACTIVE') ? 'error' : 'success'}>{alarms.some((item) => item.status === 'ACTIVE') ? '存在活动告警' : '当前告警正常'}</Tag>}
-          >
-            <Table
-              columns={alarmColumns}
-              dataSource={alarms}
-              rowKey="alarmId"
-              pagination={{ pageSize: 5 }}
-              size="small"
-              locale={{ emptyText: '当前没有活动告警' }}
+        <Col span={6}>
+          <Card className="page-card" style={{ textAlign: 'center' }}>
+            <Statistic
+              title="系统效率"
+              value={data?.systemEfficiency?.toFixed(1) || '-'}
+              suffix="%"
+              valueStyle={{ color: data && data.systemEfficiency >= 75 ? '#52c41a' : '#faad14' }}
             />
           </Card>
         </Col>
       </Row>
 
+      <Row gutter={16} style={{ marginTop: 16 }}>
+        {/* 趋势图 */}
+        <Col span={12}>
+          <Card title="压力趋势" className="page-card">
+            <ReactECharts option={pressureChartOption} style={{ height: 250 }} />
+          </Card>
+        </Col>
+        <Col span={12}>
+          <Card title="流量趋势" className="page-card">
+            <ReactECharts option={flowChartOption} style={{ height: 250 }} />
+          </Card>
+        </Col>
+      </Row>
+
+      <Row gutter={16} style={{ marginTop: 16 }}>
+        {/* 能耗仪表盘 */}
+        <Col span={8}>
+          <Card title="实时功率" className="page-card">
+            {gaugeOption && <ReactECharts option={gaugeOption} style={{ height: 250 }} />}
+          </Card>
+        </Col>
+
+        {/* 泵站状态 */}
+        <Col span={8}>
+          <Card title="泵站状态" className="page-card">
+            <Table
+              columns={pumpColumns}
+              dataSource={data?.pumpStatus || []}
+              rowKey="pumpId"
+              pagination={false}
+              size="small"
+            />
+          </Card>
+        </Col>
+
+        {/* 运行概览 */}
+        <Col span={8}>
+          <Card title="运行概览" className="page-card">
+            <Descriptions column={1} size="small">
+              <Descriptions.Item label="管道ID">{data?.pipelineId || '-'}</Descriptions.Item>
+              <Descriptions.Item label="油温">{data?.oilTemperature?.toFixed(1) || '-'} °C</Descriptions.Item>
+              <Descriptions.Item label="运行泵数">{data?.pumpStatus?.filter((p: { running: boolean }) => p.running).length || 0} / {data?.pumpStatus?.length || 4}</Descriptions.Item>
+              <Descriptions.Item label="更新时间">{data?.timestamp ? new Date(data.timestamp).toLocaleString() : '-'}</Descriptions.Item>
+            </Descriptions>
+            <div style={{ marginTop: 16 }}>
+              <Timeline
+                items={[
+                  { color: 'green', children: '系统运行正常' },
+                  { color: 'blue', children: '数据采集中...' },
+                  { color: 'gray', children: '等待下次刷新' },
+                ]}
+              />
+            </div>
+          </Card>
+        </Col>
+      </Row>
+
+      {/* 告警列表 */}
+      <Card title={<><BellOutlined /> 告警记录 <Badge count={alarms.filter((a: AlarmInfo) => !a.acknowledged).length} style={{ marginLeft: 8 }} /></>} className="page-card" style={{ marginTop: 16 }}>
+        <Table
+          columns={alarmColumns}
+          dataSource={alarms.slice().reverse()}
+          rowKey="alarmId"
+          pagination={{ pageSize: 5 }}
+          size="small"
+          locale={{ emptyText: '暂无告警记录' }}
+        />
+      </Card>
+
+      {/* 告警详情弹窗 */}
       <Modal
-        title={<><WarningOutlined style={{ color: '#faad14', marginRight: 8 }} />告警详情</>}
-        open={Boolean(selectedAlarm)}
+        title={<><ExclamationCircleOutlined style={{ color: '#faad14', marginRight: 8 }} />告警详情</>}
+        open={!!selectedAlarm}
         onCancel={() => setSelectedAlarm(null)}
-        footer={selectedAlarm ? [
+        footer={[
           <Button key="close" onClick={() => setSelectedAlarm(null)}>关闭</Button>,
-          <Button key="ack" disabled={selectedAlarm.status !== 'ACTIVE'} onClick={() => void handleAcknowledge(selectedAlarm.alarmId)}>确认告警</Button>,
-          <Button key="resolve" type="primary" disabled={selectedAlarm.status === 'RESOLVED'} onClick={() => void handleResolve(selectedAlarm.alarmId)}>标记处置</Button>,
-        ] : null}
+          <Button key="ack" type="primary" onClick={() => acknowledgeAlarm(selectedAlarm?.alarmId || '')}>确认告警</Button>,
+        ]}
       >
-        {selectedAlarm ? (
-          <Descriptions bordered column={1} size="small">
-            <Descriptions.Item label="告警标题">{selectedAlarm.title}</Descriptions.Item>
-            <Descriptions.Item label="告警级别">
-              <Tag color={levelColor(selectedAlarm.alarmLevel)}>{selectedAlarm.alarmLevel}</Tag>
-            </Descriptions.Item>
-            <Descriptions.Item label="告警状态">{selectedAlarm.status}</Descriptions.Item>
+        {selectedAlarm && (
+          <Descriptions column={1} bordered size="small">
+            <Descriptions.Item label="告警ID">{selectedAlarm.alarmId}</Descriptions.Item>
             <Descriptions.Item label="告警类型">{selectedAlarm.alarmType}</Descriptions.Item>
-            <Descriptions.Item label="告警描述">{selectedAlarm.description}</Descriptions.Item>
-            <Descriptions.Item label="当前值">{selectedAlarm.currentValue}</Descriptions.Item>
-            <Descriptions.Item label="阈值">{selectedAlarm.threshold}</Descriptions.Item>
-            <Descriptions.Item label="偏离率">{selectedAlarm.deviationPercent}%</Descriptions.Item>
-            <Descriptions.Item label="处理建议">{selectedAlarm.suggestion}</Descriptions.Item>
-            <Descriptions.Item label="发生时间">{new Date(selectedAlarm.alarmTime).toLocaleString()}</Descriptions.Item>
+            <Descriptions.Item label="告警级别">
+              <Tag color={selectedAlarm.alarmLevel === 'critical' ? 'red' : selectedAlarm.alarmLevel === 'warning' ? 'orange' : 'blue'}>
+                {selectedAlarm.alarmLevel === 'critical' ? '严重' : selectedAlarm.alarmLevel === 'warning' ? '警告' : '提示'}
+              </Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label="告警信息">{selectedAlarm.message}</Descriptions.Item>
+            <Descriptions.Item label="检测值">{selectedAlarm.value}</Descriptions.Item>
+            <Descriptions.Item label="阈值范围">{selectedAlarm.threshold}</Descriptions.Item>
+            <Descriptions.Item label="发生时间">{new Date(selectedAlarm.timestamp).toLocaleString()}</Descriptions.Item>
+            <Descriptions.Item label="处理建议">
+              {selectedAlarm.alarmLevel === 'critical' ? '请立即检查相关设备并采取应急措施' : '请关注设备状态并适时处理'}
+            </Descriptions.Item>
           </Descriptions>
-        ) : null}
+        )}
       </Modal>
     </AnimatedPage>
   );
 }
-

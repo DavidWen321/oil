@@ -7,6 +7,7 @@ import { useUserStore } from './stores/userStore';
 // 懒加载页面组件
 const Login = lazy(() => import('./pages/auth/Login'));
 const Dashboard = lazy(() => import('./pages/dashboard/Dashboard'));
+const SystemSettings = lazy(() => import('./pages/system/SystemSettings'));
 
 // 数据管理
 const ProjectList = lazy(() => import('./pages/data/ProjectList'));
@@ -73,6 +74,14 @@ export const router = createBrowserRouter([
         element: (
           <Suspense fallback={<Loading />}>
             <Dashboard />
+          </Suspense>
+        ),
+      },
+      {
+        path: 'settings',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <SystemSettings />
           </Suspense>
         ),
       },
