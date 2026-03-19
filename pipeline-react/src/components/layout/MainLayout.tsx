@@ -107,6 +107,9 @@ export default function MainLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+  const isFeatureRoute = location.pathname.startsWith('/features');
+  const isAIRoute = location.pathname.startsWith('/ai');
+  const isAIChatRoute = location.pathname === '/ai/chat';
   const { userInfo, logout } = useUserStore();
   const { resolved, setMode } = useThemeStore();
   const alarms = useMonitorStore((s) => s.alarms);
@@ -329,7 +332,19 @@ export default function MainLayout() {
 
         {/* Content */}
         <Content className={`${styles.content} container-responsive`}>
-          <Outlet />
+          {isFeatureRoute ? (
+            <div className={styles.featureViewport}>
+              <div className={styles.featureStage}>
+                <Outlet />
+              </div>
+            </div>
+          ) : isAIRoute ? (
+            <div className={`${styles.aiViewport} ${isAIChatRoute ? styles.aiChatViewport : ''}`}>
+              <Outlet />
+            </div>
+          ) : (
+            <Outlet />
+          )}
         </Content>
 
         {isMobile && <MobileTabBar />}

@@ -151,8 +151,7 @@ export default function AIChat() {
   };
 
   return (
-    <AnimatedPage className="h-[calc(100vh-var(--header-height))] overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(226,232,240,0.62),transparent_30%),linear-gradient(180deg,#fafafa_0%,#f5f7fb_100%)] text-neutral-900">
-      <div className="flex h-full w-full overflow-hidden">
+    <AnimatedPage className="relative grid h-full min-h-0 grid-cols-[296px_minmax(0,1fr)] overflow-hidden rounded-[24px] border border-neutral-200/80 bg-white text-neutral-900 shadow-[0_18px_40px_rgba(15,23,42,0.08)]">
         <ConversationSidebar
           conversations={conversations}
           activeConversationId={activeConversationId}
@@ -163,7 +162,7 @@ export default function AIChat() {
           onDelete={handleDeleteConversation}
         />
 
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(241,245,249,0.88),transparent_30%),linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)]">
           <ChatTopbar
             title={activeConversation?.title ?? '新会话'}
             mode={activeMode}
@@ -233,7 +232,6 @@ export default function AIChat() {
             </aside>
           </div>
         </div>
-      </div>
 
       {!isAtBottom && messages.length > 0 ? (
         <button
