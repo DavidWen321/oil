@@ -1,69 +1,197 @@
-import { useState } from 'react';
-import { Card, Form, InputNumber, Button, Row, Col, Descriptions, Tag, Divider, Space, message } from 'antd';
-import { ThunderboltOutlined, CalculatorOutlined } from '@ant-design/icons';
+﻿import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Button,
+  Card,
+  Col,
+  Descriptions,
+  Divider,
+  Form,
+  InputNumber,
+  Row,
+  Select,
+  Space,
+  Tag,
+  message,
+} from 'antd';
+import { CalculatorOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import ReactECharts from 'echarts-for-react';
-import type { HydraulicAnalysisResult } from '../../types';
-import { calculationApi } from '../../api';
+import { calculationApi, oilPropertyApi, pipelineApi, projectApi, pumpStationApi } from '../../api';
+import type {
+  HydraulicAnalysisParams,
+  HydraulicAnalysisResult,
+  OilProperty,
+  Pipeline,
+  Project,
+  PumpStation,
+} from '../../types';
 import AnimatedPage from '../../components/common/AnimatedPage';
 import styles from './HydraulicAnalysis.module.css';
 
-export default function HydraulicAnalysis() {
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<HydraulicAnalysisResult | null>(null);
-  const [form] = Form.useForm();
+const FORM_ITEM_SPAN = { xs: 24, md: 12, xl: 8 } as const;
 
-  const onFinish = async (values: any) => {
+const INITIAL_VALUES: HydraulicAnalysisParams = {
+  flowRate: 850,
+  density: 860,
+  viscosity: 0.00002,
+  length: 150,
+  diameter: 508,
+  thickness: 8,
+  roughness: 0.00003,
+  startAltitude: 0,
+  endAltitude: 35,
+  inletPressure: 6.5,
+  pump480Num: 2,
+  pump375Num: 1,
+  pump480Head: 280,
+  pump375Head: 220,
+};
+
+export default function HydraulicAnalysis() {
+  const [form] = Form.useForm<HydraulicAnalysisParams>();
+  const [loading, setLoading] = useState(false);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
+  const [oils, setOils] = useState<OilProperty[]>([]);
+  const [stations, setStations] = useState<PumpStation[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
+  const [result, setResult] = useState<HydraulicAnalysisResult | null>(null);
+
+  const loadBaseData = useCallback(async () => {
+    const [projectRes, oilRes, stationRes] = await Promise.all([
+      projectApi.list(),
+      oilPropertyApi.list(),
+      pumpStationApi.list(),
+    ]);
+
+    const projectList = projectRes.data ?? [];
+    setProjects(projectList);
+    setOils(oilRes.data ?? []);
+    setStations(stationRes.data ?? []);
+
+    if (projectList.length > 0) {
+      setSelectedProjectId(projectList[0].proId);
+    }
+  }, []);
+
+  const loadPipelines = useCallback(async (projectId: number) => {
+    const response = await pipelineApi.listByProject(projectId);
+    const pipelineList = response.data ?? [];
+    setPipelines(pipelineList);
+
+    if (pipelineList.length > 0) {
+      const [firstPipeline] = pipelineList;
+      form.setFieldsValue({
+        pipelineId: firstPipeline.id,
+        length: firstPipeline.length,
+        diameter: firstPipeline.diameter,
+        thickness: firstPipeline.thickness,
+        roughness: firstPipeline.roughness ?? INITIAL_VALUES.roughness,
+        startAltitude: firstPipeline.startAltitude,
+        endAltitude: firstPipeline.endAltitude,
+      });
+    } else {
+      form.setFieldValue('pipelineId', undefined);
+    }
+  }, [form]);
+
+  useEffect(() => {
+    form.setFieldsValue(INITIAL_VALUES);
+    void loadBaseData();
+  }, [form, loadBaseData]);
+
+  useEffect(() => {
+    if (selectedProjectId) {
+      setResult(null);
+      void loadPipelines(selectedProjectId);
+    }
+  }, [loadPipelines, selectedProjectId]);
+
+  const handlePipelineChange = (pipelineId: number) => {
+    const pipeline = pipelines.find((item) => item.id === pipelineId);
+    if (!pipeline) {
+      return;
+    }
+
+    form.setFieldsValue({
+      pipelineId,
+      length: pipeline.length,
+      diameter: pipeline.diameter,
+      thickness: pipeline.thickness,
+      roughness: pipeline.roughness ?? INITIAL_VALUES.roughness,
+      startAltitude: pipeline.startAltitude,
+      endAltitude: pipeline.endAltitude,
+    });
+    setResult(null);
+  };
+
+  const handleOilChange = (oilId: number) => {
+    const oil = oils.find((item) => item.id === oilId);
+    if (!oil) {
+      return;
+    }
+
+    form.setFieldsValue({
+      oilId,
+      density: oil.density,
+      viscosity: oil.viscosity,
+    });
+    setResult(null);
+  };
+
+  const handleStationChange = (stationId: number) => {
+    const station = stations.find((item) => item.id === stationId);
+    if (!station) {
+      return;
+    }
+
+    form.setFieldsValue({
+      inletPressure: station.comePower,
+      pump480Head: station.zmi480Lift,
+      pump375Head: station.zmi375Lift,
+    });
+    setResult(null);
+  };
+
+  const handleSubmit = async () => {
+    const values = await form.validateFields();
     setLoading(true);
     try {
-      const res = await calculationApi.hydraulicAnalysis(values);
-      if (res.data) {
-        setResult(res.data);
-        message.success('计算完成');
-      }
-    } catch {
-      const mockResult: HydraulicAnalysisResult = {
-        calculationId: 'demo-' + Date.now(),
-        reynoldsNumber: 125680,
-        flowRegime: '紊流-水力光滑区',
-        frictionFactor: 0.0156,
-        frictionHeadLoss: 567.8,
-        hydraulicGradient: 3.79,
-        inletPressure: values.inletPressure,
-        outletPressure: 0.85,
-        velocity: 1.68,
-        flowRate: values.flowRate,
-        feasible: true,
-        message: '计算成功，末站压力满足要求',
-      };
-      setResult(mockResult);
-      message.success('计算完成（演示模式）');
+      const response = await calculationApi.hydraulicAnalysis(values);
+      setResult(response.data ?? null);
+      message.success('水力分析完成');
     } finally {
       setLoading(false);
     }
   };
 
-  const getFlowRegimeColor = (regime: string) => {
-    if (regime.includes('层流')) return 'blue';
-    if (regime.includes('光滑')) return 'green';
-    if (regime.includes('混合')) return 'orange';
-    return 'purple';
-  };
+  const pressureChartOption = useMemo(() => {
+    if (!result) {
+      return null;
+    }
 
-  const pressureChartOption = result ? {
-    title: { text: '沿程压力分布', textStyle: { fontSize: 14 } },
-    tooltip: { trigger: 'axis' },
-    grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
-    xAxis: { type: 'category', name: '里程(km)', data: ['0', '30', '60', '90', '120', '150'] },
-    yAxis: { type: 'value', name: 'MPa' },
-    series: [{
-      type: 'line',
-      smooth: true,
-      data: [result.inletPressure, 5.2, 4.0, 2.8, 1.6, result.outletPressure],
-      lineStyle: { color: '#667eea', width: 3 },
-      areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: 'rgba(102,126,234,0.3)' }, { offset: 1, color: 'rgba(102,126,234,0.05)' }] } },
-      markLine: { data: [{ yAxis: 0.3, name: '最低安全压力', lineStyle: { color: '#ff4d4f', type: 'dashed' } }] },
-    }],
-  } : null;
+    return {
+      tooltip: { trigger: 'axis' },
+      xAxis: {
+        type: 'category',
+        data: ['首站入口', '首站出口', '末站入口'],
+      },
+      yAxis: {
+        type: 'value',
+        name: '压头 / 扬程 (m)',
+      },
+      series: [
+        {
+          type: 'line',
+          smooth: true,
+          data: [
+            form.getFieldValue('inletPressure'),
+            result.firstStationOutPressure,
+            result.endStationInPressure,
+          ],
+        },
+      ],
+    };
+  }, [form, result]);
 
   return (
     <AnimatedPage>
@@ -71,56 +199,80 @@ export default function HydraulicAnalysis() {
         <div className={styles.paramPanel}>
           <div className="page-header">
             <h2><ThunderboltOutlined /> 水力分析</h2>
-            <p>基于管道参数和油品特性，计算雷诺数、流态、摩阻损失和压力分布</p>
+            <p>支持从项目基础数据自动带入参数。压头与扬程单位均为 m，密度字段当前主要用于油品记录。</p>
           </div>
 
-          <Card title="输入参数" className="page-card">
-            <Form form={form} layout="vertical" onFinish={onFinish}
-              initialValues={{ flowRate: 850, inletPressure: 6.5, oilDensity: 860, oilViscosity: 20, pipelineLength: 150, innerDiameter: 492, roughness: 0.03, elevationDiff: 35 }}>
+          <Card title="参数输入" className="page-card">
+            <Form<HydraulicAnalysisParams> form={form} layout="vertical" className={styles.paramForm} onFinish={() => void handleSubmit()}>
               <Row gutter={16}>
                 <Col span={12}>
-                  <Form.Item name="flowRate" label="输送流量(m³/h)" rules={[{ required: true }]}>
-                    <InputNumber min={0} style={{ width: '100%' }} />
+                  <Form.Item label="所属项目">
+                    <Select<number>
+                      value={selectedProjectId ?? undefined}
+                      placeholder="选择项目"
+                      onChange={setSelectedProjectId}
+                      options={projects.map((project) => ({ value: project.proId, label: project.name }))}
+                    />
                   </Form.Item>
                 </Col>
                 <Col span={12}>
-                  <Form.Item name="inletPressure" label="首站压力(MPa)" rules={[{ required: true }]}>
-                    <InputNumber min={0} precision={2} style={{ width: '100%' }} />
+                  <Form.Item name="pipelineId" label="管道参数">
+                    <Select<number>
+                      allowClear
+                      placeholder="从数据中心带入管道参数"
+                      onChange={(value) => value && handlePipelineChange(value)}
+                      options={pipelines.map((pipeline) => ({ value: pipeline.id, label: pipeline.name }))}
+                    />
                   </Form.Item>
                 </Col>
                 <Col span={12}>
-                  <Form.Item name="oilDensity" label="油品密度(kg/m³)" rules={[{ required: true }]}>
-                    <InputNumber min={0} style={{ width: '100%' }} />
+                  <Form.Item name="oilId" label="油品参数">
+                    <Select<number>
+                      allowClear
+                      placeholder="从数据中心带入油品参数"
+                      onChange={(value) => value && handleOilChange(value)}
+                      options={oils.map((oil) => ({ value: oil.id, label: oil.name }))}
+                    />
                   </Form.Item>
                 </Col>
                 <Col span={12}>
-                  <Form.Item name="oilViscosity" label="运动粘度(mm²/s)" rules={[{ required: true }]}>
-                    <InputNumber min={0} precision={2} style={{ width: '100%' }} />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item name="pipelineLength" label="管道长度(km)" rules={[{ required: true }]}>
-                    <InputNumber min={0} style={{ width: '100%' }} />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item name="innerDiameter" label="内径(mm)" rules={[{ required: true }]}>
-                    <InputNumber min={0} style={{ width: '100%' }} />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item name="roughness" label="管道粗糙度(mm)">
-                    <InputNumber min={0} precision={3} style={{ width: '100%' }} />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item name="elevationDiff" label="高程差(m)">
-                    <InputNumber style={{ width: '100%' }} />
+                  <Form.Item label="泵站参数">
+                    <Select<number>
+                      allowClear
+                      placeholder="从数据中心带入泵站参数"
+                      onChange={(value) => value && handleStationChange(value)}
+                      options={stations.map((station) => ({ value: station.id, label: station.name }))}
+                    />
                   </Form.Item>
                 </Col>
               </Row>
-              <Button type="primary" htmlType="submit" loading={loading} icon={<CalculatorOutlined />} block size="large">
-                开始计算
+
+              <Row gutter={16}>
+                <Col {...FORM_ITEM_SPAN}><Form.Item name="flowRate" label="流量(m³/h)" rules={[{ required: true }]}><InputNumber min={0} style={{ width: '100%' }} /></Form.Item></Col>
+                <Col {...FORM_ITEM_SPAN}><Form.Item name="density" label="密度(kg/m³)"><InputNumber min={0} style={{ width: '100%' }} /></Form.Item></Col>
+                <Col {...FORM_ITEM_SPAN}><Form.Item name="viscosity" label="运动粘度(m²/s)" rules={[{ required: true }]}><InputNumber min={0} precision={8} style={{ width: '100%' }} /></Form.Item></Col>
+              </Row>
+              <Row gutter={16}>
+                <Col {...FORM_ITEM_SPAN}><Form.Item name="length" label="长度(km)" rules={[{ required: true }]}><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
+                <Col {...FORM_ITEM_SPAN}><Form.Item name="diameter" label="外径(mm)" rules={[{ required: true }]}><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
+                <Col {...FORM_ITEM_SPAN}><Form.Item name="thickness" label="壁厚(mm)" rules={[{ required: true }]}><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
+              </Row>
+              <Row gutter={16}>
+                <Col {...FORM_ITEM_SPAN}><Form.Item name="roughness" label="粗糙度(m)" rules={[{ required: true }]}><InputNumber min={0} precision={6} style={{ width: '100%' }} /></Form.Item></Col>
+                <Col {...FORM_ITEM_SPAN}><Form.Item name="startAltitude" label="起点高程(m)" rules={[{ required: true }]}><InputNumber precision={2} style={{ width: '100%' }} /></Form.Item></Col>
+                <Col {...FORM_ITEM_SPAN}><Form.Item name="endAltitude" label="终点高程(m)" rules={[{ required: true }]}><InputNumber precision={2} style={{ width: '100%' }} /></Form.Item></Col>
+              </Row>
+              <Row gutter={16}>
+                <Col {...FORM_ITEM_SPAN}><Form.Item name="inletPressure" label="首站进站压头(m)" rules={[{ required: true }]}><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
+                <Col {...FORM_ITEM_SPAN}><Form.Item name="pump480Num" label="ZMI480 台数" rules={[{ required: true }]}><InputNumber min={0} precision={0} style={{ width: '100%' }} /></Form.Item></Col>
+                <Col {...FORM_ITEM_SPAN}><Form.Item name="pump375Num" label="ZMI375 台数" rules={[{ required: true }]}><InputNumber min={0} precision={0} style={{ width: '100%' }} /></Form.Item></Col>
+              </Row>
+              <Row gutter={16}>
+                <Col span={12}><Form.Item name="pump480Head" label="ZMI480 单泵扬程(m)" rules={[{ required: true }]}><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
+                <Col span={12}><Form.Item name="pump375Head" label="ZMI375 单泵扬程(m)" rules={[{ required: true }]}><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
+              </Row>
+              <Button type="primary" htmlType="submit" loading={loading} icon={<CalculatorOutlined />} block>
+                开始分析
               </Button>
             </Form>
           </Card>
@@ -129,32 +281,33 @@ export default function HydraulicAnalysis() {
         <div className={styles.resultPanel}>
           {result ? (
             <Space direction="vertical" style={{ width: '100%' }} size="middle">
-              <Card title="计算结果" className="page-card" extra={<Tag color={result.feasible ? 'success' : 'error'}>{result.feasible ? '可行' : '不可行'}</Tag>}>
-                <Descriptions column={2} bordered size="small">
-                  <Descriptions.Item label="雷诺数">{result.reynoldsNumber.toLocaleString()}</Descriptions.Item>
-                  <Descriptions.Item label="流态"><Tag color={getFlowRegimeColor(result.flowRegime)}>{result.flowRegime}</Tag></Descriptions.Item>
-                  <Descriptions.Item label="摩阻系数">{result.frictionFactor.toFixed(4)}</Descriptions.Item>
-                  <Descriptions.Item label="沿程水头损失">{result.frictionHeadLoss.toFixed(2)} m</Descriptions.Item>
-                  <Descriptions.Item label="水力坡降">{result.hydraulicGradient.toFixed(2)} m/km</Descriptions.Item>
-                  <Descriptions.Item label="平均流速">{result.velocity.toFixed(2)} m/s</Descriptions.Item>
-                  <Descriptions.Item label="首站压力">{result.inletPressure.toFixed(2)} MPa</Descriptions.Item>
-                  <Descriptions.Item label="末站压力">{result.outletPressure.toFixed(2)} MPa</Descriptions.Item>
+              <Card
+                title="分析结果"
+                className="page-card"
+                extra={<Tag color={result.endStationInPressure > 0 ? 'success' : 'error'}>{result.endStationInPressure > 0 ? '工况可行' : '工况不可行'}</Tag>}
+              >
+                <Descriptions column={2} bordered>
+                  <Descriptions.Item label="雷诺数">{Number(result.reynoldsNumber).toLocaleString()}</Descriptions.Item>
+                  <Descriptions.Item label="流态">{result.flowRegime}</Descriptions.Item>
+                  <Descriptions.Item label="摩阻损失">{result.frictionHeadLoss} m</Descriptions.Item>
+                  <Descriptions.Item label="水力坡降">{result.hydraulicSlope}</Descriptions.Item>
+                  <Descriptions.Item label="总扬程">{result.totalHead} m</Descriptions.Item>
+                  <Descriptions.Item label="首站出站压头">{result.firstStationOutPressure}</Descriptions.Item>
+                  <Descriptions.Item label="末站进站压头" span={2}>{result.endStationInPressure}</Descriptions.Item>
                 </Descriptions>
                 <Divider />
-                <div style={{ padding: '8px 12px', background: result.feasible ? '#f6ffed' : '#fff2f0', borderRadius: 8 }}>
-                  <strong>{result.feasible ? '✅' : '❌'} {result.message}</strong>
-                </div>
+                <div>末站进站压头大于 0 时表示当前工况满足基本运行约束。</div>
               </Card>
 
-              <Card title="压力分布曲线">
-                {pressureChartOption && <ReactECharts option={pressureChartOption} style={{ height: 300 }} />}
+              <Card title="压力变化趋势" className="page-card">
+                {pressureChartOption && <ReactECharts option={pressureChartOption} style={{ height: 320 }} />}
               </Card>
             </Space>
           ) : (
-            <Card className="page-card" style={{ height: 400, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <div style={{ textAlign: 'center', color: '#999' }}>
-                <ThunderboltOutlined style={{ fontSize: 48, marginBottom: 16 }} />
-                <p>请输入参数后点击"开始计算"</p>
+            <Card className="page-card" style={{ minHeight: 420, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ textAlign: 'center', color: '#8c8c8c' }}>
+                <ThunderboltOutlined style={{ fontSize: 52, marginBottom: 16 }} />
+                <div>填写参数或直接从数据中心带入后开始分析。</div>
               </div>
             </Card>
           )}

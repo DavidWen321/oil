@@ -40,6 +40,7 @@ import {
 import { useUserStore } from '../../stores/userStore';
 import { useMonitorStore } from '../../stores/monitorStore';
 import { useResponsive } from '../../hooks/useResponsive';
+import { useWebSocket } from '../../hooks/useWebSocket';
 import { useThemeStore } from '../../stores/themeStore';
 import MobileTabBar from './MobileTabBar';
 import styles from './MainLayout.module.css';
@@ -115,7 +116,8 @@ export default function MainLayout() {
   const { userInfo, logout } = useUserStore();
   const { resolved, setMode } = useThemeStore();
   const alarms = useMonitorStore((s) => s.alarms);
-  const activeCount = alarms.filter((a: { acknowledged: boolean }) => !a.acknowledged).length;
+  useWebSocket({ scope: 'all', subscribeMonitor: false, subscribeAlarms: true });
+  const activeCount = alarms.filter((alarm) => alarm.status === 'ACTIVE').length;
 
   // 响应式状态
   const { isMobile, isTablet, width } = useResponsive();

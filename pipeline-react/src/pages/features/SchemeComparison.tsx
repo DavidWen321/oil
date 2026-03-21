@@ -1,153 +1,438 @@
-import { useState } from 'react';
-import { Card, Form, Input, InputNumber, Button, Row, Col, Table, Tag, Space, message, Steps } from 'antd';
-import { SwapOutlined, PlusOutlined, DeleteOutlined, TrophyOutlined, StarFilled } from '@ant-design/icons';
+﻿import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Button,
+  Card,
+  Col,
+  Form,
+  Input,
+  InputNumber,
+  Row,
+  Select,
+  Space,
+  Steps,
+  Switch,
+  Table,
+  Tag,
+  message,
+} from 'antd';
+import {
+  DeleteOutlined,
+  PlusOutlined,
+  SwapOutlined,
+  TrophyOutlined,
+} from '@ant-design/icons';
 import ReactECharts from 'echarts-for-react';
-import type { ComparisonResult, SchemeAnalysis } from '../../types';
 import AnimatedPage from '../../components/common/AnimatedPage';
+import { comparisonApi, pipelineApi, projectApi } from '../../api';
+import type { ComparisonRequest, ComparisonResult, Pipeline, Project } from '../../types';
+
+interface SchemeEditorValue {
+  schemeName: string;
+  description?: string;
+  flowRate: number;
+  inletPressure: number;
+  outletPressure?: number;
+  oilTemperature?: number;
+  oilDensity?: number;
+  oilViscosity?: number;
+  dailyOperatingHours?: number;
+  electricityPrice?: number;
+  runningPumpCount?: number;
+  pumpPower?: number;
+  pumpEfficiency?: number;
+  variableFrequency?: boolean;
+  frequency?: number;
+}
+
+interface ComparisonFormValues {
+  projectId: number;
+  pipelineId: number;
+  comparisonDimensions?: string[];
+  schemes: SchemeEditorValue[];
+}
+
+const INITIAL_VALUES: ComparisonFormValues = {
+  projectId: 0,
+  pipelineId: 0,
+  comparisonDimensions: ['ENERGY', 'COST', 'EFFICIENCY', 'SAFETY', 'CARBON'],
+  schemes: [
+    {
+      schemeName: '方案A',
+      description: '稳态运行方案',
+      flowRate: 850,
+      inletPressure: 6.5,
+      dailyOperatingHours: 24,
+      electricityPrice: 0.8,
+      oilTemperature: 38,
+      oilDensity: 860,
+      oilViscosity: 12,
+      runningPumpCount: 3,
+      pumpPower: 800,
+      pumpEfficiency: 82,
+      variableFrequency: false,
+      frequency: 50,
+    },
+    {
+      schemeName: '方案B',
+      description: '节能优化方案',
+      flowRate: 820,
+      inletPressure: 6.1,
+      dailyOperatingHours: 24,
+      electricityPrice: 0.8,
+      oilTemperature: 38,
+      oilDensity: 860,
+      oilViscosity: 12,
+      runningPumpCount: 2,
+      pumpPower: 760,
+      pumpEfficiency: 84,
+      variableFrequency: true,
+      frequency: 46,
+    },
+  ],
+};
 
 export default function SchemeComparison() {
+  const [form] = Form.useForm<ComparisonFormValues>();
   const [loading, setLoading] = useState(false);
-  const [schemes, setSchemes] = useState([{ id: 1, name: '方案A' }, { id: 2, name: '方案B' }]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
+  const [dimensions, setDimensions] = useState<string[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [result, setResult] = useState<ComparisonResult | null>(null);
-  const [form] = Form.useForm();
 
-  const addScheme = () => {
-    if (schemes.length >= 5) { message.warning('最多支持5个方案'); return; }
-    setSchemes([...schemes, { id: Date.now(), name: `方案${String.fromCharCode(65 + schemes.length)}` }]);
-  };
+  const loadBaseData = useCallback(async () => {
+    const [projectRes, dimensionRes] = await Promise.all([
+      projectApi.list(),
+      comparisonApi.getDimensions(),
+    ]);
 
-  const removeScheme = (id: number) => {
-    if (schemes.length <= 2) { message.warning('至少需要2个方案'); return; }
-    setSchemes(schemes.filter(s => s.id !== id));
-  };
+    const projectList = projectRes.data ?? [];
+    const dimensionList = dimensionRes.data ?? [];
 
-  const onFinish = async () => {
-    setLoading(true);
-    setTimeout(() => {
-      const mockAnalyses: SchemeAnalysis[] = [
-        { schemeName: '方案A', totalPower: 2400, dailyEnergyConsumption: 57600, yearlyEnergyConsumption: 21024000, yearlyCost: 13665600, unitEnergyConsumption: 0.18, systemEfficiency: 78.5, safetyMargin: 28.3, yearlyCarbonEmission: 12278, energyScore: 95, costScore: 92, efficiencyScore: 88, safetyScore: 85, environmentScore: 90, overallScore: 90, advantages: ['能耗最低', '成本最优'], disadvantages: ['安全裕度稍低'] },
-        { schemeName: '方案B', totalPower: 2800, dailyEnergyConsumption: 67200, yearlyEnergyConsumption: 24528000, yearlyCost: 15943200, unitEnergyConsumption: 0.21, systemEfficiency: 76.2, safetyMargin: 35.5, yearlyCarbonEmission: 14324, energyScore: 82, costScore: 78, efficiencyScore: 82, safetyScore: 95, environmentScore: 78, overallScore: 83, advantages: ['安全裕度高'], disadvantages: ['能耗偏高', '成本较高'] },
-        { schemeName: '方案C', totalPower: 2600, dailyEnergyConsumption: 62400, yearlyEnergyConsumption: 22776000, yearlyCost: 14804400, unitEnergyConsumption: 0.195, systemEfficiency: 77.5, safetyMargin: 32.1, yearlyCarbonEmission: 13301, energyScore: 88, costScore: 85, efficiencyScore: 85, safetyScore: 90, environmentScore: 84, overallScore: 86, advantages: ['综合平衡'], disadvantages: ['无明显优势'] },
-      ];
+    setProjects(projectList);
+    setDimensions(dimensionList);
 
-      const mockResult: ComparisonResult = {
-        comparisonId: 'comp-' + Date.now(),
-        comparisonTime: new Date().toISOString(),
-        schemeCount: 3,
-        schemeAnalyses: mockAnalyses,
-        radarChart: { dimensions: ['能耗', '成本', '效率', '安全', '环保'], series: mockAnalyses.map(a => ({ name: a.schemeName, values: [a.energyScore, a.costScore, a.efficiencyScore, a.safetyScore, a.environmentScore] })) },
-        barCharts: [{ metricName: '年运行成本', unit: '万元', items: mockAnalyses.map(a => ({ schemeName: a.schemeName, value: a.yearlyCost / 10000, isBest: a.schemeName === '方案A' })) }],
-        overallRanking: [
-          { rank: 1, schemeName: '方案A', score: 90, comment: '综合表现最优，推荐采用' },
-          { rank: 2, schemeName: '方案C', score: 86, comment: '表现均衡，可作为备选' },
-          { rank: 3, schemeName: '方案B', score: 83, comment: '安全性好但能耗偏高' },
+    if (projectList.length > 0) {
+      setSelectedProjectId(projectList[0].proId);
+      form.setFieldValue('projectId', projectList[0].proId);
+    }
+    if (dimensionList.length > 0) {
+      form.setFieldValue('comparisonDimensions', dimensionList);
+    }
+  }, [form]);
+
+  const loadPipelines = useCallback(async (projectId: number) => {
+    const response = await pipelineApi.listByProject(projectId);
+    const pipelineList = response.data ?? [];
+    setPipelines(pipelineList);
+    if (pipelineList.length > 0) {
+      form.setFieldValue('pipelineId', pipelineList[0].id);
+    } else {
+      form.setFieldValue('pipelineId', undefined);
+    }
+    setResult(null);
+  }, [form]);
+
+  useEffect(() => {
+    form.setFieldsValue(INITIAL_VALUES);
+    void loadBaseData();
+  }, [form, loadBaseData]);
+
+  useEffect(() => {
+    if (selectedProjectId) {
+      void loadPipelines(selectedProjectId);
+    }
+  }, [loadPipelines, selectedProjectId]);
+
+  const handleSubmit = async () => {
+    const values = await form.validateFields();
+    const payload: ComparisonRequest & { comparisonDimensions?: string[] } = {
+      projectId: values.projectId ?? selectedProjectId ?? undefined,
+      pipelineId: values.pipelineId,
+      comparisonDimensions: values.comparisonDimensions,
+      schemes: values.schemes.map((scheme) => ({
+        schemeName: scheme.schemeName,
+        description: scheme.description,
+        flowRate: scheme.flowRate,
+        inletPressure: scheme.inletPressure,
+        outletPressure: scheme.outletPressure,
+        oilTemperature: scheme.oilTemperature,
+        oilDensity: scheme.oilDensity,
+        oilViscosity: scheme.oilViscosity,
+        dailyOperatingHours: scheme.dailyOperatingHours,
+        electricityPrice: scheme.electricityPrice,
+        pumpConfigs: [
+          {
+            runningPumpCount: scheme.runningPumpCount,
+            pumpPower: scheme.pumpPower,
+            pumpEfficiency: scheme.pumpEfficiency,
+            variableFrequency: scheme.variableFrequency,
+            frequency: scheme.frequency,
+          },
         ],
-        recommendation: { schemeName: '方案A', reasons: ['能耗表现优秀，单位能耗最低', '运行成本最低，经济性最优'], recommendationLevel: 5, expectedBenefit: { yearlySavingEnergy: 3504000, yearlySavingCost: 2277600, yearlyCarbonReduction: 2046 } },
-        conclusion: '本次共对比分析了3个运行方案。综合评估结果显示，"方案A"方案表现最优，综合得分90分。建议优先采用推荐方案实施。'
-      };
-      setResult(mockResult);
+      })),
+    };
+
+    setLoading(true);
+    try {
+      const response = await comparisonApi.compare(payload);
+      setResult(response.data ?? null);
+      message.success('方案对比完成');
+    } finally {
       setLoading(false);
-      message.success('对比分析完成');
-    }, 2000);
+    }
   };
 
-  const radarOption = result ? {
-    legend: { data: result.radarChart.series.map(s => s.name), bottom: 0 },
-    radar: { indicator: result.radarChart.dimensions.map(d => ({ name: d, max: 100 })), radius: '60%' },
-    series: [{ type: 'radar', data: result.radarChart.series.map((s) => ({ value: s.values, name: s.name, areaStyle: { opacity: 0.2 }, lineStyle: { width: 2 } })) }]
-  } : null;
+  const radarOption = useMemo(() => {
+    if (!result) {
+      return null;
+    }
 
-  const barOption = result ? {
-    tooltip: { trigger: 'axis' },
-    xAxis: { type: 'category', data: result.schemeAnalyses.map(a => a.schemeName) },
-    yAxis: { type: 'value', name: '万元' },
-    series: [{ type: 'bar', data: result.schemeAnalyses.map(a => ({ value: (a.yearlyCost / 10000).toFixed(0), itemStyle: { color: a.overallScore === 90 ? '#52c41a' : '#667eea' } })), label: { show: true, position: 'top' } }]
-  } : null;
+    return {
+      legend: { bottom: 0 },
+      radar: {
+        indicator: result.radarChart.dimensions.map((dimension) => ({ name: dimension, max: 100 })),
+      },
+      series: [
+        {
+          type: 'radar',
+          data: result.radarChart.series.map((item) => ({
+            name: item.name,
+            value: item.values,
+            areaStyle: { opacity: 0.12 },
+          })),
+        },
+      ],
+    };
+  }, [result]);
+
+  const barOption = useMemo(() => {
+    if (!result || result.barCharts.length === 0) {
+      return null;
+    }
+
+    const firstChart = result.barCharts[0];
+    return {
+      tooltip: { trigger: 'axis' },
+      xAxis: {
+        type: 'category',
+        data: firstChart.items.map((item) => item.schemeName),
+      },
+      yAxis: {
+        type: 'value',
+        name: firstChart.unit,
+      },
+      series: [
+        {
+          type: 'bar',
+          data: firstChart.items.map((item) => ({
+            value: item.value,
+            itemStyle: { color: item.isBest ? '#52c41a' : '#1677ff' },
+          })),
+        },
+      ],
+    };
+  }, [result]);
 
   const columns = [
-    { title: '方案', dataIndex: 'schemeName', render: (v: string, r: SchemeAnalysis) => r.overallScore === 90 ? <><TrophyOutlined style={{ color: '#faad14' }} /> {v}</> : v },
-    { title: '总功率(kW)', dataIndex: 'totalPower' },
-    { title: '年能耗(万kWh)', dataIndex: 'yearlyEnergyConsumption', render: (v: number) => (v / 10000).toFixed(0) },
-    { title: '年成本(万元)', dataIndex: 'yearlyCost', render: (v: number) => (v / 10000).toFixed(0) },
-    { title: '系统效率(%)', dataIndex: 'systemEfficiency' },
-    { title: '安全裕度(%)', dataIndex: 'safetyMargin' },
-    { title: '年碳排放(tCO2)', dataIndex: 'yearlyCarbonEmission' },
-    { title: '综合评分', dataIndex: 'overallScore', render: (v: number) => <Tag color={v >= 90 ? 'success' : v >= 80 ? 'blue' : 'orange'}>{v}分</Tag> },
+    {
+      title: '方案',
+      dataIndex: 'schemeName',
+      key: 'schemeName',
+    },
+    {
+      title: '年成本(元)',
+      dataIndex: 'yearlyCost',
+      key: 'yearlyCost',
+    },
+    {
+      title: '年能耗(kWh)',
+      dataIndex: 'yearlyEnergyConsumption',
+      key: 'yearlyEnergyConsumption',
+    },
+    {
+      title: '系统效率(%)',
+      dataIndex: 'systemEfficiency',
+      key: 'systemEfficiency',
+    },
+    {
+      title: '安全裕度(%)',
+      dataIndex: 'safetyMargin',
+      key: 'safetyMargin',
+    },
+    {
+      title: '综合得分',
+      dataIndex: 'overallScore',
+      key: 'overallScore',
+      render: (value: number) => <Tag color={value >= 90 ? 'gold' : 'blue'}>{value}</Tag>,
+    },
   ];
 
   return (
     <AnimatedPage>
       <div className="page-header">
         <h2><SwapOutlined /> 多方案对比</h2>
-        <p>综合对比多个运行方案的能耗、成本、效率、安全性和碳排放</p>
+        <p>支持 2~5 套方案的真实后端对比分析，输出综合排名、推荐方案和可视化图表。</p>
       </div>
 
       <Row gutter={24}>
-        <Col xs={24} lg={8}>
-          <Card title="方案配置" className="page-card" extra={<Button type="link" icon={<PlusOutlined />} onClick={addScheme}>添加方案</Button>}>
-            <Form form={form} layout="vertical" onFinish={onFinish}>
-              {schemes.map((scheme, idx) => (
-                <Card key={scheme.id} size="small" style={{ marginBottom: 12 }} title={<Input defaultValue={scheme.name} variant="borderless" style={{ fontWeight: 600 }} />} extra={schemes.length > 2 && <Button type="text" danger icon={<DeleteOutlined />} onClick={() => removeScheme(scheme.id)} />}>
-                  <Row gutter={12}>
-                    <Col span={12}><Form.Item label="流量(m³/h)"><InputNumber defaultValue={800 + idx * 50} style={{ width: '100%' }} /></Form.Item></Col>
-                    <Col span={12}><Form.Item label="首站压力(MPa)"><InputNumber defaultValue={6.5} precision={1} style={{ width: '100%' }} /></Form.Item></Col>
-                    <Col span={12}><Form.Item label="运行泵数"><InputNumber defaultValue={3 + idx} min={1} max={6} style={{ width: '100%' }} /></Form.Item></Col>
-                    <Col span={12}><Form.Item label="单泵功率(kW)"><InputNumber defaultValue={800} style={{ width: '100%' }} /></Form.Item></Col>
-                  </Row>
-                </Card>
-              ))}
-              <Button type="primary" htmlType="submit" loading={loading} icon={<SwapOutlined />} block size="large">开始对比分析</Button>
+        <Col xs={24} lg={9}>
+          <Card title="方案配置" className="page-card">
+            <Form<ComparisonFormValues> form={form} layout="vertical" onFinish={() => void handleSubmit()}>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item name="projectId" label="所属项目" rules={[{ required: true, message: '请选择项目' }]}>
+                    <Select<number>
+                      onChange={(value) => {
+                        setSelectedProjectId(value);
+                        setResult(null);
+                      }}
+                      options={projects.map((project) => ({ value: project.proId, label: project.name }))}
+                    />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item name="pipelineId" label="管道" rules={[{ required: true, message: '请选择管道' }]}>
+                    <Select<number>
+                      placeholder="选择管道"
+                      onChange={() => setResult(null)}
+                      options={pipelines.map((pipeline) => ({ value: pipeline.id, label: pipeline.name }))}
+                    />
+                  </Form.Item>
+                </Col>
+              </Row>
+
+              <Form.Item name="comparisonDimensions" label="对比维度">
+                <Select mode="multiple" options={dimensions.map((item) => ({ value: item, label: item }))} />
+              </Form.Item>
+
+              <Form.List name="schemes">
+                {(fields, { add, remove }) => (
+                  <>
+                    {fields.map((field, index) => (
+                      <Card
+                        key={field.key}
+                        size="small"
+                        title={`方案 ${index + 1}`}
+                        style={{ marginBottom: 12 }}
+                        extra={fields.length > 2 ? (
+                          <Button type="text" danger icon={<DeleteOutlined />} onClick={() => remove(field.name)} />
+                        ) : null}
+                      >
+                        <Row gutter={12}>
+                          <Col span={12}><Form.Item name={[field.name, 'schemeName']} label="方案名称" rules={[{ required: true }]}><Input /></Form.Item></Col>
+                          <Col span={12}><Form.Item name={[field.name, 'description']} label="方案描述"><Input /></Form.Item></Col>
+                        </Row>
+                        <Row gutter={12}>
+                          <Col span={12}><Form.Item name={[field.name, 'flowRate']} label="流量(m³/h)" rules={[{ required: true }]}><InputNumber min={0} style={{ width: '100%' }} /></Form.Item></Col>
+                          <Col span={12}><Form.Item name={[field.name, 'inletPressure']} label="首站压力(MPa)" rules={[{ required: true }]}><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
+                        </Row>
+                        <Row gutter={12}>
+                          <Col span={12}><Form.Item name={[field.name, 'dailyOperatingHours']} label="日运行时长(h)"><InputNumber min={0} precision={1} style={{ width: '100%' }} /></Form.Item></Col>
+                          <Col span={12}><Form.Item name={[field.name, 'electricityPrice']} label="电价(元/kWh)"><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
+                        </Row>
+                        <Row gutter={12}>
+                          <Col span={8}><Form.Item name={[field.name, 'oilTemperature']} label="油温(℃)"><InputNumber precision={1} style={{ width: '100%' }} /></Form.Item></Col>
+                          <Col span={8}><Form.Item name={[field.name, 'oilDensity']} label="密度"><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
+                          <Col span={8}><Form.Item name={[field.name, 'oilViscosity']} label="粘度"><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
+                        </Row>
+                        <Row gutter={12}>
+                          <Col span={8}><Form.Item name={[field.name, 'runningPumpCount']} label="运行泵数"><InputNumber min={0} precision={0} style={{ width: '100%' }} /></Form.Item></Col>
+                          <Col span={8}><Form.Item name={[field.name, 'pumpPower']} label="单泵功率(kW)"><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
+                          <Col span={8}><Form.Item name={[field.name, 'pumpEfficiency']} label="泵效率(%)"><InputNumber min={0} max={100} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
+                        </Row>
+                        <Row gutter={12}>
+                          <Col span={12}><Form.Item name={[field.name, 'variableFrequency']} label="变频运行" valuePropName="checked"><Switch /></Form.Item></Col>
+                          <Col span={12}><Form.Item name={[field.name, 'frequency']} label="频率(Hz)"><InputNumber min={0} precision={1} style={{ width: '100%' }} /></Form.Item></Col>
+                        </Row>
+                      </Card>
+                    ))}
+                    <Button
+                      block
+                      icon={<PlusOutlined />}
+                      onClick={() => {
+                        if (fields.length >= 5) {
+                          message.warning('最多支持 5 套方案');
+                          return;
+                        }
+                        add({
+                          schemeName: `方案${String.fromCharCode(65 + fields.length)}`,
+                          flowRate: 850,
+                          inletPressure: 6,
+                          dailyOperatingHours: 24,
+                          electricityPrice: 0.8,
+                        });
+                      }}
+                    >
+                      添加方案
+                    </Button>
+                  </>
+                )}
+              </Form.List>
+
+              <Button type="primary" htmlType="submit" loading={loading} icon={<SwapOutlined />} block style={{ marginTop: 16 }}>
+                开始对比
+              </Button>
             </Form>
           </Card>
         </Col>
 
-        <Col xs={24} lg={16}>
+        <Col xs={24} lg={15}>
           {result ? (
             <Space direction="vertical" style={{ width: '100%' }} size="middle">
-              {/* 推荐方案 */}
-              <Card style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: '#fff', borderRadius: 12 }}>
+              <Card className="page-card" style={{ background: 'linear-gradient(135deg, #1677ff 0%, #722ed1 100%)', color: '#fff' }}>
                 <Row align="middle" gutter={24}>
-                  <Col span={4} style={{ textAlign: 'center' }}><TrophyOutlined style={{ fontSize: 48 }} /></Col>
-                  <Col span={14}>
-                    <h2 style={{ color: '#fff', marginBottom: 8 }}>推荐方案: {result.recommendation.schemeName}</h2>
-                    <Space>{[...Array(result.recommendation.recommendationLevel)].map((_, i) => <StarFilled key={i} style={{ color: '#faad14' }} />)}</Space>
-                    <div style={{ marginTop: 8 }}>{result.recommendation.reasons.map((r, i) => <Tag key={i} color="gold">{r}</Tag>)}</div>
+                  <Col span={4} style={{ textAlign: 'center' }}>
+                    <TrophyOutlined style={{ fontSize: 48, color: '#ffd666' }} />
                   </Col>
-                  <Col span={6} style={{ textAlign: 'right' }}>
-                    <div>年节约成本</div>
-                    <div style={{ fontSize: 28, fontWeight: 700 }}>{(result.recommendation.expectedBenefit.yearlySavingCost / 10000).toFixed(0)}万元</div>
+                  <Col span={20}>
+                    <h3 style={{ color: '#fff', marginBottom: 8 }}>推荐方案：{result.recommendation.schemeName}</h3>
+                    <div style={{ marginBottom: 8 }}>{result.recommendation.reasons.join('；')}</div>
+                    <Space wrap>
+                      <Tag color="gold">预计节能 {result.recommendation.expectedBenefit.yearlySavingEnergy}</Tag>
+                      <Tag color="gold">预计节省成本 {result.recommendation.expectedBenefit.yearlySavingCost}</Tag>
+                      <Tag color="gold">预计减碳 {result.recommendation.expectedBenefit.yearlyCarbonReduction}</Tag>
+                    </Space>
                   </Col>
                 </Row>
               </Card>
 
-              {/* 对比表格 */}
+              <AlertCard conclusion={result.conclusion} />
+
               <Card title="方案指标对比" className="page-card">
                 <Table columns={columns} dataSource={result.schemeAnalyses} rowKey="schemeName" pagination={false} />
               </Card>
 
               <Row gutter={16}>
-                {/* 雷达图 */}
                 <Col span={12}>
                   <Card title="综合评分雷达图" className="page-card">
-                    <ReactECharts option={radarOption!} style={{ height: 300 }} />
+                    {radarOption && <ReactECharts option={radarOption} style={{ height: 320 }} />}
                   </Card>
                 </Col>
-                {/* 成本对比 */}
                 <Col span={12}>
-                  <Card title="年运行成本对比" className="page-card">
-                    <ReactECharts option={barOption!} style={{ height: 300 }} />
+                  <Card title={result.barCharts[0]?.metricName ?? '关键指标对比'} className="page-card">
+                    {barOption && <ReactECharts option={barOption} style={{ height: 320 }} />}
                   </Card>
                 </Col>
               </Row>
 
-              {/* 排名 */}
               <Card title="综合排名" className="page-card">
-                <Steps current={-1} items={result.overallRanking.map((r, idx) => ({ title: <>{idx === 0 && <TrophyOutlined style={{ color: '#faad14', marginRight: 4 }} />}{r.schemeName}</>, description: <><Tag color={idx === 0 ? 'gold' : idx === 1 ? 'silver' : 'default'}>{r.score}分</Tag> {r.comment}</> }))} />
+                <Steps
+                  current={-1}
+                  items={result.overallRanking.map((item, index) => ({
+                    title: `${item.rank}. ${item.schemeName}`,
+                    description: `${item.comment}（得分 ${item.score}）`,
+                    icon: index === 0 ? <TrophyOutlined style={{ color: '#faad14' }} /> : undefined,
+                  }))}
+                />
               </Card>
             </Space>
           ) : (
-            <Card className="page-card" style={{ height: 500, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <div style={{ textAlign: 'center', color: '#999' }}><SwapOutlined style={{ fontSize: 64, marginBottom: 16, color: '#667eea' }} /><h3>多方案对比分析</h3><p>配置2-5个运行方案，系统将进行综合对比</p></div>
+            <Card className="page-card" style={{ minHeight: 520, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ textAlign: 'center', color: '#8c8c8c' }}>
+                <SwapOutlined style={{ fontSize: 56, marginBottom: 16 }} />
+                <div>配置至少两套方案并提交后，可获得后端生成的真实对比结果。</div>
+              </div>
             </Card>
           )}
         </Col>
@@ -155,3 +440,12 @@ export default function SchemeComparison() {
     </AnimatedPage>
   );
 }
+
+function AlertCard({ conclusion }: { conclusion: string }) {
+  return (
+    <Card className="page-card" title="对比结论">
+      <div>{conclusion}</div>
+    </Card>
+  );
+}
+
