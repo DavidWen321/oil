@@ -18,7 +18,31 @@ export interface PageResult<T> {
   pageSize: number;
 }
 
+<<<<<<< Updated upstream
 // ========== 用户认证 ==========
+=======
+export interface AnalysisReport {
+  id: number;
+  proId?: number;
+  pipelineId?: number;
+  reportNo?: string;
+  reportType?: string;
+  reportTitle?: string;
+  reportSummary?: string;
+  fileName?: string;
+  filePath?: string;
+  fileFormat?: string;
+  fileSize?: number;
+  historyIds?: string;
+  status?: number;
+  errorMsg?: string;
+  createBy?: string;
+  createTime?: string;
+  updateTime?: string;
+}
+
+// ========== 鐢ㄦ埛璁よ瘉 ==========
+>>>>>>> Stashed changes
 
 export interface LoginParams {
   username: string;

@@ -8,7 +8,11 @@ export default defineConfig({
     proxy: {
       // 认证服务 - 路径匹配Gateway /auth/**
       '/auth': {
+<<<<<<< Updated upstream
         target: 'http://localhost:8180',
+=======
+        target: 'http://localhost:9300',
+>>>>>>> Stashed changes
         changeOrigin: true,
       },
       // 数据服务 - 前端用 /project /pipeline 等，Gateway需要 /data/ 前缀

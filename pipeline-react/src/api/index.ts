@@ -1,14 +1,32 @@
 import { http } from './request';
 import type {
+<<<<<<< Updated upstream
   R,
+=======
+  AlarmMessage,
+  AlarmRule,
+  AnalysisReport,
+  CarbonCalculationRequest,
+  CarbonCalculationResult,
+  ComparisonRequest,
+  ComparisonResult,
+  DiagnosisRequest,
+  DiagnosisResult,
+  HydraulicAnalysisParams,
+  HydraulicAnalysisResult,
+>>>>>>> Stashed changes
   LoginParams,
   LoginResult,
   Project,
   Pipeline,
   PumpStation,
   OilProperty,
+<<<<<<< Updated upstream
   HydraulicAnalysisParams,
   HydraulicAnalysisResult,
+=======
+  PageResult,
+>>>>>>> Stashed changes
   OptimizationParams,
   OptimizationResult,
   SensitivityParams,
@@ -206,3 +224,25 @@ export const statisticsApi = {
       params: { startDate, endDate },
     }),
 };
+<<<<<<< Updated upstream
+=======
+
+export const reportApi = {
+  page: (params?: {
+    reportType?: string;
+    projectId?: number;
+    userId?: number;
+    pageNum?: number;
+    pageSize?: number;
+  }) => http.get<R<PageResult<AnalysisReport>>>('/calculation/report/page', { params }),
+  recent: (limit = 10, userId?: number) =>
+    http.get<R<AnalysisReport[]>>('/calculation/report/recent', {
+      params: { limit, userId },
+    }),
+  detail: (id: number) => http.get<R<AnalysisReport>>(`/calculation/report/${id}`),
+  delete: (id: number) => http.delete<R<void>>(`/calculation/report/${id}`),
+};
+
+
+
+>>>>>>> Stashed changes
