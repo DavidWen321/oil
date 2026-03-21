@@ -4,102 +4,50 @@ import { visualizer } from 'rollup-plugin-visualizer';
 import viteCompression from 'vite-plugin-compression';
 import type { ManualChunkMeta } from 'rollup';
 
-export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), '');
-  const gatewayTarget = env.VITE_GATEWAY_URL || 'http://localhost:8180';
-  const agentProxyHeaders: Record<string, string> = {};
-  const internalServiceToken = env.INTERNAL_SERVICE_TOKEN || process.env.INTERNAL_SERVICE_TOKEN;
-  const internalApiKey = env.INTERNAL_API_KEY || process.env.INTERNAL_API_KEY;
-
-  if (internalServiceToken) {
-    agentProxyHeaders['X-Internal-Token'] = internalServiceToken;
-  }
-  if (internalApiKey) {
-    agentProxyHeaders['X-Internal-Key'] = internalApiKey;
-  }
-
-  return {
-    define: {
-      // 为 sockjs-client 提供 global 变量
-      global: 'globalThis',
-    },
-
-    plugins: [
-      react(),
-
-      // Gzip 压缩
-      viteCompression({
-        verbose: true,
-        disable: false,
-        threshold: 10240, // 10KB 以上才压缩
-        algorithm: 'gzip',
-        ext: '.gz',
-      }),
-
-      // Brotli 压缩（更高压缩率）
-      viteCompression({
-        verbose: true,
-        disable: false,
-        threshold: 10240,
-        algorithm: 'brotliCompress',
-        ext: '.br',
-      }),
-
-      // 包体积分析（仅在构建时生成）
-      visualizer({
-        open: false,
-        filename: 'dist/stats.html',
-        gzipSize: true,
-        brotliSize: true,
-      }),
-    ],
-
-    server: {
-      proxy: {
-        '/auth': {
-          target: gatewayTarget,
-          changeOrigin: true,
-        },
-        '/project': {
-          target: gatewayTarget,
-          changeOrigin: true,
-          rewrite: (path) => `/data${path}`,
-        },
-        '/pipeline': {
-          target: gatewayTarget,
-          changeOrigin: true,
-          rewrite: (path) => `/data${path}`,
-        },
-        '/pump-station': {
-          target: gatewayTarget,
-          changeOrigin: true,
-          rewrite: (path) => `/data${path}`,
-        },
-        '/oil-property': {
-          target: gatewayTarget,
-          changeOrigin: true,
-          rewrite: (path) => `/data${path}`,
-        },
-        '/knowledge-doc': {
-          target: gatewayTarget,
-          changeOrigin: true,
-          rewrite: (path) => `/data${path}`,
-        },
-        '/calculation': {
-          target: gatewayTarget,
-          changeOrigin: true,
-          ws: true,
-        },
-        '/api/v1': {
-          target: 'http://localhost:8100',
-          changeOrigin: true,
-          headers: agentProxyHeaders,
-        },
-        '/api/v2': {
-          target: 'http://localhost:8100',
-          changeOrigin: true,
-          headers: agentProxyHeaders,
-        },
+// https://vite.dev/config/
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    proxy: {
+      // 认证服务 - 路径匹配Gateway /auth/**
+      '/auth': {
+<<<<<<< Updated upstream
+        target: 'http://localhost:8180',
+=======
+        target: 'http://localhost:9300',
+>>>>>>> Stashed changes
+        changeOrigin: true,
+      },
+      // 数据服务 - 前端用 /project /pipeline 等，Gateway需要 /data/ 前缀
+      '/project': {
+        target: 'http://localhost:8180',
+        changeOrigin: true,
+        rewrite: (path) => `/data${path}`,
+      },
+      '/pipeline': {
+        target: 'http://localhost:8180',
+        changeOrigin: true,
+        rewrite: (path) => `/data${path}`,
+      },
+      '/pump-station': {
+        target: 'http://localhost:8180',
+        changeOrigin: true,
+        rewrite: (path) => `/data${path}`,
+      },
+      '/oil-property': {
+        target: 'http://localhost:8180',
+        changeOrigin: true,
+        rewrite: (path) => `/data${path}`,
+      },
+      // 计算服务 - 路径匹配Gateway /calculation/**
+      '/calculation': {
+        target: 'http://localhost:8180',
+        changeOrigin: true,
+      },
+      // Agent API
+      '/api/v1': {
+        target: 'http://localhost:8200',
+        changeOrigin: true,
       },
     },
 

@@ -18,6 +18,9 @@ export interface PageResult<T> {
   pageSize: number;
 }
 
+<<<<<<< Updated upstream
+// ========== 用户认证 ==========
+=======
 export interface AnalysisReport {
   id: number;
   proId?: number;
@@ -38,26 +41,8 @@ export interface AnalysisReport {
   updateTime?: string;
 }
 
-export interface CalculationHistory {
-  id: number;
-  calcType?: string;
-  calcTypeName?: string;
-  projectId?: number;
-  projectName?: string;
-  userId?: number;
-  userName?: string;
-  inputParams?: string;
-  outputResult?: string;
-  status?: number;
-  statusName?: string;
-  errorMessage?: string;
-  calcDuration?: number;
-  calcDurationFormatted?: string;
-  remark?: string;
-  createTime?: string;
-}
-
-// ========== 用户认证 ==========
+// ========== 鐢ㄦ埛璁よ瘉 ==========
+>>>>>>> Stashed changes
 
 export interface LoginParams {
   username: string;

@@ -1,5 +1,43 @@
 import { http } from './request';
 import type {
+<<<<<<< Updated upstream
+  R,
+=======
+  AlarmMessage,
+  AlarmRule,
+  AnalysisReport,
+  CarbonCalculationRequest,
+  CarbonCalculationResult,
+  ComparisonRequest,
+  ComparisonResult,
+  DiagnosisRequest,
+  DiagnosisResult,
+  HydraulicAnalysisParams,
+  HydraulicAnalysisResult,
+>>>>>>> Stashed changes
+  LoginParams,
+  LoginResult,
+  Project,
+  Pipeline,
+  PumpStation,
+  OilProperty,
+<<<<<<< Updated upstream
+  HydraulicAnalysisParams,
+  HydraulicAnalysisResult,
+=======
+  PageResult,
+>>>>>>> Stashed changes
+  OptimizationParams,
+  OptimizationResult,
+  SensitivityParams,
+  SensitivityResult,
+  DiagnosisRequest,
+  DiagnosisResult,
+  ComparisonRequest,
+  ComparisonResult,
+  CarbonCalculationRequest,
+  CarbonCalculationResult,
+  MonitorDataPoint,
   AlarmMessage,
   AlarmRule,
   AnalysisReport,
@@ -144,6 +182,8 @@ export const statisticsApi = {
       params: { startDate, endDate },
     }),
 };
+<<<<<<< Updated upstream
+=======
 
 export const reportApi = {
   page: (params?: {
@@ -161,26 +201,6 @@ export const reportApi = {
   delete: (id: number) => http.delete<R<void>>(`/calculation/report/${id}`),
 };
 
-export const calculationHistoryApi = {
-  page: (params?: {
-    calcType?: string;
-    projectId?: number;
-    userId?: number;
-    status?: number;
-    pageNum?: number;
-    pageSize?: number;
-    keyword?: string;
-  }) => http.get<R<PageResult<CalculationHistory>>>('/calculation/history/page', { params }),
-  byProject: (
-    projectId: number,
-    params?: {
-      pageNum?: number;
-      pageSize?: number;
-      calcType?: string;
-    },
-  ) =>
-    http.get<R<PageResult<CalculationHistory>>>(`/calculation/history/project/${projectId}`, {
-      params,
-    }),
-  detail: (id: number) => http.get<R<CalculationHistory>>(`/calculation/history/${id}`),
-};
+
+
+>>>>>>> Stashed changes

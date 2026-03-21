@@ -1,6 +1,29 @@
+<<<<<<< Updated upstream
 /**
  * PumpStationList - 泵站参数管理页面
  */
+=======
+﻿import { useEffect, useMemo, useState } from 'react';
+import {
+  Button,
+  Card,
+  Form,
+  Input,
+  InputNumber,
+  Modal,
+  Popconfirm,
+  Space,
+  Table,
+  message,
+} from 'antd';
+import type { ColumnsType } from 'antd/es/table';
+import { DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import { pumpStationApi } from '../../api';
+import type { PumpStation } from '../../types';
+import AnimatedPage from '../../components/common/AnimatedPage';
+import { useDebounce } from '../../hooks/useDebounce';
+import useTablePagination from '../../hooks/useTablePagination';
+>>>>>>> Stashed changes
 
 import { useState, useEffect } from 'react';
 import { Card, Button, Space, Modal, Form, Input, InputNumber, message, Popconfirm, Tooltip, Row, Col } from 'antd';
@@ -11,6 +34,16 @@ import { pumpStationApi } from '../../api';
 import AnimatedPage from '../../components/common/AnimatedPage';
 import ResponsiveTable from '../../components/common/ResponsiveTable';
 import styles from './DataPage.module.css';
+
+const COMPACT_NUMERIC_CELL_STYLE = {
+  paddingLeft: 12,
+  paddingRight: 12,
+};
+
+const COMPACT_ACTION_CELL_STYLE = {
+  paddingLeft: 12,
+  paddingRight: 12,
+};
 
 export default function PumpStationList() {
   const [loading, setLoading] = useState(false);
@@ -59,6 +92,33 @@ export default function PumpStationList() {
     } catch {
       message.error('删除失败');
     }
+<<<<<<< Updated upstream
+=======
+    return stations.filter((station) => station.name.toLowerCase().includes(normalized));
+  }, [debouncedKeyword, stations]);
+  const { pagination, resetPagination } = useTablePagination(filteredStations.length);
+
+  useEffect(() => {
+    resetPagination();
+  }, [debouncedKeyword, resetPagination]);
+
+  const handleCreate = () => {
+    setEditing(null);
+    form.setFieldsValue(EMPTY_PUMP_STATION as PumpStation);
+    setOpen(true);
+  };
+
+  const handleEdit = (station: PumpStation) => {
+    setEditing(station);
+    form.setFieldsValue(station);
+    setOpen(true);
+  };
+
+  const handleDelete = async (stationId: number) => {
+    await pumpStationApi.delete([stationId]);
+    message.success('泵站已删除');
+    await loadStations();
+>>>>>>> Stashed changes
   };
 
   const handleSubmit = async () => {
@@ -87,6 +147,7 @@ export default function PumpStationList() {
   );
 
   const columns: ColumnsType<PumpStation> = [
+<<<<<<< Updated upstream
     {
       title: nowrapTitle('编号'),
       dataIndex: 'id',
@@ -161,6 +222,77 @@ export default function PumpStationList() {
                 className={styles.actionBtn}
             >
               编辑
+=======
+    { title: '泵站名称', dataIndex: 'name', width: 200, ellipsis: true },
+    {
+      title: '泵效率(%)',
+      dataIndex: 'pumpEfficiency',
+      width: 118,
+      align: 'center',
+      onHeaderCell: () => ({ style: COMPACT_NUMERIC_CELL_STYLE }),
+      onCell: () => ({ style: COMPACT_NUMERIC_CELL_STYLE }),
+    },
+    {
+      title: '电机效率(%)',
+      dataIndex: 'electricEfficiency',
+      width: 118,
+      align: 'center',
+      onHeaderCell: () => ({ style: COMPACT_NUMERIC_CELL_STYLE }),
+      onCell: () => ({ style: COMPACT_NUMERIC_CELL_STYLE }),
+    },
+    {
+      title: '排量(m³/h)',
+      dataIndex: 'displacement',
+      width: 124,
+      align: 'center',
+      onHeaderCell: () => ({ style: COMPACT_NUMERIC_CELL_STYLE }),
+      onCell: () => ({ style: COMPACT_NUMERIC_CELL_STYLE }),
+    },
+    {
+      title: '来压(MPa)',
+      dataIndex: 'comePower',
+      width: 116,
+      align: 'center',
+      onHeaderCell: () => ({ style: COMPACT_NUMERIC_CELL_STYLE }),
+      onCell: () => ({ style: COMPACT_NUMERIC_CELL_STYLE }),
+    },
+    {
+      title: 'ZMI480扬程(m)',
+      dataIndex: 'zmi480Lift',
+      width: 140,
+      align: 'center',
+      onHeaderCell: () => ({ style: COMPACT_NUMERIC_CELL_STYLE }),
+      onCell: () => ({ style: COMPACT_NUMERIC_CELL_STYLE }),
+    },
+    {
+      title: 'ZMI375扬程(m)',
+      dataIndex: 'zmi375Lift',
+      width: 140,
+      align: 'center',
+      onHeaderCell: () => ({ style: COMPACT_NUMERIC_CELL_STYLE }),
+      onCell: () => ({ style: COMPACT_NUMERIC_CELL_STYLE }),
+    },
+    {
+      title: '操作',
+      key: 'actions',
+      width: 184,
+      align: 'center',
+      onHeaderCell: () => ({ style: COMPACT_ACTION_CELL_STYLE }),
+      onCell: () => ({ style: COMPACT_ACTION_CELL_STYLE }),
+      render: (_, station) => (
+        <Space size="middle" style={{ width: '100%', justifyContent: 'center' }} wrap={false}>
+          <Button icon={<EditOutlined />} onClick={() => handleEdit(station)}>
+            编辑
+          </Button>
+          <Popconfirm
+            title="确认删除这个泵站吗？"
+            okText="删除"
+            cancelText="取消"
+            onConfirm={() => void handleDelete(station.id)}
+          >
+            <Button danger icon={<DeleteOutlined />}>
+              删除
+>>>>>>> Stashed changes
             </Button>
             <Popconfirm
                 title="确定删除吗？"
@@ -186,6 +318,7 @@ export default function PumpStationList() {
   ];
 
   return (
+<<<<<<< Updated upstream
       <AnimatedPage className={styles.page}>
         <div className={styles.pageContent}>
           <header className={styles.header}>
@@ -201,6 +334,39 @@ export default function PumpStationList() {
               </div>
             </div>
           </header>
+=======
+    <AnimatedPage>
+      <Card
+        title="泵站参数管理"
+        extra={
+          <Space>
+            <Input.Search
+              placeholder="搜索泵站名称"
+              allowClear
+              value={keyword}
+              onChange={(event) => setKeyword(event.target.value)}
+              style={{ width: 220 }}
+            />
+            <Button icon={<ReloadOutlined />} onClick={() => void loadStations()} loading={loading}>
+              刷新
+            </Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>
+              新建泵站
+            </Button>
+          </Space>
+        }
+      >
+        <Table<PumpStation>
+          rowKey="id"
+          loading={loading}
+          size="middle"
+          tableLayout="auto"
+          columns={columns}
+          dataSource={filteredStations}
+          pagination={pagination}
+        />
+      </Card>
+>>>>>>> Stashed changes
 
           <Card className={styles.tableCard} bordered={false}>
             <div className={styles.toolbar}>

@@ -1,7 +1,16 @@
-﻿/**
+<<<<<<< Updated upstream
+/**
  * 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺? *  Dashboard - 娌规皵绠￠亾鏅鸿兘鐩戞祴绯荤粺
  *  璁捐鐞嗗康: Apple + Linear + Vercel 鏋佺畝涓讳箟椋庢牸
  * 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺? */
+=======
+﻿/**
+ * 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?
+ *  Dashboard - 娌规皵绠￠亾鏅鸿兘鐩戞祴绯荤粺
+ *  璁捐鐞嗗康: Apple + Linear + Vercel 鏋佺畝涓讳箟椋庢牸
+ * 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?
+ */
+>>>>>>> Stashed changes
 
 import { useState, useMemo } from 'react'
 import { motion } from 'motion/react'
@@ -26,7 +35,13 @@ import { useChartConfig } from '../../hooks/useChartConfig'
 import { useChartGesture } from '../../hooks/useChartGesture'
 import styles from './Dashboard.module.css'
 
+<<<<<<< Updated upstream
 // 类型定义
+=======
+// 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?
+// 绫诲瀷瀹氫箟
+// 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?
+>>>>>>> Stashed changes
 interface StatCardData {
   id: string
   label: string
@@ -55,22 +70,90 @@ interface DeviceData {
   unit: string
 }
 
+<<<<<<< Updated upstream
 // ECharts 主题配置 - Apple HIG 风格
 // 主色调定义
 const colors = {
   primary: '#007AFF',
   primaryLight: 'rgba(0, 122, 255, 0.12)',
   primaryMedium: 'rgba(0, 122, 255, 0.6)',
+=======
+type TimeRange = '24h' | '7d' | '30d'
+
+interface FlowTrendRangeConfig {
+  value: TimeRange
+  label: string
+  subtitle: string
+  categories: string[]
+  currentSeriesName: string
+  previousSeriesName: string
+  currentData: number[]
+  previousData: number[]
+}
+
+const flowTrendRanges: FlowTrendRangeConfig[] = [
+  {
+    value: '24h',
+    label: '24h',
+    subtitle: '24小时实时流量监控',
+    categories: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00'],
+    currentSeriesName: '当前流量',
+    previousSeriesName: '昨日流量',
+    currentData: [2100, 2250, 2680, 2890, 2750, 2920, 2847],
+    previousData: [1900, 2100, 2400, 2600, 2500, 2700, 2530],
+  },
+  {
+    value: '7d',
+    label: '7d',
+    subtitle: '最近7天平均流量趋势',
+    categories: ['周一', '周二', '周三', '周四', '周五', '周六', '周日'],
+    currentSeriesName: '本周均值',
+    previousSeriesName: '上周均值',
+    currentData: [2520, 2610, 2740, 2680, 2810, 2895, 2850],
+    previousData: [2380, 2460, 2580, 2510, 2630, 2715, 2690],
+  },
+  {
+    value: '30d',
+    label: '30d',
+    subtitle: '最近30天阶段流量趋势',
+    categories: ['1日', '5日', '10日', '15日', '20日', '25日', '30日'],
+    currentSeriesName: '本月均值',
+    previousSeriesName: '上月均值',
+    currentData: [2320, 2480, 2590, 2710, 2790, 2870, 2930],
+    previousData: [2210, 2340, 2460, 2550, 2640, 2720, 2810],
+  },
+]
+
+// 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?
+// ECharts 娴呰壊涓婚閰嶇疆 - Apple HIG 椋庢牸
+// 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?
+
+// 涓昏壊璋冨畾涔?- Apple 绯荤粺鑹?
+const colors = {
+  // Apple Blue 涓昏壊
+  primary: '#007AFF',
+  primaryLight: 'rgba(0, 122, 255, 0.12)',
+  primaryMedium: 'rgba(0, 122, 255, 0.6)',
+  // 杈呭姪鑹?
+>>>>>>> Stashed changes
   purple: '#5856D6',
   purpleLight: 'rgba(88, 86, 214, 0.12)',
   cyan: '#32ADE6',
   cyanLight: 'rgba(50, 173, 230, 0.12)',
   green: '#34C759',
   orange: '#FF9500',
+<<<<<<< Updated upstream
+=======
+  // 鏂囨湰鑹?
+>>>>>>> Stashed changes
   textPrimary: '#1D1D1F',
   textSecondary: '#6E6E73',
   textTertiary: '#8E8E93',
   textMuted: '#AEAEB2',
+<<<<<<< Updated upstream
+=======
+  // 杈规鍜岃儗鏅?
+>>>>>>> Stashed changes
   border: '#E5E5EA',
   borderLight: '#F2F2F7',
   bgElevated: '#FFFFFF',
@@ -136,6 +219,7 @@ const chartTheme = {
   },
 }
 
+<<<<<<< Updated upstream
 // Dashboard 组件
 
 type TimeRangeKey = '24h' | '7d' | '30m'
@@ -252,7 +336,16 @@ function createDashboardSnapshot(seed: number): DashboardSnapshot {
 }
 export default function Dashboard() {
   const [activeTimeRange, setActiveTimeRange] = useState<TimeRangeKey>('24h')
-  const dashboardSnapshot = useMemo(() => createDashboardSnapshot(Date.now()), [])
+  const [refreshSeed, setRefreshSeed] = useState(() => Date.now())
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const dashboardSnapshot = useMemo(() => createDashboardSnapshot(refreshSeed), [refreshSeed])
+=======
+// 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?
+// Dashboard 缁勪欢
+// 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?
+export default function Dashboard() {
+  const [activeTimeRange, setActiveTimeRange] = useState<TimeRange>('24h')
+>>>>>>> Stashed changes
   const flowChart = useChartConfig()
   const pressureChart = useChartConfig({ mobileSvg: false })
   const energyChart = useChartConfig()
@@ -261,16 +354,42 @@ export default function Dashboard() {
   useChartGesture(pressureChart.containerRef)
   useChartGesture(energyChart.containerRef)
 
+  // 瀹炴椂鏃堕挓
+<<<<<<< Updated upstream
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000)
+    return () => clearInterval(timer)
+  }, [])
+
+  const handleRefresh = () => {
+    setIsRefreshing(true)
+    setRefreshSeed(Date.now())
+    setCurrentTime(new Date())
+    window.setTimeout(() => setIsRefreshing(false), 450)
+  }
+
   // 统计卡片数据
+=======
+
+  // 缁熻鍗＄墖鏁版嵁
+>>>>>>> Stashed changes
   const statsData: StatCardData[] = useMemo(() => [
     {
       id: 'flow',
       label: '实时流量',
+<<<<<<< Updated upstream
       value: dashboardSnapshot.stats.flow,
       unit: 'm3/h',
       trend: 'up',
       trendValue: dashboardSnapshot.trends.flow,
       description: '较昨日同期',
+=======
+      value: 2847,
+      unit: 'm3/h',
+      trend: 'up',
+      trendValue: '+12.5%',
+      description: '较昨日同时段提升',
+>>>>>>> Stashed changes
       icon: <RiDropLine size={20} />,
       colorClass: styles.statIconBlue,
     },
@@ -280,8 +399,13 @@ export default function Dashboard() {
       value: dashboardSnapshot.stats.pressure,
       unit: 'MPa',
       trend: 'neutral',
+<<<<<<< Updated upstream
       trendValue: dashboardSnapshot.trends.pressure,
       description: '运行正常',
+=======
+      trendValue: '0.0%',
+      description: '运行状态稳定',
+>>>>>>> Stashed changes
       icon: <RiPulseLine size={20} />,
       colorClass: styles.statIconCyan,
     },
@@ -291,8 +415,13 @@ export default function Dashboard() {
       value: dashboardSnapshot.stats.temperature,
       unit: '°C',
       trend: 'down',
+<<<<<<< Updated upstream
       trendValue: dashboardSnapshot.trends.temperature,
       description: '较昨日同期',
+=======
+      trendValue: '-2.3%',
+      description: '较昨日同时段下降',
+>>>>>>> Stashed changes
       icon: <RiTempColdLine size={20} />,
       colorClass: styles.statIconGreen,
     },
@@ -302,14 +431,19 @@ export default function Dashboard() {
       value: dashboardSnapshot.stats.efficiency,
       unit: '%',
       trend: 'up',
+<<<<<<< Updated upstream
       trendValue: dashboardSnapshot.trends.efficiency,
       description: '优于目标',
+=======
+      trendValue: '+3.2%',
+      description: '优于目标区间',
+>>>>>>> Stashed changes
       icon: <RiFlashlightLine size={20} />,
       colorClass: styles.statIconAmber,
     },
   ], [dashboardSnapshot])
 
-  // 预警数据
+  // 棰勮鏁版嵁
   const alertsData: AlertData[] = useMemo(() => [
     {
       id: '1',
@@ -321,7 +455,7 @@ export default function Dashboard() {
     {
       id: '2',
       type: 'warning',
-      message: '输油温度接近上限，建议调整',
+      message: '输油温度接近上限，建议调整参数',
       time: '15分钟前',
       location: 'K256+200',
     },
@@ -341,7 +475,7 @@ export default function Dashboard() {
     },
   ], [])
 
-  // 设备数据
+  // 璁惧鏁版嵁
   const devicesData: DeviceData[] = useMemo(() => [
     { id: '1', name: '1号泵站', status: dashboardSnapshot.deviceStatuses[0], value: dashboardSnapshot.deviceValues[0], unit: 'kW' },
     { id: '2', name: '2号泵站', status: dashboardSnapshot.deviceStatuses[1], value: dashboardSnapshot.deviceValues[1], unit: 'kW' },
@@ -351,6 +485,7 @@ export default function Dashboard() {
     { id: '6', name: '6号泵站', status: dashboardSnapshot.deviceStatuses[5], value: dashboardSnapshot.deviceValues[5], unit: 'kW' },
   ], [dashboardSnapshot])
 
+<<<<<<< Updated upstream
   // 流量趋势图配置
   const flowRangeConfig = useMemo(() => {
     switch (activeTimeRange) {
@@ -380,6 +515,32 @@ export default function Dashboard() {
         }
     }
   }, [activeTimeRange, dashboardSnapshot])
+=======
+  // 娴侀噺瓒嬪娍鍥鹃厤缃?
+  const activeFlowTrend = useMemo(
+    () => flowTrendRanges.find((item) => item.value === activeTimeRange) ?? flowTrendRanges[0],
+    [activeTimeRange],
+  )
+
+  const flowLegend = useMemo<Record<string, unknown> | false>(() => {
+    if (flowChart.legend === false) {
+      return false
+    }
+
+    return {
+      ...chartTheme.legend,
+      data: ['currentFlow', 'previousFlow'],
+      formatter: (name: string) => (
+        name === 'currentFlow'
+          ? activeFlowTrend.currentSeriesName
+          : activeFlowTrend.previousSeriesName
+      ),
+      ...(flowChart.isMedium
+        ? { top: 0, right: 0, bottom: 'auto', icon: 'roundRect', itemWidth: 14, itemHeight: 3, textStyle: { fontSize: 11 } }
+        : flowChart.legend),
+    }
+  }, [activeFlowTrend, flowChart.isMedium, flowChart.legend])
+>>>>>>> Stashed changes
 
   const flowTrendOption = useMemo<EChartsOption>(() => ({
     ...chartTheme,
@@ -393,7 +554,11 @@ export default function Dashboard() {
     xAxis: {
       ...chartTheme.xAxis,
       type: 'category' as const,
+<<<<<<< Updated upstream
       data: flowRangeConfig.xAxis,
+=======
+      data: activeFlowTrend.categories,
+>>>>>>> Stashed changes
       boundaryGap: false,
       axisLabel: {
         ...chartTheme.xAxis.axisLabel,
@@ -411,7 +576,7 @@ export default function Dashboard() {
     },
     series: [
       {
-        name: '实时流量',
+        name: 'currentFlow',
         type: 'line' as const,
         smooth: 0.28,
         showSymbol: true,
@@ -423,29 +588,18 @@ export default function Dashboard() {
           shadowColor: 'rgba(0, 122, 255, 0.25)',
           shadowBlur: 8,
         },
-        itemStyle: {
-          color: colors.primary,
-          borderColor: '#FFFFFF',
-          borderWidth: 2,
-        },
-        areaStyle: {
-          opacity: 0.28,
-          color: {
-            type: 'linear',
-            x: 0,
-            y: 0,
-            x2: 0,
-            y2: 1,
-            colorStops: [
-              { offset: 0, color: 'rgba(0, 122, 255, 0.28)' },
-              { offset: 1, color: 'rgba(0, 122, 255, 0.05)' },
-            ],
-          },
-        },
+        areaStyle: { opacity: 0.25 },
+<<<<<<< Updated upstream
         data: flowRangeConfig.current,
       },
       {
         name: flowRangeConfig.compareLabel,
+=======
+        data: activeFlowTrend.currentData,
+      },
+      {
+        name: 'previousFlow',
+>>>>>>> Stashed changes
         type: 'line' as const,
         smooth: 0.24,
         symbol: 'none',
@@ -455,6 +609,7 @@ export default function Dashboard() {
           type: 'dashed' as const,
           opacity: 0.9,
         },
+<<<<<<< Updated upstream
         data: flowRangeConfig.previous,
       },
     ],
@@ -482,6 +637,35 @@ export default function Dashboard() {
       tooltip: {
         ...chartTheme.tooltip,
         ...pressureChart.tooltipConf,
+=======
+        data: activeFlowTrend.previousData,
+      },
+    ],
+    legend: flowLegend === false ? { show: false } : flowLegend,
+  }), [activeFlowTrend, flowChart.grid, flowChart.xAxisLabel, flowChart.tooltipConf, flowLegend])
+
+  // 鍘嬪姏鍒嗗竷鍥鹃厤缃?
+  const pressureDistOption = useMemo<EChartsOption>(() => ({
+    ...chartTheme,
+    tooltip: {
+      ...chartTheme.tooltip,
+      ...pressureChart.tooltipConf,
+    },
+    radar: {
+      indicator: [
+        { name: '入口压力', max: 6 },
+        { name: '1号站', max: 6 },
+        { name: '2号站', max: 6 },
+        { name: '3号站', max: 6 },
+        { name: '4号站', max: 6 },
+        { name: '出口压力', max: 6 },
+      ],
+      shape: 'polygon' as const,
+      splitNumber: 4,
+      axisName: {
+        color: colors.textSecondary,
+        fontSize: 11,
+>>>>>>> Stashed changes
       },
       radar: {
         indicator: [
@@ -537,6 +721,10 @@ export default function Dashboard() {
     }
   }, [dashboardSnapshot.pressure, pressureChart.isCompact, pressureChart.isMedium, pressureChart.tooltipConf])
 
+<<<<<<< Updated upstream
+=======
+  // 鑳借€楀垎鏋愬浘閰嶇疆
+>>>>>>> Stashed changes
   const energyOption = useMemo<EChartsOption>(() => ({
     ...chartTheme,
     grid: energyChart.grid,
@@ -615,7 +803,12 @@ export default function Dashboard() {
   return (
     <AnimatedPage className={styles.dashboard}>
       <div className={styles.dashboardContent}>
+<<<<<<< Updated upstream
         {/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?         * Header 鍖哄煙
+=======
+        {/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?
+         * Header 鍖哄煙
+>>>>>>> Stashed changes
          * 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?*/}
         <header className={styles.header}>
           <div className={styles.headerTop}>
@@ -627,10 +820,50 @@ export default function Dashboard() {
                 油气管道实时数据监控与智能分析平台</p>
             </div>
 
+            {/*
+            <div className={styles.headerActions}>
+              <div className={styles.liveIndicator}>
+                <span className={styles.liveDot} />
+                <span className={styles.liveText}>瀹炴椂</span>
+                <span className={styles.liveTime}>
+                  {currentTime.toLocaleTimeString('zh-CN', { hour12: false })}
+                </span>
+              </div>
+
+<<<<<<< Updated upstream
+              <button
+                className={styles.headerButton}
+                onClick={handleRefresh}
+                type="button"
+              >
+                <RiRefreshLine size={16} style={isRefreshing ? { transform: 'rotate(180deg)', transition: 'transform 0.3s ease' } : undefined} />
+                {isRefreshing ? '刷新中...' : '刷新数据'}
+=======
+              <button className={styles.headerButton}>
+                <RiRefreshLine size={16} />
+                鍒锋柊鏁版嵁
+>>>>>>> Stashed changes
+              </button>
+
+              <button
+                className={`${styles.headerButton} ${styles.headerButtonPrimary}`}
+                onClick={() => navigate('/settings')}
+                type="button"
+              >
+                <RiSettings3Line size={16} />
+                绯荤粺璁剧疆
+              </button>
+            </div>
+            */}
           </div>
         </header>
 
+<<<<<<< Updated upstream
         {/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?         * 缁熻鍗＄墖鍖哄煙
+=======
+        {/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?
+         * 缁熻鍗＄墖鍖哄煙
+>>>>>>> Stashed changes
          * 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?*/}
         <section className={`${styles.statsGrid} grid-auto-stats`}>
           {statsData.map((stat, index) => (
@@ -671,14 +904,22 @@ export default function Dashboard() {
           ))}
         </section>
 
+<<<<<<< Updated upstream
         {/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?         * 鍥捐〃鍖哄煙
          * 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?*/}
         <section className={`${styles.chartsSection} grid-auto-charts`}>
+=======
+        {/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?
+         * 鍥捐〃鍖哄煙
+         * 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?*/}
+        <section className={styles.chartsSection}>
+>>>>>>> Stashed changes
           {/* 娴侀噺瓒嬪娍 */}
           <div className={styles.chartCard}>
             <div className={styles.chartHeader}>
               <div className={styles.chartTitleGroup}>
                 <h3 className={styles.chartTitle}>流量趋势</h3>
+<<<<<<< Updated upstream
                 <p className={styles.chartSubtitle}>{flowRangeConfig.subtitle}</p>
               </div>
               <div className={styles.chartActions}>
@@ -694,6 +935,18 @@ export default function Dashboard() {
                     type="button"
                   >
                     {label}
+=======
+                <p className={styles.chartSubtitle}>{activeFlowTrend.subtitle}</p>
+              </div>
+              <div className={styles.chartActions}>
+                {flowTrendRanges.map((range) => (
+                  <button
+                    key={range.value}
+                    className={`${styles.chartActionBtn} ${activeTimeRange === range.value ? styles.chartActionBtnActive : ''}`}
+                    onClick={() => setActiveTimeRange(range.value)}
+                  >
+                    {range.label}
+>>>>>>> Stashed changes
                   </button>
                 ))}
               </div>
@@ -730,8 +983,15 @@ export default function Dashboard() {
           </div>
         </section>
 
+<<<<<<< Updated upstream
         {/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?         * 搴曢儴鍖哄煙 - 棰勮 & 璁惧鐘舵€?         * 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?*/}
         <section className={`${styles.bottomSection} grid-auto-charts perf-lazy-render`}>
+=======
+        {/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?
+         * 搴曢儴鍖哄煙 - 棰勮 & 璁惧鐘舵€?
+         * 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?*/}
+        <section className={`${styles.bottomSection} perf-lazy-render`}>
+>>>>>>> Stashed changes
           {/* 棰勮鍒楄〃 */}
           <div className={styles.alertCard}>
             <div className={styles.alertHeader}>
@@ -740,6 +1000,14 @@ export default function Dashboard() {
                 实时预警
                 <span className={styles.alertBadge}>{alertsData.filter(a => a.type === 'critical').length}</span>
               </h3>
+<<<<<<< Updated upstream
+              <button
+                className={styles.alertViewAll}
+                onClick={() => navigate('/features/monitor')}
+                type="button"
+              >查看全部</button>
+=======
+>>>>>>> Stashed changes
             </div>
 
             <AnimatedListContainer className={styles.alertList}>
@@ -827,8 +1095,11 @@ export default function Dashboard() {
   )
 }
 
+<<<<<<< Updated upstream
 
 
 
 
 
+=======
+>>>>>>> Stashed changes

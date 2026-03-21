@@ -1,4 +1,23 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+<<<<<<< Updated upstream
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  ProjectList - 项目管理页面
+ *  Design: Apple HIG + Linear + Stripe Light Theme
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+
+import { useState, useEffect } from 'react';
+import { Card, Button, Space, Modal, Form, Input, message, Popconfirm, Tooltip } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined, ReloadOutlined } from '@ant-design/icons';
+import type { ColumnsType } from 'antd/es/table';
+import { projectApi } from '../../api';
+import AnimatedPage from '../../components/common/AnimatedPage';
+import ResponsiveTable from '../../components/common/ResponsiveTable';
+import type { Project } from '../../types';
+import ProjectCalculationDetailPanel from './ProjectCalculationDetailPanel';
+import styles from './DataPage.module.css';
+=======
+﻿import { useEffect, useMemo, useState } from 'react';
 import {
   Button,
   Card,
@@ -7,24 +26,34 @@ import {
   Modal,
   Popconfirm,
   Space,
-  Tooltip,
+  Table,
   message,
 } from 'antd';
-import {
-  DeleteOutlined,
-  EditOutlined,
-  EyeOutlined,
-  PlusOutlined,
-  ReloadOutlined,
-  SearchOutlined,
-} from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
+import { DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import { projectApi } from '../../api';
-import AnimatedPage from '../../components/common/AnimatedPage';
-import ResponsiveTable from '../../components/common/ResponsiveTable';
 import type { Project } from '../../types';
-import ProjectCalculationDetailPanel from './ProjectCalculationDetailPanel';
-import styles from './DataPage.module.css';
+import AnimatedPage from '../../components/common/AnimatedPage';
+import useTablePagination from '../../hooks/useTablePagination';
+
+const EMPTY_PROJECT: Partial<Project> = {
+  name: '',
+  responsible: '',
+};
+>>>>>>> Stashed changes
+
+const COMPACT_CELL_STYLE = {
+  paddingLeft: 12,
+  paddingRight: 12,
+};
+
+const PROJECT_NAME_CELL_STYLE = {
+  ...COMPACT_CELL_STYLE,
+  paddingLeft: 136,
+};
+
+const RESPONSIBLE_OFFSET = -60;
+const ACTION_OFFSET = -50;
 
 const mockData: Project[] = [
   {
@@ -113,6 +142,38 @@ export default function ProjectList() {
       message.success('删除成功（演示模式）');
       setData((current) => current.filter((item) => item.proId !== id));
     }
+<<<<<<< Updated upstream
+=======
+
+    return projects.filter((project) =>
+      [project.name, project.responsible]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(normalized)),
+    );
+  }, [keyword, projects]);
+  const { pagination, resetPagination } = useTablePagination(filteredProjects.length);
+
+  useEffect(() => {
+    resetPagination();
+  }, [keyword, resetPagination]);
+
+  const handleCreate = () => {
+    setEditing(null);
+    form.setFieldsValue(EMPTY_PROJECT as Project);
+    setOpen(true);
+  };
+
+  const handleEdit = (project: Project) => {
+    setEditing(project);
+    form.setFieldsValue(project);
+    setOpen(true);
+  };
+
+  const handleDelete = async (projectId: number) => {
+    await projectApi.delete([projectId]);
+    message.success('项目已删除');
+    await loadProjects();
+>>>>>>> Stashed changes
   };
 
   const handleSubmit = async () => {
@@ -148,6 +209,7 @@ export default function ProjectList() {
 
   const columns: ColumnsType<Project> = [
     {
+<<<<<<< Updated upstream
       title: nowrapTitle('编号'),
       dataIndex: 'proId',
       key: 'proId',
@@ -248,20 +310,119 @@ export default function ProjectList() {
             >
               删除
             </Button>
-          </Popconfirm>
-        </Space>
+            <Popconfirm
+                title="确定删除吗？"
+                description="此操作不可恢复"
+                onConfirm={() => handleDelete(record.proId)}
+                okText="确定"
+                cancelText="取消"
+                okButtonProps={{ danger: true }}
+            >
+              <Button
+                  type="text"
+                  size="small"
+                  danger
+                  icon={<DeleteOutlined />}
+                  className={styles.actionBtn}
+              >
+=======
+      title: '项目名称',
+      dataIndex: 'name',
+      width: 260,
+      ellipsis: true,
+      onHeaderCell: () => ({
+        style: PROJECT_NAME_CELL_STYLE,
+      }),
+      onCell: () => ({
+        style: PROJECT_NAME_CELL_STYLE,
+      }),
+      render: (value?: string) => value || '-',
+    },
+    {
+      title: <div style={{ transform: `translateX(${RESPONSIBLE_OFFSET}px)` }}>负责人</div>,
+      dataIndex: 'responsible',
+      width: 148,
+      align: 'center',
+      onHeaderCell: () => ({
+        style: COMPACT_CELL_STYLE,
+      }),
+      onCell: () => ({
+        style: COMPACT_CELL_STYLE,
+      }),
+      render: (value?: string) => (
+        <div style={{ transform: `translateX(${RESPONSIBLE_OFFSET}px)` }}>{value || '-'}</div>
+      ),
+    },
+    {
+      title: '创建时间',
+      dataIndex: 'createTime',
+      width: 220,
+      align: 'center',
+      onHeaderCell: () => ({
+        style: COMPACT_CELL_STYLE,
+      }),
+      onCell: () => ({
+        style: COMPACT_CELL_STYLE,
+      }),
+      render: (value?: string) => value || '-',
+    },
+    {
+      title: <div style={{ transform: `translateX(${ACTION_OFFSET}px)` }}>操作</div>,
+      key: 'actions',
+      width: 188,
+      align: 'center',
+      onHeaderCell: () => ({
+        style: COMPACT_CELL_STYLE,
+      }),
+      onCell: () => ({
+        style: COMPACT_CELL_STYLE,
+      }),
+      render: (_, project) => (
+        <div style={{ transform: `translateX(${ACTION_OFFSET}px)` }}>
+          <Space size="middle" style={{ width: '100%', justifyContent: 'center' }} wrap={false}>
+            <Button icon={<EditOutlined />} onClick={() => handleEdit(project)}>
+              编辑
+            </Button>
+            <Popconfirm
+              title="确认删除这个项目吗？"
+              okText="删除"
+              cancelText="取消"
+              onConfirm={() => void handleDelete(project.proId)}
+            >
+              <Button danger icon={<DeleteOutlined />}>
+>>>>>>> Stashed changes
+                删除
+              </Button>
+            </Popconfirm>
+          </Space>
+<<<<<<< Updated upstream
+=======
+        </div>
+>>>>>>> Stashed changes
       ),
     },
   ];
 
   return (
-    <AnimatedPage className={styles.page}>
-      <div className={styles.pageContent}>
-        {!viewingProject ? <header className={styles.header}>
-          <div className={styles.headerTop}>
-            <div className={styles.headerInfo}>
-              <h1 className={styles.title}>项目管理</h1>
-              <p className={styles.subtitle}>管理管道工程项目基本信息，包括项目创建、编辑、删除和计算详情查看。</p>
+<<<<<<< Updated upstream
+      <AnimatedPage className={styles.page}>
+        <div className={styles.pageContent}>
+          <header className={styles.header}>
+            <div className={styles.headerTop}>
+              <div className={styles.headerInfo}>
+                <h1 className={styles.title}>项目管理</h1>
+                <p className={styles.subtitle}>管理管道工程项目基本信息，包括项目创建、编辑和删除</p>
+              </div>
+              <div className={styles.headerActions}>
+                <Button
+                    type="primary"
+                    icon={<PlusOutlined />}
+                    onClick={handleAdd}
+                    size="middle"
+                >
+                  新增项目
+                </Button>
+              </div>
             </div>
             <div className={styles.headerActions}>
               <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd} size="middle">
@@ -312,106 +473,72 @@ export default function ProjectList() {
                   borderRadius: 'var(--radius-lg)',
                 }}
               >
-                <div
-                  style={{
-                    fontWeight: 600,
-                    color: 'var(--text-primary)',
-                    fontSize: 15,
-                    marginBottom: 8,
-                  }}
-                >
-                  {record.name}
-                </div>
-                <div
-                  style={{
-                    fontSize: 13,
-                    color: 'var(--text-tertiary)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 4,
-                  }}
-                >
-                  <span>编号: {record.number || '-'}</span>
-                  <span>负责人: {record.responsible || '-'}</span>
-                  <span>创建时间: {record.createTime || '-'}</span>
-                </div>
-                <Space wrap style={{ marginTop: 12 }}>
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={<EyeOutlined />}
-                    onClick={() => handleView(record)}
-                    className={styles.actionBtn}
-                  >
-                    查看
-                  </Button>
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={<EditOutlined />}
-                    onClick={() => handleEdit(record)}
-                    className={styles.actionBtn}
-                  >
-                    编辑
-                  </Button>
-                  <Popconfirm
-                    title="确定删除吗？"
-                    description="此操作不可恢复"
-                    onConfirm={() => handleDelete(record.proId)}
-                    okText="确定"
-                    cancelText="取消"
-                    okButtonProps={{ danger: true }}
-                  >
-                    <Button
-                      type="text"
-                      size="small"
-                      danger
-                      icon={<DeleteOutlined />}
-                      className={styles.actionBtn}
-                    >
-                      删除
-                    </Button>
-                  </Popconfirm>
-                </Space>
-              </div>
-            )}
-          />
-          </Card>
-        ) : null}
-
-        {viewingProject ? (
-          <div ref={detailRef}>
-            <ProjectCalculationDetailPanel
-              project={viewingProject}
-              onClose={() => setViewingProject(null)}
+                <Input placeholder="请输入项目名称" />
+              </Form.Item>
+              <Form.Item name="number" label="项目编号">
+                <Input placeholder="请输入项目编号" />
+              </Form.Item>
+              <Form.Item name="responsible" label="负责人">
+                <Input placeholder="请输入负责人" />
+              </Form.Item>
+            </Form>
+          </Modal>
+        </div>
+      </AnimatedPage>
+=======
+    <AnimatedPage>
+      <Card
+        title="项目管理"
+        extra={
+          <Space>
+            <Input.Search
+              placeholder="搜索项目名称 / 负责人"
+              allowClear
+              value={keyword}
+              onChange={(event) => setKeyword(event.target.value)}
+              style={{ width: 280 }}
             />
-          </div>
-        ) : null}
+            <Button icon={<ReloadOutlined />} onClick={() => void loadProjects()} loading={loading}>
+              刷新
+            </Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>
+              新建项目
+            </Button>
+          </Space>
+        }
+      >
+        <Table<Project>
+          rowKey="proId"
+          loading={loading}
+          size="middle"
+          tableLayout="fixed"
+          columns={columns}
+          dataSource={filteredProjects}
+          scroll={{ x: 856 }}
+          pagination={pagination}
+        />
+      </Card>
 
-        <Modal
-          title={editingItem ? '编辑项目' : '新增项目'}
-          open={modalVisible}
-          onOk={handleSubmit}
-          onCancel={() => setModalVisible(false)}
-          destroyOnClose
-          className={styles.modal}
-          okText="保存"
-          cancelText="取消"
-          width={520}
-        >
-          <Form form={form} layout="vertical">
-            <Form.Item name="name" label="项目名称" rules={[{ required: true, message: '请输入项目名称' }]}>
-              <Input placeholder="请输入项目名称" />
-            </Form.Item>
-            <Form.Item name="number" label="项目编号">
-              <Input placeholder="请输入项目编号" />
-            </Form.Item>
-            <Form.Item name="responsible" label="负责人">
-              <Input placeholder="请输入负责人" />
-            </Form.Item>
-          </Form>
-        </Modal>
-      </div>
+      <Modal
+        title={editing ? '编辑项目' : '新建项目'}
+        open={open}
+        onCancel={() => setOpen(false)}
+        onOk={() => void handleSubmit()}
+        confirmLoading={submitting}
+        destroyOnClose
+        okText="保存"
+        cancelText="取消"
+      >
+        <Form<Project> form={form} layout="vertical">
+          <Form.Item name="name" label="项目名称" rules={[{ required: true, message: '请输入项目名称' }]}>
+            <Input placeholder="例如：西部原油输送项目" />
+          </Form.Item>
+          <Form.Item name="responsible" label="负责人">
+            <Input placeholder="请输入负责人姓名" />
+          </Form.Item>
+        </Form>
+      </Modal>
     </AnimatedPage>
+>>>>>>> Stashed changes
   );
 }
