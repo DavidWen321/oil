@@ -91,6 +91,14 @@ const INITIAL_VALUES: ComparisonFormValues = {
   ],
 };
 
+const DIMENSION_LABELS: Record<string, string> = {
+  ENERGY: '能耗',
+  COST: '成本',
+  EFFICIENCY: '效率',
+  SAFETY: '安全',
+  CARBON: '碳排',
+};
+
 export default function SchemeComparison() {
   const [form] = Form.useForm<ComparisonFormValues>();
   const [loading, setLoading] = useState(false);
@@ -303,7 +311,7 @@ export default function SchemeComparison() {
               </Row>
 
               <Form.Item name="comparisonDimensions" label="对比维度">
-                <Select mode="multiple" options={dimensions.map((item) => ({ value: item, label: item }))} />
+                <Select mode="multiple" options={dimensions.map((item) => ({ value: item, label: DIMENSION_LABELS[item] ?? item }))} />
               </Form.Item>
 
               <Form.List name="schemes">

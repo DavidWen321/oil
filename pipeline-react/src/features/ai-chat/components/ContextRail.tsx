@@ -43,7 +43,7 @@ export function ContextRail({ plan, logs, metrics, activeTools, currentStep }: C
     <div className="flex h-full flex-col gap-3 overflow-y-auto px-4 py-4">
       <div className="rounded-3xl bg-white/85 p-4 ring-1 ring-black/5">
         <div className="text-xs font-medium uppercase tracking-[0.14em] text-neutral-400">当前运行</div>
-        <div className="mt-2 text-sm text-neutral-600">Step {currentStep || 0}</div>
+        <div className="mt-2 text-sm text-neutral-600">步骤 {currentStep || 0}</div>
         <div className="mt-4 grid grid-cols-2 gap-3">
           <div className="rounded-2xl bg-neutral-50 p-3">
             <div className="text-[11px] uppercase tracking-[0.12em] text-neutral-400">工具</div>
@@ -62,7 +62,7 @@ export function ContextRail({ plan, logs, metrics, activeTools, currentStep }: C
           {plan.map((step) => (
             <div key={`${step.step_number}-${step.description}`} className="rounded-2xl bg-neutral-50 px-3 py-3">
               <div className="flex items-center justify-between gap-2 text-sm font-medium text-neutral-800">
-                <span>Step {step.step_number}</span>
+                <span>步骤 {step.step_number}</span>
                 <span className="rounded-full bg-white px-2 py-0.5 text-[11px] text-neutral-500 ring-1 ring-black/5">
                   {step.status === 'in_progress' ? '进行中' : step.status === 'completed' ? '已完成' : step.status === 'failed' ? '失败' : '待执行'}
                 </span>
@@ -114,7 +114,7 @@ export function ContextRail({ plan, logs, metrics, activeTools, currentStep }: C
             <div className="mt-1 font-semibold text-neutral-900">{metrics.total_duration_ms} ms</div>
           </div>
           <div className="rounded-2xl bg-neutral-50 p-3">
-            <div className="text-[11px] uppercase tracking-[0.12em] text-neutral-400">LLM 调用</div>
+            <div className="text-[11px] tracking-[0.12em] text-neutral-400">模型调用</div>
             <div className="mt-1 font-semibold text-neutral-900">{metrics.llm_calls}</div>
           </div>
           <div className="rounded-2xl bg-neutral-50 p-3">
@@ -122,7 +122,7 @@ export function ContextRail({ plan, logs, metrics, activeTools, currentStep }: C
             <div className="mt-1 font-semibold text-neutral-900">{metrics.tool_calls}</div>
           </div>
           <div className="rounded-2xl bg-neutral-50 p-3">
-            <div className="text-[11px] uppercase tracking-[0.12em] text-neutral-400">Token</div>
+            <div className="text-[11px] tracking-[0.12em] text-neutral-400">令牌数</div>
             <div className="mt-1 font-semibold text-neutral-900">{metrics.total_tokens}</div>
           </div>
         </div>

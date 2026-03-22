@@ -47,6 +47,19 @@ interface JavaReportRecord {
   createTime?: string;
 }
 
+function formatReportFileType(value?: string) {
+  if (!value) {
+    return '-';
+  }
+  if (value.toLowerCase() === 'docx') {
+    return '可编辑版';
+  }
+  if (value.toLowerCase() === 'pdf') {
+    return '版式版';
+  }
+  return value;
+}
+
 const REPORT_TYPE_LABEL: Record<ReportFormValues['reportType'], string> = {
   daily: '日报',
   weekly: '周报',
@@ -145,6 +158,7 @@ export default function Report() {
       title: '格式',
       dataIndex: 'fileFormat',
       key: 'fileFormat',
+      render: (value: string | undefined) => formatReportFileType(value),
     },
     {
       title: '生成时间',
@@ -161,13 +175,13 @@ export default function Report() {
             icon={<DownloadOutlined />}
             onClick={() => window.open(agentApi.getJavaReportDownloadUrl(Number(record.id), 'docx'), '_blank')}
           >
-            DOCX
+            可编辑版
           </Button>
           <Button
             size="small"
             onClick={() => window.open(agentApi.getJavaReportDownloadUrl(Number(record.id), 'pdf'), '_blank')}
           >
-            PDF
+            版式版
           </Button>
         </Space>
       ),
@@ -178,7 +192,7 @@ export default function Report() {
     <AnimatedPage>
       <div className="page-header">
         <h2><FileTextOutlined /> 分析报告</h2>
-        <p>直接调用 Agent 报告生成链路，并展示可下载的正式报告记录。</p>
+        <p>直接调用智能助手报告生成链路，并展示可下载的正式报告记录。</p>
       </div>
 
       <Row gutter={24}>
@@ -214,14 +228,14 @@ export default function Report() {
         <Col xs={24} lg={16}>
           <Space direction="vertical" style={{ width: '100%' }} size="middle">
             <Row gutter={16}>
-              <Col span={8}><Card className="page-card"><Descriptions column={1} size="small"><Descriptions.Item label="Trace ID">{traceId || '-'}</Descriptions.Item></Descriptions></Card></Col>
+              <Col span={8}><Card className="page-card"><Descriptions column={1} size="small"><Descriptions.Item label="追踪编号">{traceId || '-'}</Descriptions.Item></Descriptions></Card></Col>
               <Col span={8}><Card className="page-card"><Descriptions column={1} size="small"><Descriptions.Item label="章节数量">{sectionCount}</Descriptions.Item></Descriptions></Card></Col>
               <Col span={8}><Card className="page-card"><Descriptions column={1} size="small"><Descriptions.Item label="建议数量">{recommendationCount}</Descriptions.Item></Descriptions></Card></Col>
             </Row>
 
             {report ? (
               <>
-                <Card title={report.title} className="page-card" extra={latestReportId ? <Tag color="success">已落库 #{latestReportId}</Tag> : null}>
+                <Card title={report.title} className="page-card" extra={latestReportId ? <Tag color="success">已存档 #{latestReportId}</Tag> : null}>
                   <Typography.Paragraph type="secondary">
                     生成时间：{report.generate_time}
                   </Typography.Paragraph>
@@ -248,7 +262,7 @@ export default function Report() {
               <Card className="page-card" style={{ minHeight: 320, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <div style={{ textAlign: 'center', color: '#8c8c8c' }}>
                   <FileTextOutlined style={{ fontSize: 56, marginBottom: 16 }} />
-                  <div>输入统计周期和分析重点后，即可生成真实 Agent 报告。</div>
+                  <div>输入统计周期和分析重点后，即可生成真实智能报告。</div>
                 </div>
               </Card>
             )}

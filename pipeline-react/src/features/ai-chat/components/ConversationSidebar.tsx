@@ -36,7 +36,7 @@ export function ConversationSidebar({
         </div>
         <div>
           <div className="text-sm font-semibold text-neutral-900">智能分析助手</div>
-          <div className="text-xs text-neutral-500">Professional AI Workspace</div>
+          <div className="text-xs text-neutral-500">专业智能工作台</div>
         </div>
       </div>
 

@@ -50,53 +50,53 @@ const menuItems: MenuProps['items'] = [
   {
     key: '/dashboard',
     icon: <DashboardOutlined />,
-    label: 'Dashboard',
+    label: '首页总览',
   },
   {
     key: 'data',
     icon: <DatabaseOutlined />,
-    label: 'Data Management',
+    label: '数据管理',
     children: [
-      { key: '/data/project', icon: <ProjectOutlined />, label: 'Projects' },
-      { key: '/data/pipeline', icon: <ApiOutlined />, label: 'Pipelines' },
-      { key: '/data/pump', icon: <ControlOutlined />, label: 'Pump Stations' },
-      { key: '/data/oil', icon: <ExperimentOutlined />, label: 'Oil Properties' },
+      { key: '/data/project', icon: <ProjectOutlined />, label: '项目管理' },
+      { key: '/data/pipeline', icon: <ApiOutlined />, label: '管道参数' },
+      { key: '/data/pump', icon: <ControlOutlined />, label: '泵站参数' },
+      { key: '/data/oil', icon: <ExperimentOutlined />, label: '油品参数' },
     ],
   },
   {
     key: 'calculation',
     icon: <CalculatorOutlined />,
-    label: 'Calculation',
+    label: '计算分析',
     children: [
-      { key: '/calculation/hydraulic', icon: <ThunderboltOutlined />, label: 'Hydraulic Analysis' },
-      { key: '/calculation/optimization', icon: <SettingOutlined />, label: 'Pump Optimization' },
-      { key: '/calculation/sensitivity', icon: <BarChartOutlined />, label: 'Sensitivity Analysis' },
+      { key: '/calculation/hydraulic', icon: <ThunderboltOutlined />, label: '水力分析' },
+      { key: '/calculation/optimization', icon: <SettingOutlined />, label: '泵站优化' },
+      { key: '/calculation/sensitivity', icon: <BarChartOutlined />, label: '敏感性分析' },
     ],
   },
   {
     key: 'features',
     icon: <ThunderboltOutlined />,
-    label: 'Features',
+    label: '特色功能',
     children: [
-      { key: '/features/diagnosis', icon: <AlertOutlined />, label: 'Fault Diagnosis' },
-      { key: '/features/comparison', icon: <SwapOutlined />, label: 'Scheme Comparison' },
-      { key: '/features/carbon', icon: <CloudOutlined />, label: 'Carbon Emissions' },
-      { key: '/features/monitor', icon: <MonitorOutlined />, label: 'Real-time Monitor' },
+      { key: '/features/diagnosis', icon: <AlertOutlined />, label: '故障诊断' },
+      { key: '/features/comparison', icon: <SwapOutlined />, label: '方案对比' },
+      { key: '/features/carbon', icon: <CloudOutlined />, label: '碳排核算' },
+      { key: '/features/monitor', icon: <MonitorOutlined />, label: '实时监控' },
     ],
   },
   {
     key: '/report',
     icon: <BarChartOutlined />,
-    label: 'Reports',
+    label: '报告中心',
   },
   {
     key: 'ai',
     icon: <RobotOutlined />,
-    label: 'AI Assistant',
+    label: '智能助手',
     children: [
-      { key: '/ai/chat', icon: <DeploymentUnitOutlined />, label: 'AI Chat' },
-      { key: '/ai/trace', icon: <FileSearchOutlined />, label: 'Trace Analysis' },
-      { key: '/ai/report', icon: <BarChartOutlined />, label: 'AI Reports' },
+      { key: '/ai/chat', icon: <DeploymentUnitOutlined />, label: '智能对话' },
+      { key: '/ai/trace', icon: <FileSearchOutlined />, label: '执行追踪' },
+      { key: '/ai/report', icon: <BarChartOutlined />, label: '智能报告' },
     ],
   },
 ];
@@ -167,12 +167,12 @@ export default function MainLayout() {
     {
       key: 'profile',
       icon: <UserOutlined />,
-      label: 'Profile',
+      label: '个人资料',
     },
     {
       key: 'settings',
       icon: <SettingOutlined />,
-      label: 'Settings',
+      label: '系统设置',
     },
     {
       type: 'divider',
@@ -180,7 +180,7 @@ export default function MainLayout() {
     {
       key: 'logout',
       icon: <LogoutOutlined />,
-      label: 'Logout',
+      label: '退出登录',
       danger: true,
     },
   ];
@@ -250,7 +250,7 @@ export default function MainLayout() {
         <div className={styles.logo}>
           <span className={styles.logoIcon}>⚡</span>
           {(!collapsed || isMobile) && (
-            <span className={styles.logoText}>Pipeline Energy</span>
+            <span className={styles.logoText}>管道能耗</span>
           )}
         </div>
 
@@ -277,7 +277,7 @@ export default function MainLayout() {
                 icon={mobileMenuOpen ? <CloseOutlined /> : <MenuOutlined />}
                 onClick={toggleMobileMenu}
                 className={styles.mobileMenuBtn}
-                aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
+                aria-label={mobileMenuOpen ? '关闭菜单' : '打开菜单'}
               />
             ) : (
               <Button
@@ -285,7 +285,7 @@ export default function MainLayout() {
                 icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
                 onClick={toggleCollapsed}
                 className={styles.trigger}
-                aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                aria-label={collapsed ? '展开侧边栏' : '收起侧边栏'}
               />
             )}
           </div>
@@ -296,7 +296,7 @@ export default function MainLayout() {
               icon={resolved === 'dark' ? <SunOutlined /> : <MoonOutlined />}
               className={styles.headerBtn}
               onClick={() => setMode(resolved === 'dark' ? 'light' : 'dark')}
-              aria-label={resolved === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+              aria-label={resolved === 'dark' ? '切换为浅色模式' : '切换为深色模式'}
             />
 
             {/* Alarm notifications */}
@@ -306,8 +306,8 @@ export default function MainLayout() {
                 icon={<BellOutlined />}
                 className={styles.headerBtn}
                 onClick={() => navigate('/features/monitor')}
-                aria-label={`Monitor alerts ${activeCount > 0 ? `(${activeCount} active)` : ''}`}
-                title={monitorConnected ? 'Alarm channel connected' : 'Alarm channel disconnected, using HTTP refresh fallback'}
+                aria-label={activeCount > 0 ? `监控告警，当前 ${activeCount} 条活动告警` : '监控告警'}
+                title={monitorConnected ? '告警通道已连接' : '告警通道未连接，当前使用接口刷新兜底'}
               />
             </Badge>
 
@@ -323,7 +323,7 @@ export default function MainLayout() {
                   icon={<UserOutlined />}
                 />
                 <span className={styles.userName}>
-                  {userInfo?.nickname || 'User'}
+                  {userInfo?.nickname || '当前用户'}
                 </span>
               </div>
             </Dropdown>

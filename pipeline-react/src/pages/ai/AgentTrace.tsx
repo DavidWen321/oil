@@ -27,12 +27,12 @@ export default function AgentTrace() {
 
   return (
     <AnimatedPage>
-      <Card title="Trace 查询">
+      <Card title="执行追踪查询">
         <Space.Compact block>
           <Input
             value={traceId}
             onChange={(event) => setTraceId(event.target.value)}
-            placeholder="请输入 trace_id"
+            placeholder="请输入追踪编号"
           />
           <Button type="primary" onClick={() => void handleQuery()} loading={loading}>
             查询
@@ -45,12 +45,12 @@ export default function AgentTrace() {
               {JSON.stringify(result, null, 2)}
             </pre>
           ) : (
-            <Text type="secondary">输入 trace_id 后可查看执行摘要与时间线。</Text>
+            <Text type="secondary">输入追踪编号后可查看执行摘要与时间线。</Text>
           )}
         </div>
 
         <Paragraph type="secondary" style={{ marginTop: 8 }}>
-          该页面用于调试和回溯 Agent 执行轨迹。
+          该页面用于调试和回溯智能助手的执行轨迹。
         </Paragraph>
       </Card>
     </AnimatedPage>

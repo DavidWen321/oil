@@ -67,7 +67,7 @@ export function ComposerDock({
             </div>
 
             <div className="flex items-center justify-between gap-3 sm:justify-end">
-              <div className="text-xs text-neutral-400">Enter 发送，Shift + Enter 换行</div>
+              <div className="text-xs text-neutral-400">单独回车发送，组合按键换行</div>
               {busy ? (
                 <button
                   type="button"

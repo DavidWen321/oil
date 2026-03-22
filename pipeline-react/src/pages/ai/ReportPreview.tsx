@@ -65,7 +65,7 @@ export default function ReportPreview() {
         extra={
           <Space>
             <Button onClick={() => void handleLoadJavaReports()} icon={<DownloadOutlined />}>
-              读取Java报告
+              读取服务端报告
             </Button>
             <Button onClick={() => void handleGenerate()} loading={loading} type="primary">
               生成报告
@@ -83,12 +83,12 @@ export default function ReportPreview() {
         {javaReportId ? (
           <Space style={{ marginTop: 12 }}>
             <Button icon={<FileWordOutlined />} onClick={downloadWord}>
-              下载 Word
+              下载可编辑版
             </Button>
             <Button icon={<FilePdfOutlined />} onClick={downloadPdf}>
-              下载 PDF
+              下载版式版
             </Button>
-            <Text type="secondary">Java报告ID: {javaReportId}</Text>
+            <Text type="secondary">服务端报告编号：{javaReportId}</Text>
           </Space>
         ) : null}
 
@@ -111,10 +111,10 @@ export default function ReportPreview() {
                   return (
                     <Space>
                       <Button size="small" onClick={() => window.open(agentApi.getJavaReportDownloadUrl(id, 'docx'), '_blank')}>
-                        Word
+                        可编辑版
                       </Button>
                       <Button size="small" onClick={() => window.open(agentApi.getJavaReportDownloadUrl(id, 'pdf'), '_blank')}>
-                        PDF
+                        版式版
                       </Button>
                     </Space>
                   );
@@ -128,7 +128,7 @@ export default function ReportPreview() {
         {report ? (
           <div style={{ marginTop: 16 }}>
             <Title level={4}>{report.title}</Title>
-            <Text type="secondary">生成时间: {report.generate_time}</Text>
+            <Text type="secondary">生成时间：{report.generate_time}</Text>
 
             {report.sections.map((section, index) => (
               <ReportSectionView key={`${section.title}-${index}`} section={section} />

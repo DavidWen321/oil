@@ -95,7 +95,7 @@ export default defineConfig({
     // 代码分割策略
     rollupOptions: {
       output: {
-        manualChunks: (id: string, meta: ManualChunkMeta) => {
+        manualChunks: (id: string, _meta: ManualChunkMeta) => {
           // React 核心库
           if (id.includes('node_modules/react') || id.includes('node_modules/react-dom')) {
             return 'vendor-react';
@@ -186,3 +186,4 @@ export default defineConfig({
     exclude: ['echarts'], // ECharts 按需加载
   },
 });
+

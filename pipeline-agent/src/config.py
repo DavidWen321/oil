@@ -155,17 +155,33 @@ class Settings(BaseSettings):
     LANGCHAIN_API_KEY: Optional[str] = Field(default=None)
     LANGCHAIN_PROJECT: str = Field(default="pipeline-agent")
 
-    @field_validator("OPENAI_API_KEY", "EMBEDDING_API_KEY", "DB_PASSWORD", "JAVA_AUTH_PASSWORD")
+    @field_validator("OPENAI_API_KEY", "EMBEDDING_API_KEY")
     @classmethod
     def _validate_required_secret(cls, value: str) -> str:
         text = str(value or "").strip()
-        invalid_values = {"", "sk-xxx", "root", "admin123", "password", "changeme", "your-api-key", "sk-your-api-key"}
+        invalid_values = {"", "sk-xxx", "password", "changeme", "your-api-key", "sk-your-api-key"}
         if text in invalid_values:
             raise ValueError("必须通过环境变量提供真实凭据，禁止使用占位值或弱默认值")
         return text
 
     @model_validator(mode="after")
     def _validate_auth_and_url(self):
+        weak_local_values = {"", "password", "changeme", "your-api-key", "sk-your-api-key"}
+        weak_production_values = weak_local_values | {"root", "admin123"}
+
+        if str(self.DB_PASSWORD or "").strip() in weak_local_values:
+            raise ValueError("DB_PASSWORD 必须提供有效值")
+
+        if str(self.JAVA_AUTH_PASSWORD or "").strip() in weak_local_values:
+            raise ValueError("JAVA_AUTH_PASSWORD 必须提供有效值")
+
+        if self.AUTH_REQUIRED_IN_PRODUCTION:
+            if str(self.DB_PASSWORD or "").strip() in weak_production_values:
+                raise ValueError("生产模式下 DB_PASSWORD 不能使用弱默认值")
+
+            if str(self.JAVA_AUTH_PASSWORD or "").strip() in weak_production_values:
+                raise ValueError("生产模式下 JAVA_AUTH_PASSWORD 不能使用弱默认值")
+
         if self.AUTH_REQUIRED_IN_PRODUCTION:
             if not (self.INTERNAL_SERVICE_TOKEN or self.INTERNAL_API_KEY or self.allowed_bearer_tokens):
                 raise ValueError("AUTH_REQUIRED_IN_PRODUCTION=true 时，必须配置 INTERNAL_SERVICE_TOKEN/INTERNAL_API_KEY/ALLOWED_BEARER_TOKENS 中至少一种")

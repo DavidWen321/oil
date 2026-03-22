@@ -45,7 +45,7 @@ export default function Login() {
             <span className={styles.logoIcon}>⚡</span>
           </div>
           <h1>管道能耗分析系统</h1>
-          <p>Pipeline Energy Consumption Analysis System</p>
+          <p>面向输油管道的能耗分析与优化平台</p>
         </div>
 
         <Form<LoginParams>
