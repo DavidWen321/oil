@@ -1,4 +1,4 @@
-import { Circle, PanelRightOpen, Sparkles, WifiOff, Wifi } from 'lucide-react';
+﻿import { Circle, PanelRightOpen, Sparkles, Wifi, WifiOff } from 'lucide-react';
 import type { ChatMode } from '../types';
 import { MODE_OPTIONS } from '../utils/chatUi';
 
@@ -6,6 +6,8 @@ interface ChatTopbarProps {
   title: string;
   mode: ChatMode;
   connected: boolean;
+  streaming: boolean;
+  status: string;
   contextOpen: boolean;
   onToggleSidebar: () => void;
   onToggleContext: () => void;
@@ -16,11 +18,18 @@ export function ChatTopbar({
   title,
   mode,
   connected,
+  streaming,
+  status,
   contextOpen,
   onToggleSidebar: _onToggleSidebar,
   onToggleContext,
   onModeChange,
 }: ChatTopbarProps) {
+  const isError = status === 'error';
+  const isLiveStream = connected || streaming;
+  const indicatorText = isError ? '连接异常' : isLiveStream ? '实时连接中' : '服务就绪';
+  const indicatorTone = isError ? 'text-amber-500' : isLiveStream ? 'text-emerald-500' : 'text-sky-500';
+
   return (
     <header className="flex items-center justify-between gap-4 border-b border-neutral-200/80 bg-white/70 px-6 py-4 backdrop-blur-sm">
       <div className="min-w-0">
@@ -48,13 +57,13 @@ export function ChatTopbar({
         </label>
 
         <div className="flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-600">
-          {connected ? (
-            <Wifi className="h-3.5 w-3.5 text-emerald-500" />
-          ) : (
+          {isError ? (
             <WifiOff className="h-3.5 w-3.5 text-amber-500" />
+          ) : (
+            <Wifi className={['h-3.5 w-3.5', indicatorTone].join(' ')} />
           )}
-          <Circle className={['h-2.5 w-2.5 fill-current', connected ? 'text-emerald-500' : 'text-amber-500'].join(' ')} />
-          {connected ? '已连接' : '重连中'}
+          <Circle className={['h-2.5 w-2.5 fill-current', indicatorTone].join(' ')} />
+          {indicatorText}
         </div>
 
         <button

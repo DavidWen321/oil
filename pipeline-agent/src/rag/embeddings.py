@@ -37,6 +37,7 @@ class HybridEmbeddings:
         self.model = model or settings.EMBEDDING_MODEL
         self.dimension = dimension or settings.EMBEDDING_DIMENSION
         self.use_sparse = use_sparse
+        self.max_batch_size = 10
 
         # Dense Embeddings
         self._dense_embeddings = None
@@ -55,6 +56,7 @@ class HybridEmbeddings:
                 base_url=settings.EMBEDDING_API_BASE,
                 model=self.model,
                 check_embedding_ctx_length=False,
+                chunk_size=self.max_batch_size,
             )
         return self._dense_embeddings
 
@@ -69,7 +71,12 @@ class HybridEmbeddings:
             向量列表
         """
         try:
-            embeddings = self.dense_embeddings.embed_documents(texts)
+            embeddings: List[List[float]] = []
+            for index in range(0, len(texts), self.max_batch_size):
+                batch = texts[index:index + self.max_batch_size]
+                if not batch:
+                    continue
+                embeddings.extend(self.dense_embeddings.embed_documents(batch))
             logger.info(f"成功生成 {len(embeddings)} 个文档向量")
             return embeddings
         except Exception as e:
