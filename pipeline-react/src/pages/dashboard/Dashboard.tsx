@@ -423,7 +423,25 @@ export default function Dashboard() {
           shadowColor: 'rgba(0, 122, 255, 0.25)',
           shadowBlur: 8,
         },
-        areaStyle: { opacity: 0.25 },
+        itemStyle: {
+          color: colors.primary,
+          borderColor: '#FFFFFF',
+          borderWidth: 2,
+        },
+        areaStyle: {
+          opacity: 0.28,
+          color: {
+            type: 'linear',
+            x: 0,
+            y: 0,
+            x2: 0,
+            y2: 1,
+            colorStops: [
+              { offset: 0, color: 'rgba(0, 122, 255, 0.28)' },
+              { offset: 1, color: 'rgba(0, 122, 255, 0.05)' },
+            ],
+          },
+        },
         data: flowRangeConfig.current,
       },
       {
