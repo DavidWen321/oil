@@ -32,7 +32,7 @@ function ChatMessage({ role, content, streaming, tools }: ChatMessageProps) {
 
   return (
     <div className={`${styles.messageRow} ${styles.messageRowAssistant}`}>
-      <div className={styles.assistantAvatar}>AI</div>
+      <div className={styles.assistantAvatar}>智</div>
       <div className={styles.assistantBody}>
         <div className={assistantClassName}>
           {hasTools && <ToolCallCard tools={tools!} />}

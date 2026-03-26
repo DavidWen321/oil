@@ -18,7 +18,7 @@ export default function ThinkingIndicator({ visible }: ThinkingIndicatorProps) {
           exit={{ opacity: 0, height: 0 }}
           transition={{ duration: 0.2 }}
         >
-          <span className={styles.label}>AI 正在思考</span>
+          <span className={styles.label}>智能助手正在思考</span>
           <span className={styles.dots}>
             {dots.map((i) => (
               <motion.span

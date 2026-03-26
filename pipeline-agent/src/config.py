@@ -137,6 +137,77 @@ class Settings(BaseSettings):
     LANGCHAIN_API_KEY: Optional[str] = Field(default=None)
     LANGCHAIN_PROJECT: str = Field(default="pipeline-agent")
 
+<<<<<<< HEAD
+=======
+    @field_validator("OPENAI_API_KEY", "EMBEDDING_API_KEY")
+    @classmethod
+    def _validate_required_secret(cls, value: str) -> str:
+        text = str(value or "").strip()
+        invalid_values = {"", "sk-xxx", "password", "changeme", "your-api-key", "sk-your-api-key"}
+        if text in invalid_values:
+            raise ValueError("必须通过环境变量提供真实凭据，禁止使用占位值或弱默认值")
+        return text
+
+    @model_validator(mode="after")
+    def _validate_auth_and_url(self):
+        weak_local_values = {"", "password", "changeme", "your-api-key", "sk-your-api-key"}
+        weak_production_values = weak_local_values | {"root", "admin123"}
+
+        if str(self.DB_PASSWORD or "").strip() in weak_local_values:
+            raise ValueError("DB_PASSWORD 必须提供有效值")
+
+        if str(self.JAVA_AUTH_PASSWORD or "").strip() in weak_local_values:
+            raise ValueError("JAVA_AUTH_PASSWORD 必须提供有效值")
+
+        if self.AUTH_REQUIRED_IN_PRODUCTION:
+            if str(self.DB_PASSWORD or "").strip() in weak_production_values:
+                raise ValueError("生产模式下 DB_PASSWORD 不能使用弱默认值")
+
+            if str(self.JAVA_AUTH_PASSWORD or "").strip() in weak_production_values:
+                raise ValueError("生产模式下 JAVA_AUTH_PASSWORD 不能使用弱默认值")
+
+        if self.AUTH_REQUIRED_IN_PRODUCTION:
+            if not (self.INTERNAL_SERVICE_TOKEN or self.INTERNAL_API_KEY or self.allowed_bearer_tokens):
+                raise ValueError("AUTH_REQUIRED_IN_PRODUCTION=true 时，必须配置 INTERNAL_SERVICE_TOKEN/INTERNAL_API_KEY/ALLOWED_BEARER_TOKENS 中至少一种")
+
+        parsed = urlparse(self.JAVA_GATEWAY_URL)
+        host = (parsed.hostname or "").strip().lower()
+        if not host:
+            raise ValueError("JAVA_GATEWAY_URL 缺少有效主机名")
+        if self.java_allowed_hosts and host not in self.java_allowed_hosts:
+            raise ValueError(f"JAVA_GATEWAY_URL 主机 {host} 不在白名单中")
+        return self
+
+    @property
+    def cors_origins(self) -> list[str]:
+        raw = str(self.CORS_ALLOWED_ORIGINS or "").strip()
+        if not raw:
+            return []
+        if raw == "*":
+            return ["*"]
+        return [item.strip() for item in raw.split(",") if item.strip()]
+
+    @property
+    def allowed_bearer_tokens(self) -> list[str]:
+        return [item.strip() for item in str(self.ALLOWED_BEARER_TOKENS or "").split(",") if item.strip()]
+
+    @property
+    def trusted_gateway_ips(self) -> list[str]:
+        return [item.strip() for item in str(self.TRUSTED_GATEWAY_IPS or "").split(",") if item.strip()]
+
+    @property
+    def java_allowed_hosts(self) -> set[str]:
+        return {item.strip().lower() for item in str(self.JAVA_ALLOWED_HOSTS or "").split(",") if item.strip()}
+
+    @property
+    def sql_allowed_tables(self) -> set[str]:
+        return {item.strip().lower() for item in str(self.SQL_ALLOWED_TABLES or "").split(",") if item.strip()}
+
+    @property
+    def sql_blocked_tables(self) -> set[str]:
+        return {item.strip().lower() for item in str(self.SQL_BLOCKED_TABLES or "").split(",") if item.strip()}
+
+>>>>>>> origin/江玉龙
 
 class RAGConfig:
     """RAG Pipeline 配置类"""

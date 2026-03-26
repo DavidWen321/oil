@@ -1,55 +1,45 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- *  MainLayout - Apple风格浅色主题响应式布局
- *  Design: Apple HIG + Linear + Stripe Light Theme
- * ═══════════════════════════════════════════════════════════════════════════
- */
-
-import { useState, useEffect, useCallback } from 'react';
-import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Layout, Menu, Avatar, Dropdown, Badge, Button } from 'antd';
+import { useCallback, useEffect, useState } from 'react';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Avatar, Badge, Button, Dropdown, Layout, Menu } from 'antd';
 import type { MenuProps } from 'antd';
 import {
-  DashboardOutlined,
-  DatabaseOutlined,
-  CalculatorOutlined,
-  ThunderboltOutlined,
+  AlertOutlined,
+  ApiOutlined,
   BarChartOutlined,
   BellOutlined,
-  UserOutlined,
+  CalculatorOutlined,
+  CloudOutlined,
+  CloseOutlined,
+  ControlOutlined,
+  DashboardOutlined,
+  DatabaseOutlined,
+  DeploymentUnitOutlined,
+  ExperimentOutlined,
+  FileSearchOutlined,
   LogoutOutlined,
   MenuFoldOutlined,
-  MenuUnfoldOutlined,
-  SettingOutlined,
-  ProjectOutlined,
-  ApiOutlined,
-  ControlOutlined,
-  ExperimentOutlined,
-  AlertOutlined,
-  SwapOutlined,
-  CloudOutlined,
-  MonitorOutlined,
   MenuOutlined,
-  CloseOutlined,
-  RobotOutlined,
-  DeploymentUnitOutlined,
-  FileSearchOutlined,
-  SunOutlined,
+  MenuUnfoldOutlined,
+  MonitorOutlined,
   MoonOutlined,
+  ProjectOutlined,
+  RobotOutlined,
+  SettingOutlined,
+  SunOutlined,
+  SwapOutlined,
+  ThunderboltOutlined,
+  UserOutlined,
 } from '@ant-design/icons';
-import { useUserStore } from '../../stores/userStore';
-import { useMonitorStore } from '../../stores/monitorStore';
 import { useResponsive } from '../../hooks/useResponsive';
 import { useWebSocket } from '../../hooks/useWebSocket';
+import { useMonitorStore } from '../../stores/monitorStore';
 import { useThemeStore } from '../../stores/themeStore';
+import { useUserStore } from '../../stores/userStore';
 import MobileTabBar from './MobileTabBar';
 import styles from './MainLayout.module.css';
 
 const { Header, Sider, Content } = Layout;
 
-// ═══════════════════════════════════════════════════════════════════════════
-// 菜单配置
-// ═══════════════════════════════════════════════════════════════════════════
 const menuItems: MenuProps['items'] = [
   {
     key: '/dashboard',
@@ -105,24 +95,24 @@ const menuItems: MenuProps['items'] = [
   },
 ];
 
-// ═══════════════════════════════════════════════════════════════════════════
-// MainLayout 组件
-// ═══════════════════════════════════════════════════════════════════════════
 export default function MainLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+  const isFeatureRoute = location.pathname.startsWith('/features');
+  const isAIRoute = location.pathname.startsWith('/ai');
+  const isAIChatRoute = location.pathname === '/ai/chat';
   const { userInfo, logout } = useUserStore();
   const { resolved, setMode } = useThemeStore();
-  const alarms = useMonitorStore((s) => s.alarms);
-  useWebSocket({ scope: 'all', subscribeMonitor: false, subscribeAlarms: true });
-  const activeCount = alarms.filter((alarm) => alarm.status === 'ACTIVE').length;
+  const alarms = useMonitorStore((state) => state.alarms);
+  const monitorConnected = useMonitorStore((state) => state.connected);
 
-  // 响应式状态
+  useWebSocket({ scope: 'all', subscribeMonitor: false, subscribeAlarms: true });
+
+  const activeCount = alarms.filter((alarm) => alarm.status === 'ACTIVE').length;
   const { isMobile, isTablet, width } = useResponsive();
 
-  // 根据屏幕尺寸自动折叠侧边栏
   useEffect(() => {
     if (isTablet) {
       setCollapsed(true);
@@ -131,32 +121,23 @@ export default function MainLayout() {
     }
   }, [isMobile, isTablet, width]);
 
-  // 路由变化时关闭移动端菜单
   useEffect(() => {
     if (mobileMenuOpen) {
       setMobileMenuOpen(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.pathname]);
+  }, [location.pathname, mobileMenuOpen]);
 
-  // 点击遮罩关闭菜单
-  const handleOverlayClick = useCallback(() => {
-    setMobileMenuOpen(false);
-  }, []);
-
-  // 阻止遮罩上的滚动
   useEffect(() => {
-    if (mobileMenuOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
+    document.body.style.overflow = mobileMenuOpen ? 'hidden' : '';
     return () => {
       document.body.style.overflow = '';
     };
   }, [mobileMenuOpen]);
 
-  // 菜单点击处理
+  const handleOverlayClick = useCallback(() => {
+    setMobileMenuOpen(false);
+  }, []);
+
   const handleMenuClick: MenuProps['onClick'] = ({ key }) => {
     navigate(key);
     if (isMobile) {
@@ -164,7 +145,6 @@ export default function MainLayout() {
     }
   };
 
-  // 用户下拉菜单
   const userMenuItems: MenuProps['items'] = [
     {
       key: 'profile',
@@ -199,13 +179,8 @@ export default function MainLayout() {
     }
   };
 
-  // 获取当前选中的菜单项
-  const getSelectedKeys = () => {
-    const path = location.pathname;
-    return [path];
-  };
+  const getSelectedKeys = () => [location.pathname];
 
-  // 获取默认展开的子菜单
   const getOpenKeys = () => {
     const path = location.pathname;
     if (path.startsWith('/data')) return ['data'];
@@ -215,17 +190,14 @@ export default function MainLayout() {
     return [];
   };
 
-  // 切换移动端菜单
   const toggleMobileMenu = useCallback(() => {
-    setMobileMenuOpen(prev => !prev);
+    setMobileMenuOpen((prev) => !prev);
   }, []);
 
-  // 切换侧边栏折叠状态
   const toggleCollapsed = useCallback(() => {
-    setCollapsed(prev => !prev);
+    setCollapsed((prev) => !prev);
   }, []);
 
-  // 计算侧边栏宽度
   const getSiderWidth = () => {
     if (isMobile) return 280;
     if (width < 768) return 200;
@@ -235,7 +207,6 @@ export default function MainLayout() {
 
   return (
     <Layout className={styles.layout}>
-      {/* 移动端遮罩层 */}
       {isMobile && (
         <div
           className={`${styles.overlay} ${mobileMenuOpen ? styles.visible : ''}`}
@@ -244,7 +215,6 @@ export default function MainLayout() {
         />
       )}
 
-      {/* 侧边栏 */}
       <Sider
         trigger={null}
         collapsible
@@ -253,15 +223,11 @@ export default function MainLayout() {
         width={getSiderWidth()}
         collapsedWidth={72}
       >
-        {/* Logo */}
         <div className={styles.logo}>
           <span className={styles.logoIcon}>⚡</span>
-          {(!collapsed || isMobile) && (
-            <span className={styles.logoText}>管道能耗分析</span>
-          )}
+          {(!collapsed || isMobile) && <span className={styles.logoText}>管道能耗分析</span>}
         </div>
 
-        {/* 导航菜单 */}
         <Menu
           mode="inline"
           selectedKeys={getSelectedKeys()}
@@ -272,12 +238,9 @@ export default function MainLayout() {
         />
       </Sider>
 
-      {/* 右侧布局 */}
       <Layout>
-        {/* 顶部导航栏 */}
         <Header className={styles.header}>
           <div className={styles.headerLeft}>
-            {/* 移动端菜单按钮 */}
             {isMobile ? (
               <Button
                 type="text"
@@ -303,42 +266,47 @@ export default function MainLayout() {
               icon={resolved === 'dark' ? <SunOutlined /> : <MoonOutlined />}
               className={styles.headerBtn}
               onClick={() => setMode(resolved === 'dark' ? 'light' : 'dark')}
-              aria-label={resolved === 'dark' ? '切换亮色' : '切换暗色'}
+              aria-label={resolved === 'dark' ? '切换为浅色模式' : '切换为深色模式'}
             />
 
-            {/* 通知按钮 */}
-            <Badge count={activeCount} size="small" offset={[-2, 2]}>
+            <Badge count={activeCount} size="small" offset={[-2, 2]} color={monitorConnected ? undefined : '#faad14'}>
               <Button
                 type="text"
                 icon={<BellOutlined />}
                 className={styles.headerBtn}
                 onClick={() => navigate('/features/monitor')}
-                aria-label={`通知 ${activeCount > 0 ? `(${activeCount}条未读)` : ''}`}
+                aria-label={activeCount > 0 ? `监控告警，当前 ${activeCount} 条活动告警` : '监控告警'}
+                title={monitorConnected ? '告警通道已连接' : '告警通道未连接，当前使用接口刷新兜底'}
               />
             </Badge>
 
-            {/* 用户信息 */}
             <Dropdown
               menu={{ items: userMenuItems, onClick: handleUserMenuClick }}
               placement="bottomRight"
               trigger={['click']}
             >
               <div className={styles.userInfo} role="button" tabIndex={0}>
-                <Avatar
-                  size="small"
-                  icon={<UserOutlined />}
-                />
-                <span className={styles.userName}>
-                  {userInfo?.nickname || '用户'}
-                </span>
+                <Avatar size="small" icon={<UserOutlined />} />
+                <span className={styles.userName}>{userInfo?.nickname || '用户'}</span>
               </div>
             </Dropdown>
           </div>
         </Header>
 
-        {/* 主内容区 */}
         <Content className={`${styles.content} container-responsive`}>
-          <Outlet />
+          {isFeatureRoute ? (
+            <div className={styles.featureViewport}>
+              <div className={styles.featureStage}>
+                <Outlet />
+              </div>
+            </div>
+          ) : isAIRoute ? (
+            <div className={`${styles.aiViewport} ${isAIChatRoute ? styles.aiChatViewport : ''}`}>
+              <Outlet />
+            </div>
+          ) : (
+            <Outlet />
+          )}
         </Content>
 
         {isMobile && <MobileTabBar />}

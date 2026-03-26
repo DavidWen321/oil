@@ -53,7 +53,7 @@ export function getFriendlyError(error?: string | null): UIErrorState {
   if (normalized.includes('failed to fetch') || normalized.includes('network') || normalized.includes('sse connection error')) {
     return {
       title: '网络连接中断',
-      description: '请确认 AI 服务可用后重试，或稍后再次发起分析。',
+      description: '请确认智能助手服务可用后重试，或稍后再次发起分析。',
       actionLabel: '重试',
     };
   }

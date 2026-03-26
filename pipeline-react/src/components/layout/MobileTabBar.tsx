@@ -12,7 +12,7 @@ const tabs = [
   { key: 'dashboard', label: '首页', icon: <DashboardOutlined />, path: '/dashboard', matchPrefix: '/dashboard' },
   { key: 'data', label: '数据', icon: <DatabaseOutlined />, path: '/data/project', matchPrefix: '/data' },
   { key: 'calculation', label: '计算', icon: <CalculatorOutlined />, path: '/calculation/hydraulic', matchPrefix: '/calculation' },
-  { key: 'ai', label: 'AI', icon: <RobotOutlined />, path: '/ai/chat', matchPrefix: '/ai' },
+  { key: 'ai', label: '助手', icon: <RobotOutlined />, path: '/ai/chat', matchPrefix: '/ai' },
   { key: 'more', label: '更多', icon: <UserOutlined />, path: '/features/monitor', matchPrefix: '/features' },
 ];
 

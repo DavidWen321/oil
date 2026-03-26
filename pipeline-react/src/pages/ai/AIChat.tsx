@@ -86,7 +86,6 @@ export default function AIChat() {
       requestText: pendingTarget.requestText,
       error: status === 'error' ? getFriendlyError(errorMessage ?? logs[logs.length - 1]?.text) : null,
     });
-
   }, [
     activeConversationId,
     activeTools,
@@ -151,87 +150,87 @@ export default function AIChat() {
   };
 
   return (
-    <AnimatedPage className="h-[calc(100vh-var(--header-height))] overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(226,232,240,0.62),transparent_30%),linear-gradient(180deg,#fafafa_0%,#f5f7fb_100%)] text-neutral-900">
-      <div className="flex h-full w-full overflow-hidden">
-        <ConversationSidebar
-          conversations={conversations}
-          activeConversationId={activeConversationId}
-          open={sidebarOpen}
-          onClose={() => setSidebarOpen(false)}
-          onCreate={handleCreateConversation}
-          onSelect={handleSelectConversation}
-          onDelete={handleDeleteConversation}
+    <AnimatedPage className="relative grid h-full min-h-0 grid-cols-[296px_minmax(0,1fr)] overflow-hidden rounded-[24px] border border-neutral-200/80 bg-white text-neutral-900 shadow-[0_18px_40px_rgba(15,23,42,0.08)]">
+      <ConversationSidebar
+        conversations={conversations}
+        activeConversationId={activeConversationId}
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        onCreate={handleCreateConversation}
+        onSelect={handleSelectConversation}
+        onDelete={handleDeleteConversation}
+      />
+
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(241,245,249,0.88),transparent_30%),linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)]">
+        <ChatTopbar
+          title={activeConversation?.title ?? '新会话'}
+          mode={activeMode}
+          connected={connected}
+          streaming={streaming}
+          status={status}
+          contextOpen={contextOpen}
+          onToggleSidebar={() => setSidebarOpen(true)}
+          onToggleContext={() => setContextOpen((prev) => !prev)}
+          onModeChange={(mode) => {
+            if (activeConversationId) {
+              setConversationMode(activeConversationId, mode);
+            }
+          }}
         />
 
-        <div className="flex min-w-0 flex-1 flex-col">
-          <ChatTopbar
-            title={activeConversation?.title ?? '新会话'}
-            mode={activeMode}
-            connected={connected}
-            contextOpen={contextOpen}
-            onToggleSidebar={() => setSidebarOpen(true)}
-            onToggleContext={() => setContextOpen((prev) => !prev)}
-            onModeChange={(mode) => {
-              if (activeConversationId) {
-                setConversationMode(activeConversationId, mode);
-              }
-            }}
-          />
-
-          <div className="flex min-h-0 flex-1">
-            <section className="flex min-w-0 flex-1 flex-col">
-              <div ref={messagesRef} className="min-h-0 flex-1 overflow-y-auto">
-                <div className="mx-auto flex min-h-full w-full max-w-[920px] flex-col px-4 pb-12 pt-6 md:px-6">
-                  {messages.length === 0 ? (
-                    <EmptyStateWelcome prompts={WELCOME_PROMPTS} onPromptSelect={sendMessage} />
-                  ) : (
-                    <div className="mx-auto w-full max-w-[820px] space-y-6 pb-10">
-                      {messages.map((message) => (
-                        <ChatMessageItem
-                          key={message.id}
-                          message={message}
-                          streamingLabel={message.status === 'streaming' ? streamLabel : null}
-                          onRetry={handleRetry}
-                          onReusePrompt={(prompt) => setDraft(prompt)}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
+        <div className="flex min-h-0 flex-1">
+          <section className="flex min-w-0 flex-1 flex-col">
+            <div ref={messagesRef} className="min-h-0 flex-1 overflow-y-auto">
+              <div className="mx-auto flex min-h-full w-full max-w-[920px] flex-col px-4 pb-12 pt-6 md:px-6">
+                {messages.length === 0 ? (
+                  <EmptyStateWelcome prompts={WELCOME_PROMPTS} onPromptSelect={sendMessage} />
+                ) : (
+                  <div className="mx-auto w-full max-w-[820px] space-y-6 pb-10">
+                    {messages.map((message) => (
+                      <ChatMessageItem
+                        key={message.id}
+                        message={message}
+                        streamingLabel={message.status === 'streaming' ? streamLabel : null}
+                        onRetry={handleRetry}
+                        onReusePrompt={(prompt) => setDraft(prompt)}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
+            </div>
 
-              <ComposerDock
-                draft={draft}
-                mode={activeMode}
-                busy={busy || streaming}
-                onDraftChange={setDraft}
-                onModeChange={(mode) => {
-                  if (activeConversationId) {
-                    setConversationMode(activeConversationId, mode);
-                  }
-                }}
-                onSubmit={() => sendMessage(draft)}
-                onStop={stop}
+            <ComposerDock
+              draft={draft}
+              mode={activeMode}
+              busy={busy || streaming}
+              onDraftChange={setDraft}
+              onModeChange={(mode) => {
+                if (activeConversationId) {
+                  setConversationMode(activeConversationId, mode);
+                }
+              }}
+              onSubmit={() => sendMessage(draft)}
+              onStop={stop}
+            />
+          </section>
+
+          <aside
+            className={[
+              'hidden border-l border-neutral-200/70 bg-white/50 transition-all duration-200 xl:block',
+              contextOpen ? 'w-[320px]' : 'w-0 overflow-hidden border-l-0',
+            ].join(' ')}
+          >
+            {contextOpen ? (
+              <ContextRail
+                plan={plan}
+                logs={logs}
+                metrics={metrics}
+                activeTools={activeTools}
+                currentStep={currentStep}
               />
-            </section>
-
-            <aside
-              className={[
-                'hidden border-l border-neutral-200/70 bg-white/50 transition-all duration-200 xl:block',
-                contextOpen ? 'w-[320px]' : 'w-0 overflow-hidden border-l-0',
-              ].join(' ')}
-            >
-              {contextOpen ? (
-                <ContextRail
-                  plan={plan}
-                  logs={logs}
-                  metrics={metrics}
-                  activeTools={activeTools}
-                  currentStep={currentStep}
-                />
-              ) : null}
-            </aside>
-          </div>
+            ) : null}
+          </aside>
         </div>
       </div>
 

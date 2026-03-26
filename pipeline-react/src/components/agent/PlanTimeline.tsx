@@ -25,7 +25,7 @@ export default function PlanTimeline({ plan, currentStep }: PlanTimelineProps) {
       current={Math.max(currentStep - 1, 0)}
       items={plan.map((step) => ({
         status: toStepStatus(step.status),
-        title: `Step ${step.step_number}`,
+        title: `步骤 ${step.step_number}`,
         description: `${step.description}${step.duration_ms ? ` (${step.duration_ms}ms)` : ''}`,
       }))}
     />

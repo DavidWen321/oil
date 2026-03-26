@@ -35,6 +35,48 @@ const SCENARIO_OPTIONS = [
   { value: 'PUMP_FAULT', label: '泵站异常' },
 ];
 
+const ALARM_LEVEL_LABELS: Record<string, string> = {
+  EMERGENCY: '紧急',
+  CRITICAL: '严重',
+  WARNING: '预警',
+  INFO: '提示',
+};
+
+const ALARM_STATUS_LABELS: Record<string, string> = {
+  ACTIVE: '活动中',
+  ACKNOWLEDGED: '已确认',
+  RESOLVED: '已处置',
+};
+
+const SYSTEM_STATUS_LABELS: Record<string, string> = {
+  NORMAL: '正常',
+  WARNING: '预警',
+  CRITICAL: '严重',
+  OFFLINE: '离线',
+  NO_DATA: '暂无数据',
+};
+
+function getAlarmLevelLabel(level?: string) {
+  if (!level) {
+    return '-';
+  }
+  return ALARM_LEVEL_LABELS[level] ?? level;
+}
+
+function getAlarmStatusLabel(status?: string) {
+  if (!status) {
+    return '-';
+  }
+  return ALARM_STATUS_LABELS[status] ?? status;
+}
+
+function getSystemStatusLabel(status?: string) {
+  if (!status) {
+    return '暂无数据';
+  }
+  return SYSTEM_STATUS_LABELS[status] ?? status;
+}
+
 function levelColor(level?: string) {
   if (!level) {
     return 'default';
@@ -380,13 +422,13 @@ export default function RealtimeMonitor() {
       title: '级别',
       dataIndex: 'alarmLevel',
       key: 'alarmLevel',
-      render: (value: string) => <Tag color={levelColor(value)}>{value}</Tag>,
+      render: (value: string) => <Tag color={levelColor(value)}>{getAlarmLevelLabel(value)}</Tag>,
     },
     {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
-      render: (value: string) => <Tag color={value === 'ACTIVE' ? 'red' : 'blue'}>{value}</Tag>,
+      render: (value: string) => <Tag color={value === 'ACTIVE' ? 'red' : 'blue'}>{getAlarmStatusLabel(value)}</Tag>,
     },
     {
       title: '告警标题',
@@ -420,7 +462,7 @@ export default function RealtimeMonitor() {
     <AnimatedPage>
       <div className="page-header">
         <h2><DashboardOutlined /> 实时监控</h2>
-        <p>支持 WebSocket 推送优先、接口轮询兜底的实时监控链路，并可注入异常场景进行联调。</p>
+        <p>支持推送通道优先、接口轮询兜底的实时监控链路，并可注入异常场景进行联调。</p>
       </div>
 
       <Card className="page-card" style={{ marginBottom: 16 }}>
@@ -475,7 +517,7 @@ export default function RealtimeMonitor() {
         <div style={{ marginTop: 12 }}>
           <Space wrap>
             <Tag color={running ? 'success' : 'default'}>{running ? '模拟运行中' : '模拟未启动'}</Tag>
-            <Tag color={connected ? 'success' : 'warning'}>{connected ? 'WebSocket 已连接' : 'WebSocket 未连接，使用轮询兜底'}</Tag>
+            <Tag color={connected ? 'success' : 'warning'}>{connected ? '推送通道已连接' : '推送通道未连接，使用轮询兜底'}</Tag>
             <Tag color="blue">启用规则 {rules.filter((item) => item.enabled).length} 条</Tag>
             {SCENARIO_OPTIONS.map((item) => (
               <Button key={item.value} size="small" onClick={() => void handleInjectScenario(item.value)}>
@@ -524,7 +566,7 @@ export default function RealtimeMonitor() {
               <Descriptions.Item label="入口流量">{currentData?.inletFlowRate ?? '-'}</Descriptions.Item>
               <Descriptions.Item label="出口流量">{currentData?.outletFlowRate ?? '-'}</Descriptions.Item>
               <Descriptions.Item label="系统状态">
-                <Tag color={levelColor(currentData?.systemStatus)}>{currentData?.systemStatus ?? 'NO_DATA'}</Tag>
+                <Tag color={levelColor(currentData?.systemStatus)}>{getSystemStatusLabel(currentData?.systemStatus)}</Tag>
               </Descriptions.Item>
               <Descriptions.Item label="最近时间">{currentData?.timestamp ? new Date(currentData.timestamp).toLocaleString() : '-'}</Descriptions.Item>
             </Descriptions>
@@ -562,9 +604,9 @@ export default function RealtimeMonitor() {
           <Descriptions bordered column={1} size="small">
             <Descriptions.Item label="告警标题">{selectedAlarm.title}</Descriptions.Item>
             <Descriptions.Item label="告警级别">
-              <Tag color={levelColor(selectedAlarm.alarmLevel)}>{selectedAlarm.alarmLevel}</Tag>
+              <Tag color={levelColor(selectedAlarm.alarmLevel)}>{getAlarmLevelLabel(selectedAlarm.alarmLevel)}</Tag>
             </Descriptions.Item>
-            <Descriptions.Item label="告警状态">{selectedAlarm.status}</Descriptions.Item>
+            <Descriptions.Item label="告警状态">{getAlarmStatusLabel(selectedAlarm.status)}</Descriptions.Item>
             <Descriptions.Item label="告警类型">{selectedAlarm.alarmType}</Descriptions.Item>
             <Descriptions.Item label="告警描述">{selectedAlarm.description}</Descriptions.Item>
             <Descriptions.Item label="当前值">{selectedAlarm.currentValue}</Descriptions.Item>

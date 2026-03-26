@@ -12,10 +12,10 @@ export default function MetricsBar({ metrics }: MetricsBarProps) {
         <Statistic title="总耗时(ms)" value={metrics.total_duration_ms} />
       </Card>
       <Card size="small">
-        <Statistic title="LLM调用" value={metrics.llm_calls} />
+        <Statistic title="模型调用" value={metrics.llm_calls} />
       </Card>
       <Card size="small">
-        <Statistic title="Token" value={metrics.total_tokens} />
+        <Statistic title="令牌数" value={metrics.total_tokens} />
       </Card>
       <Card size="small">
         <Statistic title="工具调用" value={metrics.tool_calls} />

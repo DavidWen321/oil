@@ -39,7 +39,7 @@ export default function TracePanel({
           </div>
           <div className={styles.infoCard}>
             <div className={styles.infoRow}>
-              <Text type="secondary">Query</Text>
+              <Text type="secondary">查询词</Text>
               <Text className={styles.value}>{toolSearch.query || '-'}</Text>
             </div>
             <div className={styles.infoRow}>
@@ -110,7 +110,7 @@ export default function TracePanel({
       <section className={styles.section}>
         <div className={styles.sectionHeader}>
           <Text strong>执行计划</Text>
-          <Tag color="blue">Step {currentStep || 0}</Tag>
+          <Tag color="blue">步骤 {currentStep || 0}</Tag>
         </div>
         <div className={styles.planBlock}>
           <PlanTimeline plan={plan} currentStep={currentStep} />
