@@ -12,24 +12,8 @@ import type { ColumnsType } from 'antd/es/table';
 import type { OilProperty } from '../../types';
 import { oilPropertyApi } from '../../api';
 import AnimatedPage from '../../components/common/AnimatedPage';
-<<<<<<< Updated upstream
 import ResponsiveTable from '../../components/common/ResponsiveTable';
 import styles from './DataPage.module.css';
-=======
-import useTablePagination from '../../hooks/useTablePagination';
-
-const EMPTY_OIL: Partial<OilProperty> = {
-  name: '',
-  density: 850,
-  viscosity: 20,
-};
-
-function getDensityTagColor(density: number): string {
-  if (density >= 920) return 'volcano';
-  if (density >= 860) return 'gold';
-  return 'green';
-}
->>>>>>> Stashed changes
 
 export default function OilPropertyList() {
     const [loading, setLoading] = useState(false);
@@ -43,7 +27,6 @@ export default function OilPropertyList() {
         fetchData();
     }, []);
 
-<<<<<<< Updated upstream
     const fetchData = async () => {
         setLoading(true);
         try {
@@ -58,130 +41,6 @@ export default function OilPropertyList() {
             setLoading(false);
         }
     };
-=======
-  useEffect(() => {
-    void loadOils();
-  }, []);
-
-  const filteredOils = useMemo(() => {
-    const normalized = keyword.trim().toLowerCase();
-    if (!normalized) {
-      return oils;
-    }
-    return oils.filter((oil) => oil.name.toLowerCase().includes(normalized));
-  }, [keyword, oils]);
-  const { pagination, resetPagination } = useTablePagination(filteredOils.length);
-
-  useEffect(() => {
-    resetPagination();
-  }, [keyword, resetPagination]);
-
-  const handleCreate = () => {
-    setEditing(null);
-    form.setFieldsValue(EMPTY_OIL as OilProperty);
-    setOpen(true);
-  };
-
-  const handleEdit = (oil: OilProperty) => {
-    setEditing(oil);
-    form.setFieldsValue(oil);
-    setOpen(true);
-  };
-
-  const handleDelete = async (oilId: number) => {
-    await oilPropertyApi.delete([oilId]);
-    message.success('油品已删除');
-    await loadOils();
-  };
-
-  const handleSubmit = async () => {
-    const values = await form.validateFields();
-    setSubmitting(true);
-    try {
-      if (editing) {
-        await oilPropertyApi.update({ ...editing, ...values });
-        message.success('油品已更新');
-      } else {
-        await oilPropertyApi.create(values);
-        message.success('油品已创建');
-      }
-      setOpen(false);
-      await loadOils();
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const columns: ColumnsType<OilProperty> = [
-    { title: '油品名称', dataIndex: 'name', width: 220, ellipsis: true },
-    {
-      title: '密度(kg/m³)',
-      dataIndex: 'density',
-      width: 160,
-      align: 'center',
-      render: (value: number) => <Tag color={getDensityTagColor(value)}>{value}</Tag>,
-    },
-    { title: '运动粘度(mm²/s)', dataIndex: 'viscosity', width: 180, align: 'center' },
-    { title: '更新时间', dataIndex: 'updateTime', width: 220, align: 'center', render: (value?: string) => value || '-' },
-    {
-      title: '操作',
-      key: 'actions',
-      width: 220,
-      align: 'center',
-      render: (_, oil) => (
-        <Space size="middle" style={{ width: '100%', justifyContent: 'center' }} wrap={false}>
-          <Button icon={<EditOutlined />} onClick={() => handleEdit(oil)}>
-            编辑
-          </Button>
-          <Popconfirm
-            title="确认删除这个油品吗？"
-            okText="删除"
-            cancelText="取消"
-            onConfirm={() => void handleDelete(oil.id)}
-          >
-            <Button danger icon={<DeleteOutlined />}>
-              删除
-            </Button>
-          </Popconfirm>
-        </Space>
-      ),
-    },
-  ];
-
-  return (
-    <AnimatedPage>
-      <Card
-        title="油品物性管理"
-        extra={
-          <Space>
-            <Input.Search
-              placeholder="搜索油品名称"
-              allowClear
-              value={keyword}
-              onChange={(event) => setKeyword(event.target.value)}
-              style={{ width: 220 }}
-            />
-            <Button icon={<ReloadOutlined />} onClick={() => void loadOils()} loading={loading}>
-              刷新
-            </Button>
-            <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>
-              新建油品
-            </Button>
-          </Space>
-        }
-      >
-        <Table<OilProperty>
-          rowKey="id"
-          loading={loading}
-          size="middle"
-          tableLayout="fixed"
-          columns={columns}
-          dataSource={filteredOils}
-          scroll={{ x: 1000 }}
-          pagination={pagination}
-        />
-      </Card>
->>>>>>> Stashed changes
 
     const handleAdd = () => {
         setEditingItem(null);

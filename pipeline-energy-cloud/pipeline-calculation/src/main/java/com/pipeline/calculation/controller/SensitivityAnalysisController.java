@@ -1,6 +1,7 @@
 package com.pipeline.calculation.controller;
 
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 import org.springframework.validation.annotation.Validated;
@@ -14,15 +15,19 @@ import org.springframework.web.bind.annotation.RestController;
 import com.pipeline.calculation.domain.HydraulicAnalysisParams;
 import com.pipeline.calculation.domain.SensitivityAnalysisParams;
 import com.pipeline.calculation.domain.SensitivityAnalysisResult;
+import com.pipeline.calculation.service.ICalculationHistoryService;
 import com.pipeline.calculation.service.ISensitivityAnalysisService;
 import com.pipeline.common.core.domain.Result;
 import com.pipeline.common.core.enums.SensitivityVariableEnum;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * 敏感性分析控制器
@@ -38,9 +43,12 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/calculation/sensitivity")
 @RequiredArgsConstructor
+@Slf4j
 public class SensitivityAnalysisController {
 
     private final ISensitivityAnalysisService sensitivityAnalysisService;
+    private final ICalculationHistoryService calculationHistoryService;
+    private final ObjectMapper objectMapper;
 
     /**
      * 执行敏感性分析
@@ -84,8 +92,16 @@ public class SensitivityAnalysisController {
     @PostMapping("/quick-single")
     public Result<SensitivityAnalysisResult> quickSingleAnalysis(
             @RequestBody @Valid HydraulicAnalysisParams params,
-            @RequestParam("variableType") @NotBlank(message = "变量类型不能为空") String variableType) {
-        return sensitivityAnalysisService.quickSingleAnalysis(params, variableType);
+            @RequestParam("variableType") @NotBlank(message = "变量类型不能为空") String variableType,
+            @RequestParam(value = "userId", required = false, defaultValue = "1") Long userId,
+            @RequestParam(value = "userName", required = false, defaultValue = "admin") String userName) {
+        long startTime = System.currentTimeMillis();
+        Long historyId = createHistory(params, variableType, userId, userName);
+
+        Result<SensitivityAnalysisResult> result =
+                sensitivityAnalysisService.quickSingleAnalysis(params, variableType);
+        updateHistory(historyId, result, startTime);
+        return result;
     }
 
     /**
@@ -119,4 +135,50 @@ public class SensitivityAnalysisController {
             Double minChangePercent,
             Double maxChangePercent
     ) {}
+
+    private Long createHistory(
+            HydraulicAnalysisParams params, String variableType, Long userId, String userName) {
+        SensitivityVariableEnum variableEnum = SensitivityVariableEnum.fromCode(variableType);
+        Map<String, Object> inputPayload = Map.of(
+                "analysisType", "SINGLE",
+                "baseParams", params,
+                "variables", List.of(Map.of(
+                        "variableType", variableType,
+                        "variableName", variableEnum != null ? variableEnum.getName() : variableType,
+                        "unit", variableEnum != null ? variableEnum.getUnit() : ""
+                ))
+        );
+
+        try {
+            String inputJson = objectMapper.writeValueAsString(inputPayload);
+            return calculationHistoryService.createHistory(
+                    "SENSITIVITY",
+                    params.getProjectId(),
+                    "敏感性分析",
+                    userId,
+                    userName,
+                    inputJson);
+        } catch (JsonProcessingException e) {
+            log.warn("序列化敏感性分析入参失败: variableType={}", variableType, e);
+            return null;
+        }
+    }
+
+    private void updateHistory(Long historyId, Result<?> result, long startTime) {
+        if (historyId == null) {
+            return;
+        }
+
+        long duration = System.currentTimeMillis() - startTime;
+        try {
+            if (result.isSuccess()) {
+                String outputJson = objectMapper.writeValueAsString(result.getData());
+                calculationHistoryService.updateSuccess(historyId, outputJson, duration);
+            } else {
+                calculationHistoryService.updateFailed(historyId, result.getMsg(), duration);
+            }
+        } catch (JsonProcessingException e) {
+            log.warn("序列化敏感性分析结果失败: historyId={}", historyId, e);
+        }
+    }
 }

@@ -127,6 +127,7 @@ export interface ReportGeneratePayload {
   trace_id: string;
   report: ReportData;
   java_report_id?: number | null;
+  local_report_count?: number | null;
   java_download_url?: string | null;
   java_download_url_pdf?: string | null;
 }

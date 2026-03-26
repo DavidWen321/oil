@@ -1,6 +1,7 @@
 ﻿import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { UserInfo } from '../types';
+import { createSafePersistStorage } from './safePersistStorage';
 
 export const USER_STORAGE_KEY = 'user-storage';
 
@@ -19,6 +20,8 @@ interface UserState {
   logout: () => void;
 }
 
+type PersistedUserState = Pick<UserState, 'token' | 'userInfo' | 'isLoggedIn'>;
+
 export const useUserStore = create<UserState>()(
   persist(
     (set) => ({
@@ -35,6 +38,7 @@ export const useUserStore = create<UserState>()(
     }),
     {
       name: USER_STORAGE_KEY,
+      storage: createSafePersistStorage<PersistedUserState>(),
       partialize: (state) => ({
         token: state.token,
         userInfo: state.userInfo,

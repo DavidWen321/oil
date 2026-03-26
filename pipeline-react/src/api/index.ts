@@ -7,6 +7,7 @@ import type {
   CarbonCalculationResult,
   ComparisonRequest,
   ComparisonResult,
+  CalculationHistory,
   DiagnosisRequest,
   DiagnosisResult,
   HydraulicAnalysisParams,
@@ -148,4 +149,28 @@ export const reportApi = {
     }),
   detail: (id: number) => http.get<R<AnalysisReport>>(`/calculation/report/${id}`),
   delete: (id: number) => http.delete<R<void>>(`/calculation/report/${id}`),
+};
+
+export const calculationHistoryApi = {
+  page: (params?: {
+    calcType?: string;
+    projectId?: number;
+    userId?: number;
+    status?: number;
+    pageNum?: number;
+    pageSize?: number;
+    keyword?: string;
+  }) => http.get<R<PageResult<CalculationHistory>>>('/calculation/history/page', { params }),
+  byProject: (
+    projectId: number,
+    params?: {
+      pageNum?: number;
+      pageSize?: number;
+      calcType?: string;
+    },
+  ) =>
+    http.get<R<PageResult<CalculationHistory>>>(`/calculation/history/project/${projectId}`, {
+      params,
+    }),
+  detail: (id: number) => http.get<R<CalculationHistory>>(`/calculation/history/${id}`),
 };

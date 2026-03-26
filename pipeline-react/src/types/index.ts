@@ -38,6 +38,25 @@ export interface AnalysisReport {
   updateTime?: string;
 }
 
+export interface CalculationHistory {
+  id: number;
+  calcType?: string;
+  calcTypeName?: string;
+  projectId?: number;
+  projectName?: string;
+  userId?: number;
+  userName?: string;
+  inputParams?: string;
+  outputResult?: string;
+  status?: number;
+  statusName?: string;
+  errorMessage?: string;
+  calcDuration?: number;
+  calcDurationFormatted?: string;
+  remark?: string;
+  createTime?: string;
+}
+
 // ========== 用户认证 ==========
 
 export interface LoginParams {
@@ -114,6 +133,7 @@ export interface OilProperty {
 // ========== 水力分析 ==========
 
 export interface HydraulicAnalysisParams {
+  projectId?: number;
   pipelineId?: number;
   oilId?: number;
   flowRate: number;

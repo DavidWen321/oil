@@ -9,6 +9,11 @@ import java.math.BigDecimal;
 @Data
 public class HydraulicAnalysisParams {
     /**
+     * 项目ID (可选)
+     */
+    private Long projectId;
+
+    /**
      * 管道ID (可选)
      */
     private Long pipelineId;

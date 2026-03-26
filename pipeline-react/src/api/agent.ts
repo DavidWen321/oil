@@ -50,15 +50,41 @@ export const agentApi = {
     return parseJson<Record<string, unknown>>(response);
   },
 
-  async generateReport(userRequest: string, sessionId?: string) {
+  async generateReport(
+    userRequest: string,
+    sessionId?: string,
+    reportContext?: Record<string, unknown>,
+  ) {
     const response = await fetch(`${AGENT_API_BASE}/report/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_request: userRequest, session_id: sessionId }),
+      body: JSON.stringify({
+        user_request: userRequest,
+        session_id: sessionId,
+        report_context: reportContext,
+      }),
     });
 
     if (!response.ok) {
       throw new Error(`report request failed: ${response.status}`);
+    }
+    return parseJson<Record<string, unknown>>(response);
+  },
+
+  async getReportDetail(reportId: number) {
+    const response = await fetch(`${AGENT_API_BASE}/report/${reportId}`);
+    if (!response.ok) {
+      throw new Error(`report detail request failed: ${response.status}`);
+    }
+    return parseJson<Record<string, unknown>>(response);
+  },
+
+  async deleteReport(reportId: number) {
+    const response = await fetch(`${AGENT_API_BASE}/report/${reportId}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      throw new Error(`report delete request failed: ${response.status}`);
     }
     return parseJson<Record<string, unknown>>(response);
   },
