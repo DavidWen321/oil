@@ -9,6 +9,8 @@ import {
   Empty,
   Input,
   List,
+  Modal,
+  Popconfirm,
   Row,
   Space,
   Statistic,
@@ -22,23 +24,29 @@ import ReactECharts from 'echarts-for-react';
 import {
   BarChartOutlined,
   CheckCircleOutlined,
+  DeleteOutlined,
   DownloadOutlined,
-  FilePdfOutlined,
   FileSearchOutlined,
-  FileWordOutlined,
   ReloadOutlined,
   RobotOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons';
 import { agentApi } from '../../api/agent';
-import { reportApi } from '../../api';
+import { calculationHistoryApi, projectApi, reportApi } from '../../api';
 import type {
   AnalysisReport,
+  CalculationHistory,
+  Project,
   ReportData,
   ReportGeneratePayload,
   ReportSection,
 } from '../../types';
 import AnimatedPage from '../../components/common/AnimatedPage';
+import type {
+  LinkedCalculationRecord,
+  LinkedCalculationType,
+} from '../../stores/calculationLinkStore';
+import { useCalculationLinkStore } from '../../stores/calculationLinkStore';
 import { useUserStore } from '../../stores/userStore';
 
 const { Paragraph } = Typography;
@@ -167,7 +175,8 @@ function getReportTypeText(value?: string) {
 }
 
 const TEXT = {
-  defaultRequest: '\u751f\u6210\u957f\u5e86\u7ba1\u9053\u672c\u6708\u8fd0\u884c\u5206\u6790\u62a5\u544a',
+  defaultRequest:
+    '\u751f\u6210\u957f\u5e86\u7ba1\u9053\u672c\u6708\u8fd0\u884c\u5206\u6790\u62a5\u544a\uff0c\u5e76\u5199\u660e\u8ba1\u7b97\u5165\u53c2\u3001\u6c34\u529b\u7ed3\u679c\u3001\u4f18\u5316\u7ed3\u679c\u548c\u654f\u611f\u6027\u7ed3\u679c\u3002',
   completed: '\u5df2\u5b8c\u6210',
   generating: '\u751f\u6210\u4e2d',
   failed: '\u5931\u8d25',
@@ -185,10 +194,11 @@ const TEXT = {
   agentUnavailableDesc:
     '\u8bfb\u53d6\u548c\u4e0b\u8f7d\u5df2\u751f\u6210\u7684 Java \u62a5\u544a\u53ef\u4ee5\u6b63\u5e38\u4f7f\u7528\uff1b\u5982\u679c\u8981\u542f\u7528 AI \u81ea\u52a8\u751f\u6210\uff0c\u9700\u8981\u5148\u542f\u52a8 8100 \u7aef\u53e3\u7684 Agent \u670d\u52a1\u3002',
   requestPlaceholder:
-    '\u8bf7\u8f93\u5165\u62a5\u544a\u9700\u6c42\uff0c\u4f8b\u5982\uff1a\u751f\u6210\u957f\u5e86\u7ba1\u9053\u672c\u6708\u8fd0\u884c\u5206\u6790\u62a5\u544a\uff0c\u5e76\u603b\u7ed3\u80fd\u8017\u53d8\u5316\u3001\u6cf5\u7ad9\u6548\u7387\u548c\u4f18\u5316\u5efa\u8bae\u3002',
+    '\u8bf7\u8f93\u5165\u62a5\u544a\u9700\u6c42\uff0c\u4f8b\u5982\uff1a\u751f\u6210\u957f\u5e86\u7ba1\u9053\u672c\u6708\u8fd0\u884c\u5206\u6790\u62a5\u544a\uff0c\u5e76\u5199\u660e\u8ba1\u7b97\u5165\u53c2\u3001\u6c34\u529b\u7ed3\u679c\u3001\u4f18\u5316\u7ed3\u679c\u548c\u654f\u611f\u6027\u7ed3\u679c\u660e\u7ec6\u3002',
   downloadWord: '\u4e0b\u8f7d Word',
   downloadPdf: '\u4e0b\u8f7d PDF',
-  javaReportId: 'Java\u62a5\u544aID',
+  javaReportId: '\u62a5\u544a\u8bb0\u5f55ID',
+  localReportCount: '\u672c\u5730\u62a5\u544a\u6570',
   aiReportReady: 'AI \u62a5\u544a\u5df2\u5c31\u7eea',
   aiReportPending: 'AI \u62a5\u544a\u672a\u751f\u6210',
   javaStorageReady: 'Java \u843d\u5e93\u5df2\u5173\u8054',
@@ -245,15 +255,39 @@ const TEXT = {
   javaRefreshSuccess: 'Java \u62a5\u544a\u5df2\u5237\u65b0',
   relogin: '\u767b\u5f55\u72b6\u6001\u5df2\u5931\u6548\uff0c\u8bf7\u91cd\u65b0\u767b\u5f55',
   javaDownloadFailed: 'Java \u62a5\u544a\u4e0b\u8f7d\u5931\u8d25',
-  colId: '\u7f16\u53f7',
+  colId: '\u5e8f\u53f7',
   colReportNo: '\u62a5\u544a\u7f16\u53f7',
   colTitle: '\u6807\u9898',
   colType: '\u7c7b\u578b',
   colStatus: '\u72b6\u6001',
   colCreateTime: '\u751f\u6210\u65f6\u95f4',
   colAction: '\u64cd\u4f5c',
+  actionView: '\u67e5\u770b',
+  actionDelete: '\u5220\u9664',
   actionDownload: '\u4e0b\u8f7d',
-  descId: '\u7f16\u53f7',
+  doubleClickHint: '\u53cc\u51fb\u884c\u53ef\u67e5\u770b\u62a5\u544a',
+  deleteConfirmTitle: '\u786e\u5b9a\u5220\u9664\u8fd9\u4efd\u5386\u53f2\u62a5\u544a\u5417\uff1f',
+  deleteConfirmDesc: '\u5220\u9664\u540e\u5c06\u540c\u65f6\u79fb\u9664\u5f52\u6863\u6587\u4ef6\u4e0e\u5386\u53f2\u8bb0\u5f55\u3002',
+  deleteSuccess: '\u62a5\u544a\u5df2\u5220\u9664',
+  deleteFailed: '\u5220\u9664\u62a5\u544a\u5931\u8d25',
+  calcHistoryLoadFailed: '\u8bfb\u53d6\u8ba1\u7b97\u5386\u53f2\u5931\u8d25\uff0c\u8bf7\u5148\u786e\u8ba4\u8ba1\u7b97\u670d\u52a1\u53ef\u7528\u3002',
+  calcHistoryMissing:
+    '\u672a\u627e\u5230\u53ef\u7528\u7684\u8ba1\u7b97\u5386\u53f2\uff0c\u8bf7\u5148\u5b8c\u6210\u6c34\u529b\u5206\u6790\u3001\u6cf5\u7ad9\u4f18\u5316\u6216\u654f\u611f\u6027\u5206\u6790\u3002',
+  calcHistoryProjectMissingPrefix:
+    '\u9879\u76ee\u300c',
+  calcHistoryProjectMissingSuffix:
+    '\u300d\u6682\u65e0\u53ef\u7528\u7684\u8ba1\u7b97\u5386\u53f2\uff0c\u8bf7\u5148\u5728\u8be5\u9879\u76ee\u4e0b\u5b8c\u6210\u8ba1\u7b97\u3002',
+  projectDetectRequired:
+    '\u672a\u4ece\u62a5\u544a\u9700\u6c42\u4e2d\u8bc6\u522b\u5230\u9879\u76ee\u540d\uff0c\u7cfb\u7edf\u5c06\u4f18\u5148\u9009\u7528\u5f53\u524d\u4f1a\u8bdd\u5df2\u5173\u8054\u7684\u8ba1\u7b97\u7ed3\u679c\u3002',
+  projectDetectFallback:
+    '\u672a\u4ece\u62a5\u544a\u9700\u6c42\u4e2d\u8bc6\u522b\u5230\u9879\u76ee\u540d\uff0c\u672c\u6b21\u5df2\u81ea\u52a8\u9009\u62e9\u6700\u8fd1\u4e14\u4fe1\u606f\u6700\u5b8c\u6574\u7684\u8ba1\u7b97\u7ed3\u679c\u751f\u6210\u62a5\u544a\u3002',
+  linkedContextAppliedPrefix:
+    '\u672c\u6b21\u62a5\u544a\u5df2\u5173\u8054\u5f53\u524d\u4f1a\u8bdd\u8ba1\u7b97\uff1a',
+  calcHistoryPartialPrefix: '\u62a5\u544a\u5c06\u57fa\u4e8e\u5df2\u83b7\u53d6\u7684\u8ba1\u7b97\u7ed3\u679c\u751f\u6210\uff0c\u7f3a\u5c11\uff1a',
+  calcTypeHydraulic: '\u6c34\u529b\u5206\u6790',
+  calcTypeOptimization: '\u6cf5\u7ad9\u4f18\u5316',
+  calcTypeSensitivity: '\u654f\u611f\u6027\u5206\u6790',
+  descId: '\u8bb0\u5f55ID',
   descStatus: '\u72b6\u6001',
   descReportNo: '\u62a5\u544a\u7f16\u53f7',
   descReportType: '\u62a5\u544a\u7c7b\u578b',
@@ -336,6 +370,14 @@ const TEXT = {
   emptyAiReportTitle: '\u5c1a\u672a\u751f\u6210 AI \u5185\u5bb9',
   emptyAiReportDesc:
     '\u5f53\u524d\u8fd8\u6ca1\u6709\u53ef\u5c55\u793a\u7684 AI \u5206\u7ae0\u5185\u5bb9\uff0c\u4f46\u4f60\u53ef\u4ee5\u5148\u5728\u53f3\u4fa7\u67e5\u770b\u62a5\u544a\u5efa\u8bae\u7ed3\u6784\u4e0e\u8f93\u51fa\u8303\u56f4\u3002',
+  previewMetaOnly:
+    '\u5f53\u524d\u5f52\u6863\u6682\u672a\u4fdd\u5b58\u5b8c\u6574\u7ae0\u8282\u5185\u5bb9\uff0c\u53ef\u5148\u67e5\u770b\u6458\u8981\u6216\u4e0b\u8f7d\u5f52\u6863\u6587\u4ef6\u3002',
+  recommendationSummary: '\u4f18\u5316\u5efa\u8bae\u6458\u8981',
+  agentPdfUnavailable: 'PDF \u5f52\u6863\u6682\u672a\u751f\u6210',
+  agentArchiveFailed: '\u62a5\u544a\u5f52\u6863\u4e0b\u8f7d\u5931\u8d25',
+  brokenPreviewText: '\u539f\u59cb\u5185\u5bb9\u5b58\u5728\u4e71\u7801\uff0c\u8bf7\u91cd\u65b0\u751f\u6210\u62a5\u544a\u3002',
+  missingPreviewCell: '\u5f85\u8865\u5145',
+  missingSectionContent: '\u5f53\u524d\u7ae0\u8282\u6682\u65e0\u6709\u6548\u5185\u5bb9\u3002',
 } as const;
 
 const DEFAULT_PAGE_SIZE = 10;
@@ -382,6 +424,374 @@ const SAMPLE_TABLE_DATA = [
   },
 ];
 
+const EXECUTIVE_METRIC_CONFIG = [
+  {
+    category: '水力结果',
+    sectionKeywords: ['水力结果', '水力'],
+    metricKeywords: ['雷诺数'],
+  },
+  {
+    category: '水力结果',
+    sectionKeywords: ['水力结果', '水力'],
+    metricKeywords: ['流态'],
+  },
+  {
+    category: '水力结果',
+    sectionKeywords: ['水力结果', '水力'],
+    metricKeywords: ['摩阻损失'],
+  },
+  {
+    category: '水力结果',
+    sectionKeywords: ['水力结果', '水力'],
+    metricKeywords: ['末站进站压头'],
+  },
+  {
+    category: '优化结果',
+    sectionKeywords: ['优化结果', '优化'],
+    metricKeywords: ['推荐泵组合'],
+  },
+  {
+    category: '优化结果',
+    sectionKeywords: ['优化结果', '优化'],
+    metricKeywords: ['总扬程'],
+  },
+  {
+    category: '优化结果',
+    sectionKeywords: ['优化结果', '优化'],
+    metricKeywords: ['年能耗'],
+  },
+  {
+    category: '优化结果',
+    sectionKeywords: ['优化结果', '优化'],
+    metricKeywords: ['总成本'],
+  },
+  {
+    category: '优化结果',
+    sectionKeywords: ['优化结果', '优化'],
+    metricKeywords: ['可行性'],
+  },
+] as const;
+
+type ParsedHistorySnapshot = {
+  id: number;
+  calcType: string;
+  calcTypeName?: string;
+  projectId?: number;
+  projectName?: string;
+  createTime?: string;
+  input: Record<string, unknown>;
+  output: Record<string, unknown>;
+};
+
+type LatestCalculationContext = {
+  reportContext: Record<string, unknown>;
+  missingLabels: string[];
+  availableCount: number;
+  matchedProject: Project | null;
+  projectCount: number;
+  linkedLabels: string[];
+  usedGlobalFallback: boolean;
+  usedLinkedContext: boolean;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function parseHistoryJson(value?: string) {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function toHistorySnapshot(history: CalculationHistory): ParsedHistorySnapshot | null {
+  const output = parseHistoryJson(history.outputResult);
+  if (!output) {
+    return null;
+  }
+
+  return {
+    id: history.id,
+    calcType: history.calcType || '',
+    calcTypeName: history.calcTypeName,
+    projectId: history.projectId,
+    projectName: history.projectName,
+    createTime: history.createTime,
+    input: parseHistoryJson(history.inputParams) ?? {},
+    output,
+  };
+}
+
+function toLinkedHistorySnapshot(record: LinkedCalculationRecord): ParsedHistorySnapshot {
+  return {
+    id: 0,
+    calcType: record.calcType,
+    calcTypeName: record.calcType,
+    projectId: record.projectId ?? undefined,
+    projectName: record.projectName ?? undefined,
+    createTime: record.updatedAt,
+    input: record.input,
+    output: record.output,
+  };
+}
+
+function normalizeProjectKeyword(value?: string) {
+  return String(value ?? '')
+    .trim()
+    .replace(/\s+/g, '')
+    .toLowerCase();
+}
+
+function inferRequestedProject(requestText: string, projects: Project[]): Project | null {
+  const normalizedRequest = normalizeProjectKeyword(requestText);
+  if (!normalizedRequest) {
+    return null;
+  }
+
+  const matches = projects.filter((project) => {
+    const candidates = [project.name, project.number]
+      .map((item) => normalizeProjectKeyword(item))
+      .filter(Boolean);
+
+    return candidates.some((candidate) => normalizedRequest.includes(candidate));
+  });
+
+  if (matches.length === 0) {
+    return null;
+  }
+
+  return matches.sort((left, right) => {
+    const leftLength = Math.max(left.name?.length ?? 0, left.number?.length ?? 0);
+    const rightLength = Math.max(right.name?.length ?? 0, right.number?.length ?? 0);
+    return rightLength - leftLength;
+  })[0];
+}
+
+function inferLinkedProject(projects: Project[]): Project | null {
+  const state = useCalculationLinkStore.getState();
+  const explicitProject = state.lastProjectId
+    ? projects.find((project) => project.proId === state.lastProjectId) ?? null
+    : null;
+
+  if (explicitProject) {
+    return explicitProject;
+  }
+
+  const latestRecords = Object.values(state.latestByType).filter(
+    (record): record is LinkedCalculationRecord => Boolean(record),
+  );
+  const uniqueProjectIds = Array.from(
+    new Set(
+      latestRecords
+        .map((record) => record.projectId)
+        .filter((projectId): projectId is number => typeof projectId === 'number'),
+    ),
+  );
+
+  if (uniqueProjectIds.length === 1) {
+    return projects.find((project) => project.proId === uniqueProjectIds[0]) ?? null;
+  }
+
+  if (state.lastProjectName) {
+    return {
+      proId: state.lastProjectId ?? 0,
+      number: '',
+      name: state.lastProjectName,
+    };
+  }
+
+  return null;
+}
+
+function matchesProject(project: Project | null, snapshot: ParsedHistorySnapshot) {
+  if (!project) {
+    return true;
+  }
+
+  if (typeof project.proId === 'number' && project.proId > 0 && snapshot.projectId) {
+    return snapshot.projectId === project.proId;
+  }
+
+  return normalizeProjectKeyword(snapshot.projectName) === normalizeProjectKeyword(project.name);
+}
+
+function createProjectFromSnapshot(
+  snapshot: ParsedHistorySnapshot,
+  projects: Project[],
+): Project | null {
+  if (typeof snapshot.projectId === 'number') {
+    const matchedById = projects.find((project) => project.proId === snapshot.projectId) ?? null;
+    if (matchedById) {
+      return matchedById;
+    }
+  }
+
+  const normalizedName = normalizeProjectKeyword(snapshot.projectName);
+  if (normalizedName) {
+    const matchedByName = projects.find(
+      (project) => normalizeProjectKeyword(project.name) === normalizedName,
+    ) ?? null;
+    if (matchedByName) {
+      return matchedByName;
+    }
+  }
+
+  if (typeof snapshot.projectId === 'number' || snapshot.projectName) {
+    return {
+      proId: snapshot.projectId ?? 0,
+      number: '',
+      name: snapshot.projectName || `项目 ${snapshot.projectId ?? '-'}`,
+    };
+  }
+
+  return null;
+}
+
+function inferFallbackProjectFromHistories(
+  histories: CalculationHistory[],
+  projects: Project[],
+): Project | null {
+  const parsedSnapshots = histories
+    .map((history) => toHistorySnapshot(history))
+    .filter((snapshot): snapshot is ParsedHistorySnapshot => Boolean(snapshot));
+
+  if (parsedSnapshots.length === 0) {
+    return null;
+  }
+
+  const groups = new Map<string, {
+    project: Project | null;
+    calcTypes: Set<string>;
+    latestTime: number;
+  }>();
+
+  parsedSnapshots.forEach((snapshot) => {
+    const project = createProjectFromSnapshot(snapshot, projects);
+    const key = typeof snapshot.projectId === 'number'
+      ? `id:${snapshot.projectId}`
+      : `name:${normalizeProjectKeyword(snapshot.projectName) || 'unknown'}`;
+    const current = groups.get(key) ?? {
+      project,
+      calcTypes: new Set<string>(),
+      latestTime: 0,
+    };
+
+    current.project = current.project ?? project;
+    current.calcTypes.add(snapshot.calcType);
+    current.latestTime = Math.max(
+      current.latestTime,
+      snapshot.createTime ? new Date(snapshot.createTime).getTime() : 0,
+    );
+    groups.set(key, current);
+  });
+
+  return Array.from(groups.values())
+    .sort((left, right) => {
+      if (right.calcTypes.size !== left.calcTypes.size) {
+        return right.calcTypes.size - left.calcTypes.size;
+      }
+      return right.latestTime - left.latestTime;
+    })[0]?.project ?? null;
+}
+
+function getLinkedSnapshots(project: Project | null) {
+  const definitions = [
+    { key: 'hydraulic', calcType: 'HYDRAULIC' as LinkedCalculationType, label: TEXT.calcTypeHydraulic },
+    { key: 'optimization', calcType: 'OPTIMIZATION' as LinkedCalculationType, label: TEXT.calcTypeOptimization },
+    { key: 'sensitivity', calcType: 'SENSITIVITY' as LinkedCalculationType, label: TEXT.calcTypeSensitivity },
+  ] as const;
+
+  const state = useCalculationLinkStore.getState();
+  const linkedHistories: Record<string, ParsedHistorySnapshot> = {};
+  const linkedLabels: string[] = [];
+
+  definitions.forEach(({ key, calcType, label }) => {
+    const record = state.latestByType[calcType];
+    if (!record) {
+      return;
+    }
+
+    if (project && record.projectId !== project.proId) {
+      return;
+    }
+
+    linkedHistories[key] = toLinkedHistorySnapshot(record);
+    linkedLabels.push(label);
+  });
+
+  return { linkedHistories, linkedLabels };
+}
+
+function buildLatestCalculationContext(
+  histories: CalculationHistory[],
+  matchedProject: Project | null,
+  projectCount: number,
+  linkedHistories: Record<string, ParsedHistorySnapshot>,
+  linkedLabels: string[],
+  usedGlobalFallback: boolean,
+): LatestCalculationContext {
+  const parsedSnapshots = histories
+    .map((history) => toHistorySnapshot(history))
+    .filter((snapshot): snapshot is ParsedHistorySnapshot => Boolean(snapshot))
+    .sort((left, right) => {
+      const leftTime = left.createTime ? new Date(left.createTime).getTime() : 0;
+      const rightTime = right.createTime ? new Date(right.createTime).getTime() : 0;
+      return rightTime - leftTime;
+    });
+
+  const definitions = [
+    { key: 'hydraulic', calcType: 'HYDRAULIC', label: TEXT.calcTypeHydraulic },
+    { key: 'optimization', calcType: 'OPTIMIZATION', label: TEXT.calcTypeOptimization },
+    { key: 'sensitivity', calcType: 'SENSITIVITY', label: TEXT.calcTypeSensitivity },
+  ] as const;
+
+  const latestHistories: Record<string, ParsedHistorySnapshot> = {};
+  const missingLabels: string[] = [];
+
+  definitions.forEach(({ key, calcType, label }) => {
+    const linkedSnapshot = linkedHistories[key];
+    if (linkedSnapshot) {
+      latestHistories[key] = linkedSnapshot;
+      return;
+    }
+
+    const latest = parsedSnapshots.find((snapshot) => snapshot.calcType === calcType);
+    if (latest) {
+      latestHistories[key] = latest;
+      return;
+    }
+    missingLabels.push(label);
+  });
+
+  return {
+    reportContext: {
+      generated_at: new Date().toISOString(),
+      latest_histories: latestHistories,
+      requested_project: matchedProject
+        ? {
+            project_id: matchedProject.proId,
+            project_name: matchedProject.name,
+            project_number: matchedProject.number,
+          }
+        : undefined,
+    },
+    missingLabels,
+    availableCount: Object.keys(latestHistories).length,
+    matchedProject,
+    projectCount,
+    linkedLabels,
+    usedGlobalFallback,
+    usedLinkedContext: linkedLabels.length > 0,
+  };
+}
+
 function extractAgentPayload(response: Record<string, unknown>) {
   if (response.report && typeof response.report === 'object') {
     return response;
@@ -416,6 +826,231 @@ function getStatusText(status?: number) {
     return TEXT.failed;
   }
   return TEXT.unknown;
+}
+
+function isBrokenPreviewText(value: unknown) {
+  if (typeof value !== 'string') {
+    return false;
+  }
+
+  const normalized = value.trim();
+  if (!normalized) {
+    return false;
+  }
+
+  const questionMarks = (normalized.match(/\?/g) || []).length;
+  return normalized.includes('�') || questionMarks >= Math.max(2, Math.floor(normalized.length / 4));
+}
+
+function sanitizePreviewText(value: unknown, fallback: string = '-') : string {
+  if (typeof value !== 'string') {
+    return fallback;
+  }
+
+  const normalized = value.trim();
+  if (!normalized || isBrokenPreviewText(normalized)) {
+    return fallback;
+  }
+
+  return normalized;
+}
+
+function sanitizePreviewValue(
+  value: unknown,
+  fallback: string = TEXT.missingPreviewCell,
+): string {
+  if (value === null || value === undefined) {
+    return fallback;
+  }
+
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? String(value) : fallback;
+  }
+
+  if (typeof value === 'boolean') {
+    return value ? '是' : '否';
+  }
+
+  if (typeof value === 'string') {
+    return sanitizePreviewText(value, fallback);
+  }
+
+  if (Array.isArray(value)) {
+    const joined = value
+      .map((item) => sanitizePreviewValue(item, ''))
+      .filter(Boolean)
+      .join('、');
+    return joined || fallback;
+  }
+
+  return fallback;
+}
+
+type ParsedPreviewTable = {
+  title: string;
+  headers: string[];
+  rows: string[][];
+};
+
+function matchesPreviewKeywords(value: string, keywords: readonly string[]) {
+  const normalized = sanitizePreviewText(value, '').toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  return keywords.some((keyword) => normalized.includes(keyword.toLowerCase()));
+}
+
+function normalizePreviewTableData(table: Record<string, unknown>): ParsedPreviewTable | null {
+  const title = sanitizePreviewText(table.title, '');
+  const headers = Array.isArray(table.headers)
+    ? (table.headers as unknown[]).map((header, index) =>
+        sanitizePreviewValue(header, `列${index + 1}`))
+    : [];
+  const rows = Array.isArray(table.rows)
+    ? (table.rows as unknown[]).map((row) =>
+        (Array.isArray(row) ? row : [row]).map((cell) => sanitizePreviewValue(cell)))
+    : [];
+
+  if (headers.length === 0 || rows.length === 0) {
+    return null;
+  }
+
+  return { title, headers, rows };
+}
+
+function getSectionPreviewTables(section: ReportSection | null): ParsedPreviewTable[] {
+  if (!section || !Array.isArray(section.tables)) {
+    return [];
+  }
+
+  return section.tables
+    .map((table) => normalizePreviewTableData(table as Record<string, unknown>))
+    .filter((table): table is ParsedPreviewTable => Boolean(table));
+}
+
+function findPreviewSection(
+  sections: ReportSection[],
+  keywords: readonly string[],
+): ReportSection | null {
+  return sections.find((section) => matchesPreviewKeywords(section.title, keywords)) ?? null;
+}
+
+function findPreviewMetricRow(
+  section: ReportSection | null,
+  metricKeywords: readonly string[],
+): string[] | null {
+  const tables = getSectionPreviewTables(section);
+  for (const table of tables) {
+    for (const row of table.rows) {
+      if (matchesPreviewKeywords(row[0] || '', metricKeywords)) {
+        return row;
+      }
+    }
+  }
+  return null;
+}
+
+function buildSensitivityExecutiveRows(section: ReportSection | null): string[][] {
+  if (!section) {
+    return [];
+  }
+
+  const explicitRows = [
+    findPreviewMetricRow(section, ['首要敏感变量']),
+    findPreviewMetricRow(section, ['敏感系数']),
+    findPreviewMetricRow(section, ['最大影响幅度']),
+  ].filter((row): row is string[] => Boolean(row));
+
+  if (explicitRows.length >= 2) {
+    return explicitRows.map((row) => [
+      '敏感性',
+      row[0] || '敏感性指标',
+      row[1] || TEXT.missingPreviewCell,
+      row[2] || '-',
+    ]);
+  }
+
+  const rankingTable = getSectionPreviewTables(section).find((table) =>
+    matchesPreviewKeywords(table.title, ['排名'])
+    || table.headers.some((header) => matchesPreviewKeywords(header, ['排名', '敏感系数'])));
+  const firstRow = rankingTable?.rows[0];
+
+  if (!firstRow) {
+    return [];
+  }
+
+  return [
+    ['敏感性', '首要敏感变量', firstRow[2] || firstRow[1] || TEXT.missingPreviewCell, firstRow[1] || '-'],
+    ['敏感性', '敏感系数', firstRow[3] || TEXT.missingPreviewCell, firstRow[5] || '-'],
+    ['敏感性', '最大影响幅度', firstRow[4] || TEXT.missingPreviewCell, firstRow[5] || '-'],
+  ];
+}
+
+function buildExecutiveMetricTable(report: ReportData): Record<string, unknown> | null {
+  const sections = Array.isArray(report.sections) ? report.sections : [];
+  const summarySection = findPreviewSection(sections, ['报告摘要', '摘要']);
+  const hydraulicSection = findPreviewSection(sections, ['水力结果', '水力']);
+  const optimizationSection = findPreviewSection(sections, ['优化结果', '优化']);
+  const sensitivitySection = findPreviewSection(sections, ['敏感性结果', '敏感性']);
+  const rows: string[][] = [];
+  const seenMetrics = new Set<string>();
+
+  const pushMetricRow = (category: string, row: string[] | null, fallbackMetric: string) => {
+    if (!row) {
+      return;
+    }
+
+    const metric = row[0] || fallbackMetric;
+    const key = `${category}-${metric}`;
+    if (seenMetrics.has(key)) {
+      return;
+    }
+
+    seenMetrics.add(key);
+    rows.push([
+      category,
+      metric,
+      row[1] || TEXT.missingPreviewCell,
+      row[2] || '-',
+    ]);
+  };
+
+  EXECUTIVE_METRIC_CONFIG.forEach((item) => {
+    const targetSection = item.category === '水力结果'
+      ? hydraulicSection
+      : optimizationSection;
+    pushMetricRow(
+      item.category,
+      findPreviewMetricRow(targetSection, item.metricKeywords)
+        ?? findPreviewMetricRow(summarySection, item.metricKeywords),
+      item.metricKeywords[0],
+    );
+  });
+
+  buildSensitivityExecutiveRows(sensitivitySection || summarySection).forEach((row) => {
+    const key = `${row[0]}-${row[1]}`;
+    if (seenMetrics.has(key)) {
+      return;
+    }
+
+    seenMetrics.add(key);
+    rows.push(row);
+  });
+
+  if (rows.length === 0) {
+    return null;
+  }
+
+  return {
+    title: '关键指标总览',
+    headers: ['类别', '指标', '结果', '单位/说明'],
+    rows,
+  };
+}
+
+function shouldRenderTablesBeforeContent(title: string) {
+  return matchesPreviewKeywords(title, ['摘要', '结论', '建议']);
 }
 
 function formatFileSize(fileSize?: number) {
@@ -458,16 +1093,21 @@ function formatTimestamp(date = new Date()) {
 }
 
 export default function ReportPreview() {
-  const [request, setRequest] = useState(TEXT.defaultRequest);
+  const currentUserId = useUserStore((state) => state.userInfo?.userId);
+  const [request, setRequest] = useState<string>(TEXT.defaultRequest);
   const [generating, setGenerating] = useState(false);
   const [tableLoading, setTableLoading] = useState(false);
   const [downloading, setDownloading] = useState<number | null>(null);
+  const [deleting, setDeleting] = useState<number | null>(null);
   const [report, setReport] = useState<ReportData | null>(null);
   const [javaReportId, setJavaReportId] = useState<number | null>(null);
+  const [localReportCount, setLocalReportCount] = useState<number | null>(null);
   const [javaReportList, setJavaReportList] = useState<AnalysisReport[]>([]);
   const [selectedJavaReport, setSelectedJavaReport] = useState<AnalysisReport | null>(null);
   const [downloadHistory, setDownloadHistory] = useState<DownloadHistoryItem[]>([]);
+  const [agentPdfAvailable, setAgentPdfAvailable] = useState(false);
   const [agentUnavailable, setAgentUnavailable] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [pagination, setPagination] = useState({
     current: 1,
     pageSize: DEFAULT_PAGE_SIZE,
@@ -475,8 +1115,12 @@ export default function ReportPreview() {
   });
   const aiStatusText = agentUnavailable ? TEXT.aiOffline : TEXT.aiOnline;
   const selectedReportStatus = selectedJavaReport?.status;
-  const selectedSummary = selectedJavaReport?.reportSummary || TEXT.summaryPlaceholder;
+  const selectedSummary = sanitizePreviewText(
+    selectedJavaReport?.reportSummary,
+    TEXT.summaryPlaceholder,
+  );
   const selectedReportVersion = selectedJavaReport ? TEXT.defaultVersion : '-';
+  const isSelectedAgentReport = selectedJavaReport?.createBy === 'agent';
   const selectedReportSource = !selectedJavaReport
     ? TEXT.sourcePending
     : selectedJavaReport.createBy === 'agent'
@@ -497,7 +1141,9 @@ export default function ReportPreview() {
     },
     {
       label: TEXT.blockFormat,
-      value: selectedJavaReport?.fileFormat || '-',
+      value: isSelectedAgentReport && agentPdfAvailable
+        ? 'DOC / PDF'
+        : selectedJavaReport?.fileFormat || '-',
       hint: selectedJavaReport ? TEXT.tagArchived : TEXT.blockWaiting,
       color: '#0F766E',
     },
@@ -624,7 +1270,37 @@ export default function ReportPreview() {
 
     try {
       const response = await reportApi.detail(id);
-      setSelectedJavaReport(response.data);
+      const detail = response.data;
+      setSelectedJavaReport(detail);
+
+      if (detail.createBy === 'agent') {
+        setJavaReportId(detail.id);
+        setReport(null);
+        setAgentPdfAvailable(false);
+
+        try {
+          const persistedResponse = await agentApi.getReportDetail(id);
+          const persistedPayload = extractAgentPayload(persistedResponse) as unknown as ReportGeneratePayload;
+
+          if (persistedPayload.report) {
+            setReport(persistedPayload.report);
+          }
+          setLocalReportCount(persistedPayload.local_report_count ?? null);
+          setAgentPdfAvailable(Boolean(persistedPayload.java_download_url_pdf));
+        } catch {
+          if (javaReportId !== id) {
+            setReport(null);
+          }
+          setLocalReportCount(null);
+          setAgentPdfAvailable(false);
+        }
+        return;
+      }
+
+      setJavaReportId(null);
+      setLocalReportCount(null);
+      setReport(null);
+      setAgentPdfAvailable(false);
     } catch {
       if (!fallback) {
         message.error(TEXT.detailReadFailed);
@@ -668,10 +1344,105 @@ export default function ReportPreview() {
     }
   };
 
+  const handleDeleteJavaReport = useCallback(async (record: AnalysisReport) => {
+    setDeleting(record.id);
+    try {
+      if (record.createBy === 'agent') {
+        await agentApi.deleteReport(record.id);
+      } else {
+        await reportApi.delete(record.id);
+      }
+
+      if (selectedJavaReport?.id === record.id) {
+        setSelectedJavaReport(null);
+        setReport(null);
+        setPreviewOpen(false);
+      }
+      if (javaReportId === record.id) {
+        setJavaReportId(null);
+      }
+
+      const nextPage =
+        javaReportList.length === 1 && pagination.current > 1
+          ? pagination.current - 1
+          : pagination.current;
+
+      await loadJavaReports(nextPage, pagination.pageSize, {
+        silent: true,
+        selectFirst: selectedJavaReport?.id === record.id,
+      });
+      message.success(TEXT.deleteSuccess);
+    } catch {
+      message.error(TEXT.deleteFailed);
+    } finally {
+      setDeleting(null);
+    }
+  }, [
+    javaReportId,
+    javaReportList.length,
+    loadJavaReports,
+    pagination.current,
+    pagination.pageSize,
+    selectedJavaReport?.id,
+  ]);
+
   useEffect(() => {
     void loadJavaReports(1, DEFAULT_PAGE_SIZE, { silent: true, selectFirst: true });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const loadLatestCalculationContext = useCallback(async (requestText: string) => {
+    let matchedProject: Project | null = null;
+    let linkedProject: Project | null = null;
+    let projectList: Project[] = [];
+    let projectCount = 0;
+
+    try {
+      const projectResponse = await projectApi.list();
+      projectList = Array.isArray(projectResponse.data) ? projectResponse.data : [];
+      projectCount = projectList.length;
+      matchedProject = inferRequestedProject(requestText, projectList);
+      linkedProject = inferLinkedProject(projectList);
+    } catch {
+      matchedProject = null;
+      linkedProject = inferLinkedProject([]);
+      projectCount = 0;
+    }
+
+    let activeProject = matchedProject ?? linkedProject;
+    const response = await calculationHistoryApi.page({
+      userId: currentUserId ?? 1,
+      projectId: activeProject?.proId,
+      status: 1,
+      pageNum: 1,
+      pageSize: 100,
+    });
+
+    let list = Array.isArray(response.data?.list) ? response.data.list : [];
+    let usedGlobalFallback = false;
+
+    if (!activeProject) {
+      const fallbackProject = inferFallbackProjectFromHistories(list, projectList);
+      if (fallbackProject) {
+        activeProject = fallbackProject;
+        usedGlobalFallback = true;
+        list = list.filter((history) => {
+          const snapshot = toHistorySnapshot(history);
+          return snapshot ? matchesProject(activeProject, snapshot) : false;
+        });
+      }
+    }
+
+    const { linkedHistories, linkedLabels } = getLinkedSnapshots(activeProject);
+    return buildLatestCalculationContext(
+      list,
+      activeProject,
+      projectCount,
+      linkedHistories,
+      linkedLabels,
+      usedGlobalFallback,
+    );
+  }, [currentUserId]);
 
   const handleGenerate = async () => {
     const text = request.trim();
@@ -682,8 +1453,42 @@ export default function ReportPreview() {
 
     setGenerating(true);
     try {
-      const response = await agentApi.generateReport(text);
-      const payload = extractAgentPayload(response) as ReportGeneratePayload;
+      let contextResult: LatestCalculationContext;
+      try {
+        contextResult = await loadLatestCalculationContext(text);
+      } catch {
+        message.error(TEXT.calcHistoryLoadFailed);
+        return;
+      }
+
+      if (contextResult.usedLinkedContext) {
+        message.info(`${TEXT.linkedContextAppliedPrefix}${contextResult.linkedLabels.join('、')}`);
+      }
+
+      if (contextResult.usedGlobalFallback) {
+        message.warning(TEXT.projectDetectFallback);
+      }
+
+      if (contextResult.availableCount === 0) {
+        if (contextResult.matchedProject) {
+          message.warning(
+            `${TEXT.calcHistoryProjectMissingPrefix}${contextResult.matchedProject.name}${TEXT.calcHistoryProjectMissingSuffix}`,
+          );
+          return;
+        }
+
+        message.warning(TEXT.calcHistoryMissing);
+        return;
+      }
+
+      if (contextResult.missingLabels.length > 0) {
+        message.warning(
+          `${TEXT.calcHistoryPartialPrefix}${contextResult.missingLabels.join('、')}`,
+        );
+      }
+
+      const response = await agentApi.generateReport(text, undefined, contextResult.reportContext);
+      const payload = extractAgentPayload(response) as unknown as ReportGeneratePayload;
 
       if (payload.report) {
         setReport(payload.report);
@@ -691,7 +1496,9 @@ export default function ReportPreview() {
 
       const nextJavaReportId = payload.java_report_id ?? null;
       setJavaReportId(nextJavaReportId);
+      setLocalReportCount(payload.local_report_count ?? null);
       setAgentUnavailable(false);
+      setAgentPdfAvailable(Boolean(payload.java_download_url_pdf));
 
       await loadJavaReports(1, pagination.pageSize, { silent: true });
       if (nextJavaReportId) {
@@ -701,6 +1508,7 @@ export default function ReportPreview() {
       message.success(TEXT.aiGenerateSuccess);
     } catch {
       setAgentUnavailable(true);
+      setAgentPdfAvailable(false);
       message.error(TEXT.aiUnavailable);
     } finally {
       setGenerating(false);
@@ -714,7 +1522,51 @@ export default function ReportPreview() {
     }
   };
 
+  const handleDownloadAgentArchive = useCallback(async (
+    record: AnalysisReport,
+    format: 'docx' | 'pdf',
+  ) => {
+    if (format === 'pdf' && !agentPdfAvailable) {
+      message.warning(TEXT.agentPdfUnavailable);
+      return;
+    }
+
+    setDownloading(record.id);
+    try {
+      const response = await fetch(agentApi.getJavaReportDownloadUrl(record.id, format));
+      if (!response.ok) {
+        throw new Error(`download failed: ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const baseName = guessDownloadFilename(record).replace(/\.[^.]+$/i, '');
+      link.href = downloadUrl;
+      link.download = format === 'pdf' ? `${baseName}.pdf` : `${baseName}.doc`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      appendDownloadHistory(
+        record.id,
+        record.reportTitle || record.reportNo || TEXT.untitledReport,
+        format === 'pdf' ? TEXT.sampleRecordPdf : TEXT.sampleRecordWord,
+        TEXT.sourceAgent,
+      );
+      window.setTimeout(() => window.URL.revokeObjectURL(downloadUrl), 1000);
+    } catch {
+      message.error(TEXT.agentArchiveFailed);
+    } finally {
+      setDownloading(null);
+    }
+  }, [agentPdfAvailable, appendDownloadHistory]);
+
   const handleDownloadJavaReport = useCallback(async (record: AnalysisReport) => {
+    if (record.createBy === 'agent') {
+      await handleDownloadAgentArchive(record, 'docx');
+      return;
+    }
+
     const token = useUserStore.getState().token;
     if (!token) {
       message.error(TEXT.relogin);
@@ -753,29 +1605,30 @@ export default function ReportPreview() {
     } finally {
       setDownloading(null);
     }
-  }, [appendDownloadHistory, selectedReportSource]);
+  }, [appendDownloadHistory, handleDownloadAgentArchive, selectedReportSource]);
 
-  const openAgentDownload = useCallback((format: 'docx' | 'pdf') => {
-    if (!javaReportId) {
+  const handleDownloadSelectedReport = useCallback(() => {
+    if (!selectedJavaReport) {
       return;
     }
-    appendDownloadHistory(
-      javaReportId,
-      report?.title || selectedJavaReport?.reportTitle || TEXT.untitledReport,
-      `${format.toUpperCase()} ${TEXT.actionDownload}`,
-      TEXT.sourceAgent,
-    );
-    window.open(agentApi.getJavaReportDownloadUrl(javaReportId, format), '_blank');
-  }, [appendDownloadHistory, javaReportId, report?.title, selectedJavaReport?.reportTitle]);
+
+    void handleDownloadJavaReport(selectedJavaReport);
+  }, [handleDownloadJavaReport, selectedJavaReport]);
+
+  const handleOpenJavaReport = useCallback((record: AnalysisReport) => {
+    void handleSelectJavaReport(record.id, record);
+    setPreviewOpen(true);
+  }, [handleSelectJavaReport]);
 
   const tableColumns = useMemo(
     () => [
       {
         title: TEXT.colId,
-        dataIndex: 'id',
-        key: 'id',
+        key: 'serialNumber',
         width: 88,
         align: 'center' as const,
+        render: (_: unknown, __: AnalysisReport, index: number) =>
+          (pagination.current - 1) * pagination.pageSize + index + 1,
       },
       {
         title: TEXT.colReportNo,
@@ -817,24 +1670,61 @@ export default function ReportPreview() {
       {
         title: TEXT.colAction,
         key: 'actions',
-        width: 128,
+        width: 272,
         align: 'center' as const,
         render: (_: unknown, record: AnalysisReport) => (
-          <Button
-            size="small"
-            icon={<DownloadOutlined />}
-            loading={downloading === record.id}
-            onClick={(event) => {
-              event.stopPropagation();
-              void handleDownloadJavaReport(record);
-            }}
-          >
-            {TEXT.actionDownload}
-          </Button>
+          <Space size="small">
+            <Button
+              size="small"
+              icon={<FileSearchOutlined />}
+              onClick={(event) => {
+                event.stopPropagation();
+                handleOpenJavaReport(record);
+              }}
+            >
+              {TEXT.actionView}
+            </Button>
+            <Button
+              size="small"
+              icon={<DownloadOutlined />}
+              loading={downloading === record.id}
+              onClick={(event) => {
+                event.stopPropagation();
+                void handleDownloadJavaReport(record);
+              }}
+            >
+              {TEXT.actionDownload}
+            </Button>
+            <Popconfirm
+              title={TEXT.deleteConfirmTitle}
+              description={TEXT.deleteConfirmDesc}
+              okText="删除"
+              cancelText="取消"
+              onConfirm={() => void handleDeleteJavaReport(record)}
+            >
+              <Button
+                danger
+                size="small"
+                icon={<DeleteOutlined />}
+                loading={deleting === record.id}
+                onClick={(event) => event.stopPropagation()}
+              >
+                {TEXT.actionDelete}
+              </Button>
+            </Popconfirm>
+          </Space>
         ),
       },
     ],
-    [downloading, handleDownloadJavaReport],
+    [
+      deleting,
+      downloading,
+      handleDeleteJavaReport,
+      handleDownloadJavaReport,
+      handleOpenJavaReport,
+      pagination.current,
+      pagination.pageSize,
+    ],
   );
 
   const tablePagination: TablePaginationConfig = {
@@ -915,16 +1805,19 @@ export default function ReportPreview() {
                   </Button>
                 </Space>
 
-                {javaReportId ? (
+                {javaReportId && selectedJavaReport?.id === javaReportId ? (
                   <Space wrap>
-                    <Button icon={<FileWordOutlined />} onClick={() => openAgentDownload('docx')}>
-                      {TEXT.downloadWord}
-                    </Button>
-                    <Button icon={<FilePdfOutlined />} onClick={() => openAgentDownload('pdf')}>
-                      {TEXT.downloadPdf}
+                    <Button
+                      icon={<DownloadOutlined />}
+                      loading={downloading === selectedJavaReport.id}
+                      onClick={handleDownloadSelectedReport}
+                    >
+                      {selectedJavaReport.fileFormat
+                        ? `${TEXT.actionDownload} (${selectedJavaReport.fileFormat})`
+                        : TEXT.actionDownload}
                     </Button>
                     <Text type="secondary">
-                      {TEXT.javaReportId}: {javaReportId}
+                      {TEXT.localReportCount}: {localReportCount ?? '-'}
                     </Text>
                   </Space>
                 ) : null}
@@ -989,9 +1882,12 @@ export default function ReportPreview() {
               className="page-card"
               title={TEXT.javaReportRecords}
               extra={
-                <Text type="secondary">
-                  {TEXT.totalPrefix} {pagination.total} {TEXT.totalSuffix}
-                </Text>
+                <Space size="middle">
+                  <Text type="secondary">{TEXT.doubleClickHint}</Text>
+                  <Text type="secondary">
+                    {TEXT.totalPrefix} {pagination.total} {TEXT.totalSuffix}
+                  </Text>
+                </Space>
               }
             >
               <Table
@@ -1014,6 +1910,9 @@ export default function ReportPreview() {
                 onRow={(record) => ({
                   onClick: () => {
                     void handleSelectJavaReport(record.id, record);
+                  },
+                  onDoubleClick: () => {
+                    handleOpenJavaReport(record);
                   },
                 })}
                 rowClassName={(record) =>
@@ -1129,6 +2028,35 @@ export default function ReportPreview() {
                           </List.Item>
                         )}
                       />
+                      {isSelectedAgentReport ? (
+                        <Space wrap style={{ marginTop: 12 }}>
+                          <Button
+                            size="small"
+                            icon={<DownloadOutlined />}
+                            loading={selectedJavaReport ? downloading === selectedJavaReport.id : false}
+                            onClick={() => {
+                              if (selectedJavaReport) {
+                                void handleDownloadAgentArchive(selectedJavaReport, 'docx');
+                              }
+                            }}
+                          >
+                            {TEXT.downloadWord}
+                          </Button>
+                          <Button
+                            size="small"
+                            icon={<DownloadOutlined />}
+                            disabled={!agentPdfAvailable}
+                            loading={selectedJavaReport ? downloading === selectedJavaReport.id : false}
+                            onClick={() => {
+                              if (selectedJavaReport) {
+                                void handleDownloadAgentArchive(selectedJavaReport, 'pdf');
+                              }
+                            }}
+                          >
+                            {TEXT.downloadPdf}
+                          </Button>
+                        </Space>
+                      ) : null}
                     </Card>
 
                     <Card size="small" title={TEXT.downloadRecords}>
@@ -1198,20 +2126,7 @@ export default function ReportPreview() {
               }
             >
               {report ? (
-                <>
-                  <Title level={4}>{report.title}</Title>
-                  <Text type="secondary">
-                    {TEXT.generatedAt}: {report.generate_time}
-                  </Text>
-
-                  {report.summary ? (
-                    <Paragraph style={{ marginTop: 12 }}>{report.summary}</Paragraph>
-                  ) : null}
-
-                  {report.sections.map((section, index) => (
-                    <ReportSectionView key={`${section.title}-${index}`} section={section} />
-                  ))}
-                </>
+                <ReportContentView report={report} />
               ) : (
                 <Space direction="vertical" size="middle" style={{ width: '100%' }}>
                   <Alert
@@ -1358,69 +2273,328 @@ export default function ReportPreview() {
           </Col>
         </Row>
       </Space>
+
+      <Modal
+        open={previewOpen}
+        title={selectedJavaReport?.reportTitle || TEXT.currentReport}
+        onCancel={() => setPreviewOpen(false)}
+        width={960}
+        footer={[
+          ...(selectedJavaReport?.createBy === 'agent'
+            ? [
+                <Button
+                  key="download-word"
+                  icon={<DownloadOutlined />}
+                  disabled={!selectedJavaReport}
+                  loading={selectedJavaReport ? downloading === selectedJavaReport.id : false}
+                  onClick={() => {
+                    if (selectedJavaReport) {
+                      void handleDownloadAgentArchive(selectedJavaReport, 'docx');
+                    }
+                  }}
+                >
+                  {TEXT.downloadWord}
+                </Button>,
+                <Button
+                  key="download-pdf"
+                  icon={<DownloadOutlined />}
+                  disabled={!selectedJavaReport || !agentPdfAvailable}
+                  loading={selectedJavaReport ? downloading === selectedJavaReport.id : false}
+                  onClick={() => {
+                    if (selectedJavaReport) {
+                      void handleDownloadAgentArchive(selectedJavaReport, 'pdf');
+                    }
+                  }}
+                >
+                  {TEXT.downloadPdf}
+                </Button>,
+              ]
+            : [
+                <Button
+                  key="download"
+                  icon={<DownloadOutlined />}
+                  disabled={!selectedJavaReport}
+                  loading={selectedJavaReport ? downloading === selectedJavaReport.id : false}
+                  onClick={handleDownloadSelectedReport}
+                >
+                  {selectedJavaReport?.fileFormat
+                    ? `${TEXT.actionDownload} (${selectedJavaReport.fileFormat})`
+                    : TEXT.actionDownload}
+                </Button>,
+              ]),
+          <Button key="close" onClick={() => setPreviewOpen(false)}>
+            关闭
+          </Button>,
+        ]}
+      >
+        {selectedJavaReport ? (
+          <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+            <Descriptions column={2} size="small" bordered>
+              <Descriptions.Item label={TEXT.descId}>{selectedJavaReport.id}</Descriptions.Item>
+              <Descriptions.Item label={TEXT.descStatus}>
+                {getStatusTag(selectedJavaReport.status)}
+              </Descriptions.Item>
+              <Descriptions.Item label={TEXT.descReportNo}>
+                {selectedJavaReport.reportNo || '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label={TEXT.descFileFormat}>
+                {selectedJavaReport.createBy === 'agent' && agentPdfAvailable
+                  ? 'DOC / PDF'
+                  : selectedJavaReport.fileFormat || '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label={TEXT.blockCreatedAt}>
+                {selectedJavaReport.createTime || '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label={TEXT.blockOwner}>
+                {selectedJavaReport.createBy || TEXT.blockUnknownOwner}
+              </Descriptions.Item>
+            </Descriptions>
+
+            {report ? (
+              <ReportContentView report={report} />
+            ) : (
+              <>
+                <Paragraph style={{ marginBottom: 0 }}>{selectedSummary}</Paragraph>
+                <Alert showIcon type="info" message={TEXT.previewMetaOnly} />
+              </>
+            )}
+          </Space>
+        ) : (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={TEXT.selectJavaReport} />
+        )}
+      </Modal>
     </AnimatedPage>
   );
 }
 
-function ReportSectionView({ section }: { section: ReportSection }) {
-  const firstChart = section.charts?.[0] as Record<string, unknown> | undefined;
-  const firstTable = section.tables?.[0] as Record<string, unknown> | undefined;
-
-  const tableColumns = useMemo(() => {
-    const headers = Array.isArray(firstTable?.headers) ? (firstTable.headers as string[]) : [];
-    return headers.map((header) => ({ title: header, dataIndex: header, key: header }));
-  }, [firstTable]);
-
-  const tableData = useMemo(() => {
-    const rows = Array.isArray(firstTable?.rows) ? (firstTable.rows as unknown[][]) : [];
-    const headers = Array.isArray(firstTable?.headers) ? (firstTable.headers as string[]) : [];
-    return rows.map((row, rowIndex) => {
-      const record: Record<string, unknown> = { key: rowIndex };
-      headers.forEach((header, colIndex) => {
-        record[header] = row[colIndex];
-      });
-      return record;
-    });
-  }, [firstTable]);
-
-  const chartOption = useMemo(() => {
-    if (!firstChart) {
-      return null;
-    }
-
-    const chartType = (firstChart.type as string) || 'line';
-    const chartData = (firstChart.data as Record<string, unknown>) || {};
-    const xValues = (chartData.x as string[]) || (chartData.dates as string[]) || [];
-    const yValues = (chartData.y as number[]) || (chartData.values as number[]) || [];
-
-    return {
-      tooltip: {},
-      xAxis: { type: 'category', data: xValues },
-      yAxis: { type: 'value' },
-      series: [
-        {
-          data: yValues,
-          type: chartType === 'bar' ? 'bar' : 'line',
-          smooth: chartType !== 'bar',
-        },
-      ],
-    };
-  }, [firstChart]);
+function ReportContentView({ report }: { report: ReportData }) {
+  const safeTitle = sanitizePreviewText(report.title, TEXT.untitledReport);
+  const safeSummary = sanitizePreviewText(report.summary, '');
+  const executiveMetricTable = useMemo(() => buildExecutiveMetricTable(report), [report]);
+  const safeRecommendations = Array.isArray(report.recommendations)
+    ? report.recommendations
+        .map((item) => sanitizePreviewText(item, ''))
+        .filter(Boolean)
+    : [];
 
   return (
-    <Card size="small" style={{ marginTop: 12 }} title={section.title}>
-      <Paragraph>{section.content}</Paragraph>
+    <>
+      <Title level={4}>{safeTitle}</Title>
+      <Text type="secondary">
+        {TEXT.generatedAt}: {report.generate_time}
+      </Text>
 
-      {chartOption ? <ReactECharts style={{ height: 280 }} option={chartOption} /> : null}
+      {(executiveMetricTable || safeSummary) ? (
+        <Card size="small" style={{ marginTop: 12 }} title={TEXT.reportAbstract}>
+          {executiveMetricTable ? (
+            <ReportTableView table={executiveMetricTable} index={0} withTopMargin={false} />
+          ) : null}
+          {safeSummary ? (
+            <Paragraph
+              type={executiveMetricTable ? 'secondary' : undefined}
+              style={{ marginTop: executiveMetricTable ? 12 : 0, marginBottom: 0 }}
+            >
+              {safeSummary}
+            </Paragraph>
+          ) : null}
+        </Card>
+      ) : null}
 
-      {tableColumns.length > 0 ? (
-        <Table size="small" columns={tableColumns} dataSource={tableData} pagination={false} />
+      {safeRecommendations.length > 0 ? (
+        <Card size="small" style={{ marginTop: 12 }} title={TEXT.recommendationSummary}>
+          <List
+            split={false}
+            dataSource={safeRecommendations}
+            renderItem={(item) => (
+              <List.Item style={{ padding: '8px 0' }}>
+                <Space align="start">
+                  <CheckCircleOutlined style={{ color: '#2563EB', marginTop: 4 }} />
+                  <Text>{item}</Text>
+                </Space>
+              </List.Item>
+            )}
+          />
+        </Card>
+      ) : null}
+
+      {report.sections.map((section, index) => (
+        <ReportSectionView key={`${section.title}-${index}`} section={section} />
+      ))}
+    </>
+  );
+}
+
+function buildChartOption(chart: Record<string, unknown>) {
+  const chartType = typeof chart.type === 'string' ? chart.type : 'line';
+  const chartData = typeof chart.data === 'object' && chart.data ? chart.data as Record<string, unknown> : {};
+  const xValues = Array.isArray(chartData.x)
+    ? chartData.x as Array<string | number>
+    : Array.isArray(chartData.categories)
+      ? chartData.categories as Array<string | number>
+      : Array.isArray(chartData.dates)
+        ? chartData.dates as Array<string | number>
+        : [];
+  const seriesData = Array.isArray(chartData.series) ? chartData.series as Array<Record<string, unknown>> : [];
+
+  const series = seriesData.length > 0
+    ? seriesData.map((item, index) => ({
+        name: typeof item.name === 'string' ? item.name : `系列 ${index + 1}`,
+        type: typeof item.type === 'string' ? item.type : chartType === 'bar' ? 'bar' : 'line',
+        smooth: (typeof item.type === 'string' ? item.type : chartType) !== 'bar',
+        data: Array.isArray(item.data) ? item.data : [],
+      }))
+    : [
+        {
+          name: typeof chart.title === 'string' ? chart.title : '指标',
+          type: chartType === 'bar' ? 'bar' : 'line',
+          smooth: chartType !== 'bar',
+          data: Array.isArray(chartData.y) ? chartData.y : Array.isArray(chartData.values) ? chartData.values : [],
+        },
+      ];
+
+  if (xValues.length === 0 || series.every((item) => !Array.isArray(item.data) || item.data.length === 0)) {
+    return null;
+  }
+
+  return {
+    tooltip: { trigger: 'axis' },
+    legend: { top: 0 },
+    grid: { left: 36, right: 18, top: 42, bottom: 26 },
+    xAxis: {
+      type: 'category',
+      data: xValues,
+      axisTick: { show: false },
+    },
+    yAxis: { type: 'value' },
+    series,
+  };
+}
+
+function ReportTableView({
+  table,
+  index,
+  withTopMargin = true,
+}: {
+  table: Record<string, unknown>;
+  index: number;
+  withTopMargin?: boolean;
+}) {
+  const tableTitle = sanitizePreviewText(table.title, '');
+  const headers = useMemo(
+    () => {
+      const rawHeaders = Array.isArray(table.headers) ? (table.headers as unknown[]) : [];
+      return rawHeaders.map((header, headerIndex) =>
+        sanitizePreviewValue(header, `列${headerIndex + 1}`));
+    },
+    [table],
+  );
+  const rows = useMemo(
+    () => (Array.isArray(table.rows) ? (table.rows as unknown[][]) : []),
+    [table],
+  );
+
+  const tableColumns = useMemo(
+    () => headers.map((header) => ({ title: header, dataIndex: header, key: header })),
+    [headers],
+  );
+
+  const tableData = useMemo(
+    () =>
+      rows.map((row, rowIndex) => {
+        const record: Record<string, unknown> = { key: `${index}-${rowIndex}` };
+        headers.forEach((header, colIndex) => {
+          record[header] = sanitizePreviewValue(row[colIndex], TEXT.missingPreviewCell);
+        });
+        return record;
+      }),
+    [headers, index, rows],
+  );
+
+  if (tableColumns.length === 0) {
+    return null;
+  }
+
+  return (
+    <div style={{ marginTop: withTopMargin ? 12 : 0 }}>
+      {tableTitle ? (
+        <Text strong style={{ display: 'block', marginBottom: 8 }}>
+          {tableTitle}
+        </Text>
+      ) : null}
+      <Table
+        size="small"
+        columns={tableColumns}
+        dataSource={tableData}
+        pagination={false}
+        scroll={{ x: 'max-content' }}
+      />
+    </div>
+  );
+}
+
+function ReportSectionView({ section }: { section: ReportSection }) {
+  const sectionTitle = sanitizePreviewText(section.title, TEXT.untitledReport);
+  const sectionContent = sanitizePreviewText(section.content, TEXT.missingSectionContent);
+  const tableFirst = shouldRenderTablesBeforeContent(sectionTitle);
+  const charts = Array.isArray(section.charts)
+    ? (section.charts as Record<string, unknown>[])
+    : [];
+  const tables = Array.isArray(section.tables)
+    ? (section.tables as Record<string, unknown>[])
+    : [];
+
+  const chartOptions = useMemo(
+    () => charts
+      .map((chart) => ({
+        title: typeof chart.title === 'string' ? chart.title : '',
+        option: buildChartOption(chart),
+      }))
+      .filter((item): item is { title: string; option: NonNullable<ReturnType<typeof buildChartOption>> } => Boolean(item.option)),
+    [charts],
+  );
+
+  return (
+    <Card size="small" style={{ marginTop: 12 }} title={sectionTitle}>
+      {tableFirst ? (
+        tables.map((table, index) => (
+          <ReportTableView key={`${section.title}-table-${index}`} table={table} index={index} />
+        ))
+      ) : null}
+
+      {sectionContent ? (
+        <Paragraph
+          type={tableFirst ? 'secondary' : undefined}
+          style={{ marginTop: tableFirst && tables.length > 0 ? 12 : 0, marginBottom: 0 }}
+        >
+          {sectionContent}
+        </Paragraph>
+      ) : null}
+
+      {chartOptions.map((item, index) => (
+        <div key={`${section.title}-chart-${index}`} style={{ marginTop: 12 }}>
+          {item.title ? (
+            <Text strong style={{ display: 'block', marginBottom: 8 }}>
+              {item.title}
+            </Text>
+          ) : null}
+          <ReactECharts style={{ height: 280 }} option={item.option} />
+        </div>
+      ))}
+
+      {!tableFirst ? (
+        tables.map((table, index) => (
+          <ReportTableView key={`${section.title}-table-${index}`} table={table} index={index} />
+        ))
       ) : null}
 
       {(section.alerts ?? []).map((alert, idx) => (
-        <Paragraph key={idx} type="warning">
-          {(alert as { message?: string }).message ?? ''}
-        </Paragraph>
+        <Alert
+          key={idx}
+          showIcon
+          type="warning"
+          style={{ marginTop: 12 }}
+          message={(alert as { message?: string }).message ?? ''}
+        />
       ))}
     </Card>
   );

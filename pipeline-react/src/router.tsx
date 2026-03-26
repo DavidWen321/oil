@@ -1,9 +1,10 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import { Spin } from 'antd';
-import MainLayout from './components/layout/MainLayout';
 import { useUserStore } from './stores/userStore';
 
+// 懒加载页面组件
+const MainLayout = lazy(() => import('./components/layout/MainLayout'));
 const Login = lazy(() => import('./pages/auth/Login'));
 const Dashboard = lazy(() => import('./pages/dashboard/Dashboard'));
 
@@ -53,7 +54,9 @@ export const router = createBrowserRouter([
     path: '/',
     element: (
       <ProtectedRoute>
-        <MainLayout />
+        <Suspense fallback={<Loading />}>
+          <MainLayout />
+        </Suspense>
       </ProtectedRoute>
     ),
     children: [

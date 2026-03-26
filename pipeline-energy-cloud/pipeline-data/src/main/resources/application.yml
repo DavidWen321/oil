@@ -6,15 +6,9 @@ spring:
     name: pipeline-data
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-<<<<<<< Updated upstream
-    url: jdbc:mysql://localhost:3306/pipeline_cloud?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=false&serverTimezone=GMT%2B8
-    username: root
-    password: 123456
-=======
     url: jdbc:mysql://${PIPELINE_DB_HOST:127.0.0.1}:${PIPELINE_DB_PORT:3307}/pipeline_cloud?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=false&serverTimezone=GMT%2B8
     username: ${PIPELINE_DB_USERNAME:root}
     password: ${PIPELINE_DB_PASSWORD:root}
->>>>>>> Stashed changes
   cloud:
     nacos:
       discovery:
@@ -36,25 +30,3 @@ mybatis-plus:
 logging:
   level:
     com.pipeline.data: DEBUG
-
-knowledge:
-  document:
-    agent-base-url: http://localhost:8100
-    upload-path: /api/v1/knowledge/upload
-    delete-path: /api/v1/knowledge/document/{docId}
-    internal-token:
-    internal-key:
-    connect-timeout-ms: 5000
-    read-timeout-ms: 120000
-    legacy-base-path:
-    allowed-categories:
-      - standards
-      - formulas
-      - operations
-      - cases
-      - faq
-    minio:
-      endpoint: http://localhost:9000
-      access-key: minioadmin
-      secret-key: minioadmin
-      bucket: knowledge-base

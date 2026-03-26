@@ -105,7 +105,7 @@ export const agentApi = {
   ) {
     const response = await fetch(`${AGENT_API_BASE}/report/generate`, {
       method: 'POST',
-      headers: getAgentHeaders(true),
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         user_request: userRequest,
         session_id: sessionId,

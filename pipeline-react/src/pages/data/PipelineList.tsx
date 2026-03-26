@@ -1,29 +1,6 @@
-<<<<<<< Updated upstream
 /**
  * PipelineList - 管道参数管理页面
  */
-=======
-﻿import { useEffect, useMemo, useState } from 'react';
-import {
-  Button,
-  Card,
-  Form,
-  Input,
-  InputNumber,
-  Modal,
-  Popconfirm,
-  Select,
-  Space,
-  Table,
-  message,
-} from 'antd';
-import type { ColumnsType } from 'antd/es/table';
-import { DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
-import { pipelineApi, projectApi } from '../../api';
-import type { Pipeline, Project } from '../../types';
-import AnimatedPage from '../../components/common/AnimatedPage';
-import useTablePagination from '../../hooks/useTablePagination';
->>>>>>> Stashed changes
 
 import { useState, useEffect } from 'react';
 import { Card, Button, Space, Modal, Form, Input, InputNumber, message, Popconfirm, Tooltip, Row, Col } from 'antd';
@@ -62,45 +39,10 @@ export default function PipelineList() {
     }
   };
 
-<<<<<<< Updated upstream
   const handleAdd = () => {
     setEditingItem(null);
     form.resetFields();
     setModalVisible(true);
-=======
-  useEffect(() => {
-    void loadProjects();
-  }, []);
-
-  useEffect(() => {
-    if (selectedProjectId) {
-      void loadPipelines(selectedProjectId);
-    }
-  }, [selectedProjectId]);
-
-  const filteredPipelines = useMemo(() => {
-    const normalized = keyword.trim().toLowerCase();
-    if (!normalized) {
-      return pipelines;
-    }
-
-    return pipelines.filter((pipeline) => pipeline.name.toLowerCase().includes(normalized));
-  }, [keyword, pipelines]);
-  const { pagination, resetPagination } = useTablePagination(filteredPipelines.length);
-
-  useEffect(() => {
-    resetPagination();
-  }, [keyword, selectedProjectId, resetPagination]);
-
-  const handleCreate = () => {
-    if (!selectedProjectId) {
-      message.warning('请先创建项目');
-      return;
-    }
-    setEditing(null);
-    form.setFieldsValue({ ...(EMPTY_PIPELINE as Pipeline), proId: selectedProjectId });
-    setOpen(true);
->>>>>>> Stashed changes
   };
 
   const handleEdit = (record: Pipeline) => {
@@ -145,7 +87,6 @@ export default function PipelineList() {
   );
 
   const columns: ColumnsType<Pipeline> = [
-<<<<<<< Updated upstream
     {
       title: nowrapTitle('编号'),
       dataIndex: 'id',
@@ -245,32 +186,6 @@ export default function PipelineList() {
                 className={styles.actionBtn}
             >
               编辑
-=======
-    { title: '管道名称', dataIndex: 'name', width: 220, ellipsis: true },
-    { title: '长度(km)', dataIndex: 'length', width: 120, align: 'center' },
-    { title: '外径(mm)', dataIndex: 'diameter', width: 120, align: 'center' },
-    { title: '壁厚(mm)', dataIndex: 'thickness', width: 120, align: 'center' },
-    { title: '起点高程(m)', dataIndex: 'startAltitude', width: 140, align: 'center' },
-    { title: '终点高程(m)', dataIndex: 'endAltitude', width: 140, align: 'center' },
-    {
-      title: '操作',
-      key: 'actions',
-      width: 220,
-      align: 'center',
-      render: (_, pipeline) => (
-        <Space size="middle" style={{ width: '100%', justifyContent: 'center' }} wrap={false}>
-          <Button icon={<EditOutlined />} onClick={() => handleEdit(pipeline)}>
-            编辑
-          </Button>
-          <Popconfirm
-            title="确认删除这条管道吗？"
-            okText="删除"
-            cancelText="取消"
-            onConfirm={() => void handleDelete(pipeline.id)}
-          >
-            <Button danger icon={<DeleteOutlined />}>
-              删除
->>>>>>> Stashed changes
             </Button>
             <Popconfirm
                 title="确定删除吗？"
@@ -296,7 +211,6 @@ export default function PipelineList() {
   ];
 
   return (
-<<<<<<< Updated upstream
       <AnimatedPage className={styles.page}>
         <div className={styles.pageContent}>
           <header className={styles.header}>
@@ -312,51 +226,6 @@ export default function PipelineList() {
               </div>
             </div>
           </header>
-=======
-    <AnimatedPage>
-      <Card
-        title="管道参数管理"
-        extra={
-          <Space>
-            <Select<number>
-              style={{ width: 240 }}
-              placeholder="请选择项目"
-              value={selectedProjectId ?? undefined}
-              onChange={setSelectedProjectId}
-              options={projects.map((project) => ({ value: project.proId, label: project.name }))}
-            />
-            <Input.Search
-              placeholder="搜索管道名称"
-              allowClear
-              value={keyword}
-              onChange={(event) => setKeyword(event.target.value)}
-              style={{ width: 220 }}
-            />
-            <Button
-              icon={<ReloadOutlined />}
-              onClick={() => selectedProjectId && void loadPipelines(selectedProjectId)}
-              loading={loading}
-            >
-              刷新
-            </Button>
-            <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>
-              新建管道
-            </Button>
-          </Space>
-        }
-      >
-        <Table<Pipeline>
-          rowKey="id"
-          loading={loading}
-          size="middle"
-          tableLayout="fixed"
-          columns={columns}
-          dataSource={filteredPipelines}
-          scroll={{ x: 1080 }}
-          pagination={pagination}
-        />
-      </Card>
->>>>>>> Stashed changes
 
           <Card className={styles.tableCard} bordered={false}>
             <div className={styles.toolbar}>

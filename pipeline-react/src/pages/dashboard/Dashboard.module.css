@@ -63,7 +63,6 @@
   margin: 0;
 }
 
-<<<<<<< Updated upstream
 .headerActions {
   display: flex;
   align-items: center;
@@ -140,12 +139,6 @@
 
 /* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺? * 3. 缁熻鍗＄墖
  * 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?*/
-=======
-/* 实时指示器 */
-/* ═══════════════════════════════════════════════════════════════════════════
- * 3. 统计卡片
- * ═══════════════════════════════════════════════════════════════════════════ */
->>>>>>> Stashed changes
 .statsGrid {
   gap: var(--space-5);
   margin-bottom: var(--space-8);
@@ -293,26 +286,14 @@
 /* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺? * 4. 鍥捐〃鍖哄煙
  * 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?*/
 .chartsSection {
-<<<<<<< Updated upstream
   gap: var(--space-5);
   align-items: stretch;
-=======
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-6);
-  align-items: start;
-  width: 100%;
->>>>>>> Stashed changes
   margin-bottom: var(--space-8);
 }
 
 .chartCard {
-<<<<<<< Updated upstream
   display: flex;
   flex-direction: column;
-=======
-  min-width: 0;
->>>>>>> Stashed changes
   background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-xl);
@@ -405,11 +386,6 @@
 /* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺? * 5. 搴曢儴鍖哄煙
  * 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?*/
 .bottomSection {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-6);
-  align-items: start;
-  width: 100%;
 }
 
 @media (min-width: 1280px) {
@@ -446,7 +422,6 @@
 
 /* 棰勮鍗＄墖 */
 .alertCard {
-  min-width: 0;
   background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-xl);
@@ -575,7 +550,6 @@
 
 /* 璁惧鍗＄墖 */
 .deviceCard {
-  min-width: 0;
   background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-xl);
@@ -644,12 +618,10 @@
   }
 
   .chartsSection {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: var(--space-5);
   }
 
   .bottomSection {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: var(--space-5);
   }
 }
@@ -784,6 +756,13 @@
     font-size: var(--text-sm);
   }
 
+  .headerActions {
+    width: 100%;
+    justify-content: flex-start;
+    margin-top: var(--space-4);
+    flex-wrap: wrap;
+  }
+
   .statsGrid {
     gap: var(--space-4);
     margin-bottom: var(--space-6);
@@ -802,13 +781,11 @@
   }
 
   .chartsSection {
-    grid-template-columns: 1fr;
     gap: var(--space-4);
     margin-bottom: var(--space-6);
   }
 
   .bottomSection {
-    grid-template-columns: 1fr;
     gap: var(--space-4);
   }
 
@@ -832,6 +809,20 @@
 
   .pageTitle {
     font-size: var(--text-xl);
+  }
+
+  .headerActions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .headerButton {
+    font-size: var(--text-xs);
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .liveIndicator {
+    order: -1;
   }
 
   .statsGrid {
@@ -862,7 +853,6 @@
 
   .chartsSection,
   .bottomSection {
-    grid-template-columns: 1fr;
     gap: var(--space-4);
     margin-bottom: var(--space-5);
   }
@@ -899,6 +889,25 @@
     font-size: var(--text-xs);
   }
 
+  .headerActions {
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .headerButton {
+    flex: 1;
+    min-width: 120px;
+    justify-content: center;
+    font-size: var(--text-xs);
+    padding: var(--space-2-5) var(--space-3);
+  }
+
+  .liveIndicator {
+    width: 100%;
+    justify-content: center;
+    order: -1;
+  }
+
   .statsGrid {
     gap: var(--space-3);
     margin-bottom: var(--space-5);
@@ -927,7 +936,6 @@
   }
 
   .chartsSection {
-    grid-template-columns: 1fr;
     gap: var(--space-3);
     margin-bottom: var(--space-4);
   }
@@ -950,7 +958,6 @@
   }
 
   .bottomSection {
-    grid-template-columns: 1fr;
     gap: var(--space-3);
   }
 
@@ -1028,6 +1035,15 @@
     border-radius: var(--radius-lg);
   }
 
+  .headerButton {
+    font-size: 10px;
+    padding: var(--space-2);
+  }
+
+  .liveIndicator {
+    padding: var(--space-1-5) var(--space-3);
+    font-size: var(--text-xs);
+  }
 }
 
 /* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺? * 7. 鍑忓皯鍔ㄧ敾鍋忓ソ
@@ -1046,6 +1062,9 @@
     transition: none;
   }
 
+  .liveDot {
+    animation: none;
+  }
 }
 
 
