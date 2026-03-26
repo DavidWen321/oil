@@ -1,11 +1,10 @@
-/**
+﻿/**
  * 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺? *  Dashboard - 娌规皵绠￠亾鏅鸿兘鐩戞祴绯荤粺
  *  璁捐鐞嗗康: Apple + Linear + Vercel 鏋佺畝涓讳箟椋庢牸
  * 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺? */
 
-import { useEffect, useState, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { motion } from 'motion/react'
-import { useNavigate } from 'react-router-dom'
 import type { EChartsOption } from 'echarts'
 import {
   RiDropLine,
@@ -14,13 +13,10 @@ import {
   RiArrowRightSLine,
   RiTimeLine,
   RiMapPinLine,
-  RiSettings3Line,
-  RiRefreshLine,
   RiArrowUpLine,
   RiArrowDownLine,
   RiFlashlightLine,
   RiPulseLine,
-  RiBarChartBoxLine,
   RiDashboardLine,
 } from 'react-icons/ri'
 import AnimatedPage from '../../components/common/AnimatedPage'
@@ -166,16 +162,16 @@ interface DashboardSnapshot {
 
 const flowSeriesBase: DashboardSnapshot['flow'] = {
   '24h': {
-    current: [2100, 2250, 2680, 2890, 2750, 2920, 2847],
-    previous: [1900, 2100, 2400, 2600, 2500, 2700, 2530],
+    current: [2050, 2140, 2260, 2410, 2580, 2720, 2840, 2910, 2890, 2870, 2920, 2895, 2847],
+    previous: [1910, 1980, 2070, 2190, 2320, 2440, 2550, 2630, 2660, 2690, 2725, 2660, 2530],
   },
   '7d': {
     current: [2520, 2610, 2750, 2880, 2810, 2950, 2847],
     previous: [2380, 2460, 2590, 2670, 2710, 2790, 2730],
   },
   '30m': {
-    current: [2760, 2790, 2810, 2840, 2825, 2860, 2847],
-    previous: [2700, 2720, 2745, 2760, 2780, 2790, 2805],
+    current: [2745, 2760, 2772, 2788, 2805, 2820, 2836, 2844, 2856, 2850, 2847],
+    previous: [2700, 2712, 2720, 2735, 2746, 2760, 2772, 2780, 2790, 2798, 2805],
   },
 }
 
@@ -255,12 +251,8 @@ function createDashboardSnapshot(seed: number): DashboardSnapshot {
   }
 }
 export default function Dashboard() {
-  const navigate = useNavigate()
-  const [currentTime, setCurrentTime] = useState(new Date())
   const [activeTimeRange, setActiveTimeRange] = useState<TimeRangeKey>('24h')
-  const [refreshSeed, setRefreshSeed] = useState(() => Date.now())
-  const [isRefreshing, setIsRefreshing] = useState(false)
-  const dashboardSnapshot = useMemo(() => createDashboardSnapshot(refreshSeed), [refreshSeed])
+  const dashboardSnapshot = useMemo(() => createDashboardSnapshot(Date.now()), [])
   const flowChart = useChartConfig()
   const pressureChart = useChartConfig({ mobileSvg: false })
   const energyChart = useChartConfig()
@@ -268,19 +260,6 @@ export default function Dashboard() {
   useChartGesture(flowChart.containerRef)
   useChartGesture(pressureChart.containerRef)
   useChartGesture(energyChart.containerRef)
-
-  // 瀹炴椂鏃堕挓
-  useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000)
-    return () => clearInterval(timer)
-  }, [])
-
-  const handleRefresh = () => {
-    setIsRefreshing(true)
-    setRefreshSeed(Date.now())
-    setCurrentTime(new Date())
-    window.setTimeout(() => setIsRefreshing(false), 450)
-  }
 
   // 统计卡片数据
   const statsData: StatCardData[] = useMemo(() => [
@@ -387,7 +366,7 @@ export default function Dashboard() {
         return {
           subtitle: '最近30分钟分钟级流量监控',
           compareLabel: '上一时段',
-          xAxis: ['00分', '05分', '10分', '15分', '20分', '25分', '30分'],
+          xAxis: ['00分', '03分', '06分', '09分', '12分', '15分', '18分', '21分', '24分', '27分', '30分'],
           current: dashboardSnapshot.flow['30m'].current,
           previous: dashboardSnapshot.flow['30m'].previous,
         }
@@ -395,7 +374,7 @@ export default function Dashboard() {
         return {
           subtitle: '24小时实时流量监控',
           compareLabel: '昨日流量',
-          xAxis: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00'],
+          xAxis: ['00:00', '02:00', '04:00', '06:00', '08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00', '24:00'],
           current: dashboardSnapshot.flow['24h'].current,
           previous: dashboardSnapshot.flow['24h'].previous,
         }
@@ -404,7 +383,9 @@ export default function Dashboard() {
 
   const flowTrendOption = useMemo<EChartsOption>(() => ({
     ...chartTheme,
-    grid: flowChart.isCompact ? flowChart.grid : { ...flowChart.grid, top: 24, right: 10, bottom: 16, left: 8 },
+    grid: flowChart.isCompact
+      ? flowChart.grid
+      : { ...flowChart.grid, top: 28, right: 18, bottom: 22, left: 20 },
     tooltip: {
       ...chartTheme.tooltip,
       ...flowChart.tooltipConf,
@@ -423,8 +404,8 @@ export default function Dashboard() {
       ...chartTheme.yAxis,
       type: 'value' as const,
       name: 'm3/h',
-      nameTextStyle: { color: colors.textTertiary, fontSize: 11 },
-      splitNumber: 4,
+      nameTextStyle: { color: colors.textTertiary, fontSize: 12, padding: [0, 0, 8, 0] },
+      splitNumber: 5,
       min: ({ min }: { min: number }) => Math.floor((min - 160) / 100) * 100,
       max: ({ max }: { max: number }) => Math.ceil((max + 120) / 100) * 100,
     },
@@ -432,26 +413,47 @@ export default function Dashboard() {
       {
         name: '实时流量',
         type: 'line' as const,
-        smooth: true,
-        symbol: 'none',
+        smooth: 0.28,
+        showSymbol: true,
+        symbol: 'circle',
+        symbolSize: flowChart.isCompact ? 5 : 7,
         lineStyle: {
-          width: 3,
+          width: 4,
           color: colors.primary,
           shadowColor: 'rgba(0, 122, 255, 0.25)',
           shadowBlur: 8,
         },
-        areaStyle: { opacity: 0.25 },
+        itemStyle: {
+          color: colors.primary,
+          borderColor: '#FFFFFF',
+          borderWidth: 2,
+        },
+        areaStyle: {
+          opacity: 0.28,
+          color: {
+            type: 'linear',
+            x: 0,
+            y: 0,
+            x2: 0,
+            y2: 1,
+            colorStops: [
+              { offset: 0, color: 'rgba(0, 122, 255, 0.28)' },
+              { offset: 1, color: 'rgba(0, 122, 255, 0.05)' },
+            ],
+          },
+        },
         data: flowRangeConfig.current,
       },
       {
         name: flowRangeConfig.compareLabel,
         type: 'line' as const,
-        smooth: true,
+        smooth: 0.24,
         symbol: 'none',
         lineStyle: {
-          width: 2,
+          width: 3,
           color: colors.purple,
           type: 'dashed' as const,
+          opacity: 0.9,
         },
         data: flowRangeConfig.previous,
       },
@@ -469,10 +471,10 @@ export default function Dashboard() {
 
   const pressureDistOption = useMemo<EChartsOption>(() => {
     const radarLayout = pressureChart.isCompact
-      ? { center: ['50%', '61%'], radius: '48%', nameGap: 6, fontSize: 10, splitNumber: 3 }
+      ? { center: ['50%', '58%'], radius: '56%', nameGap: 8, fontSize: 10, splitNumber: 4 }
       : pressureChart.isMedium
-        ? { center: ['50%', '59%'], radius: '52%', nameGap: 8, fontSize: 11, splitNumber: 4 }
-        : { center: ['50%', '57%'], radius: '56%', nameGap: 10, fontSize: 11, splitNumber: 4 }
+        ? { center: ['50%', '56%'], radius: '63%', nameGap: 10, fontSize: 12, splitNumber: 4 }
+        : { center: ['50%', '55%'], radius: '70%', nameGap: 12, fontSize: 12, splitNumber: 5 }
 
     return {
       ...chartTheme,
@@ -514,9 +516,9 @@ export default function Dashboard() {
       series: [{
         type: 'radar' as const,
         symbol: 'circle',
-        symbolSize: 6,
+        symbolSize: pressureChart.isCompact ? 6 : 8,
         lineStyle: {
-          width: 2,
+          width: 3,
           color: colors.cyan,
         },
         itemStyle: {
@@ -525,7 +527,7 @@ export default function Dashboard() {
           borderWidth: 2,
         },
         areaStyle: {
-          color: 'rgba(50, 173, 230, 0.15)',
+          color: 'rgba(50, 173, 230, 0.22)',
         },
         data: [{
           value: dashboardSnapshot.pressure,
@@ -625,33 +627,6 @@ export default function Dashboard() {
                 油气管道实时数据监控与智能分析平台</p>
             </div>
 
-            <div className={styles.headerActions}>
-              <div className={styles.liveIndicator}>
-                <span className={styles.liveDot} />
-                <span className={styles.liveText}>实时</span>
-                <span className={styles.liveTime}>
-                  {currentTime.toLocaleTimeString('zh-CN', { hour12: false })}
-                </span>
-              </div>
-
-              <button
-                className={styles.headerButton}
-                onClick={handleRefresh}
-                type="button"
-              >
-                <RiRefreshLine size={16} style={isRefreshing ? { transform: 'rotate(180deg)', transition: 'transform 0.3s ease' } : undefined} />
-                {isRefreshing ? '刷新中...' : '刷新数据'}
-              </button>
-
-              <button
-                className={`${styles.headerButton} ${styles.headerButtonPrimary}`}
-                onClick={() => navigate('/settings')}
-                type="button"
-              >
-                <RiSettings3Line size={16} />
-                系统设置
-              </button>
-            </div>
           </div>
         </header>
 
@@ -748,12 +723,6 @@ export default function Dashboard() {
                 <h3 className={styles.chartTitle}>能耗分析</h3>
                 <p className={styles.chartSubtitle}>各泵站能耗对比与优化建议</p>
               </div>
-              <div className={styles.chartActions}>
-                <button className={styles.chartActionBtn}>
-                  <RiBarChartBoxLine size={14} />
-                  详细报告
-                </button>
-              </div>
             </div>
             <div className={`${styles.chartContainer} ${styles.chartContainerLarge}`} ref={energyChart.containerRef}>
               <Chart option={energyOption} renderer={energyChart.renderer} />
@@ -771,11 +740,6 @@ export default function Dashboard() {
                 实时预警
                 <span className={styles.alertBadge}>{alertsData.filter(a => a.type === 'critical').length}</span>
               </h3>
-              <button
-                className={styles.alertViewAll}
-                onClick={() => navigate('/features/monitor')}
-                type="button"
-              >查看全部</button>
             </div>
 
             <AnimatedListContainer className={styles.alertList}>

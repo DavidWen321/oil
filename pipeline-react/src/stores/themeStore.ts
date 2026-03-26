@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { createSafePersistStorage } from './safePersistStorage';
 
 type ThemeMode = 'light' | 'dark' | 'system';
 
@@ -36,6 +37,7 @@ export const useThemeStore = create<ThemeState>()(
     }),
     {
       name: 'theme-storage',
+      storage: createSafePersistStorage<ThemeState>(),
       onRehydrateStorage: () => (state) => {
         if (!state) return;
         const resolved = resolveTheme(state.mode);
@@ -56,4 +58,3 @@ if (typeof window !== 'undefined') {
     }
   });
 }
-

@@ -18,6 +18,7 @@ import ReactECharts from 'echarts-for-react';
 import { calculationApi, oilPropertyApi, pipelineApi, projectApi, pumpStationApi } from '../../api';
 import type { OilProperty, OptimizationParams, OptimizationResult, Pipeline, Project, PumpStation } from '../../types';
 import AnimatedPage from '../../components/common/AnimatedPage';
+import { useCalculationLinkStore } from '../../stores/calculationLinkStore';
 import styles from './Optimization.module.css';
 
 const FORM_ITEM_SPAN = { xs: 24, md: 12, xl: 8 } as const;
@@ -153,14 +154,29 @@ export default function Optimization() {
 
   const handleSubmit = async () => {
     const values = await form.validateFields();
-    const payload = { ...values };
+    const payload = {
+      ...values,
+      projectId: selectedProjectId ?? values.projectId,
+    };
     delete payload.pipelineId;
     delete payload.oilId;
     delete payload.pumpStationId;
     setLoading(true);
     try {
       const response = await calculationApi.optimization(payload);
-      setResult(response.data ?? null);
+      const nextResult = response.data ?? null;
+      setResult(nextResult);
+      if (nextResult) {
+        const project = projects.find((item) => item.proId === (payload.projectId ?? null));
+        useCalculationLinkStore.getState().linkCalculation({
+          calcType: 'OPTIMIZATION',
+          projectId: payload.projectId ?? null,
+          projectName: project?.name ?? null,
+          input: payload as unknown as Record<string, unknown>,
+          output: nextResult as unknown as Record<string, unknown>,
+          updatedAt: new Date().toISOString(),
+        });
+      }
       message.success('优化计算完成');
     } finally {
       setLoading(false);

@@ -21,7 +21,12 @@ public enum CalcTypeEnum {
     /**
      * 泵站优化
      */
-    OPTIMIZATION("OPTIMIZATION", "泵站优化");
+    OPTIMIZATION("OPTIMIZATION", "泵站优化"),
+
+    /**
+     * 敏感性分析
+     */
+    SENSITIVITY("SENSITIVITY", "敏感性分析");
 
     /**
      * 类型编码

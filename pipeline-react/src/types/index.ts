@@ -1,4 +1,4 @@
-﻿// ========== 閫氱敤绫诲瀷 ==========
+// ========== 通用类型 ==========
 
 export interface R<T> {
   code: number;
@@ -18,7 +18,46 @@ export interface PageResult<T> {
   pageSize: number;
 }
 
-// ========== 鐢ㄦ埛璁よ瘉 ==========
+export interface AnalysisReport {
+  id: number;
+  proId?: number;
+  pipelineId?: number;
+  reportNo?: string;
+  reportType?: string;
+  reportTitle?: string;
+  reportSummary?: string;
+  fileName?: string;
+  filePath?: string;
+  fileFormat?: string;
+  fileSize?: number;
+  historyIds?: string;
+  status?: number;
+  errorMsg?: string;
+  createBy?: string;
+  createTime?: string;
+  updateTime?: string;
+}
+
+export interface CalculationHistory {
+  id: number;
+  calcType?: string;
+  calcTypeName?: string;
+  projectId?: number;
+  projectName?: string;
+  userId?: number;
+  userName?: string;
+  inputParams?: string;
+  outputResult?: string;
+  status?: number;
+  statusName?: string;
+  errorMessage?: string;
+  calcDuration?: number;
+  calcDurationFormatted?: string;
+  remark?: string;
+  createTime?: string;
+}
+
+// ========== 用户认证 ==========
 
 export interface LoginParams {
   username: string;
@@ -40,7 +79,7 @@ export interface UserInfo {
   roles: string[];
 }
 
-// ========== 鏁版嵁绠＄悊 ==========
+// ========== 数据管理 ==========
 
 export interface Project {
   proId: number;
@@ -91,9 +130,10 @@ export interface OilProperty {
   updateTime?: string;
 }
 
-// ========== 姓力分析 ==========
+// ========== 水力分析 ==========
 
 export interface HydraulicAnalysisParams {
+  projectId?: number;
   pipelineId?: number;
   oilId?: number;
   flowRate: number;
@@ -299,7 +339,7 @@ export interface DiagnosisMetrics {
   energyStatus: string;
 }
 
-// ========== 澶氭柟妗堝姣?==========
+// ========== 多方案对比 ==========
 
 export interface ComparisonRequest {
   projectId: number;
@@ -391,7 +431,7 @@ export interface RecommendedScheme {
   };
 }
 
-// ========== 纰虫帓鏀炬牳绠?==========
+// ========== 碳排放核算 ==========
 
 export interface CarbonCalculationRequest {
   projectId: number;
@@ -464,7 +504,7 @@ export interface CarbonQuota {
   projectedTradingAmount: number;
 }
 
-// ========== 瀹炴椂鐩戞帶 ==========
+// ========== 实时监控 ==========
 
 export interface MonitorDataPoint {
   dataId: string;
@@ -521,7 +561,7 @@ export interface AlarmRule {
   description: string;
 }
 
-// ========== 鍓嶇鐩戞帶绫诲瀷 ==========
+// ========== 前端监控类型 ==========
 
 export interface MonitorData {
   pipelineId: number;
@@ -557,4 +597,3 @@ export interface AlarmInfo {
 }
 
 export * from './agent';
-

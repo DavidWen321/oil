@@ -1,11 +1,13 @@
-﻿import { http } from './request';
+import { http } from './request';
 import type {
   AlarmMessage,
   AlarmRule,
+  AnalysisReport,
   CarbonCalculationRequest,
   CarbonCalculationResult,
   ComparisonRequest,
   ComparisonResult,
+  CalculationHistory,
   DiagnosisRequest,
   DiagnosisResult,
   HydraulicAnalysisParams,
@@ -16,6 +18,7 @@ import type {
   OilProperty,
   OptimizationParams,
   OptimizationResult,
+  PageResult,
   Pipeline,
   Project,
   PumpStation,
@@ -103,8 +106,7 @@ export const monitorApi = {
   getCurrentData: (pipelineId: number) =>
     http.get<R<MonitorDataPoint>>(`/calculation/monitor/current/${pipelineId}`),
   getAllCurrentData: () => http.get<R<MonitorDataPoint[]>>('/calculation/monitor/current/all'),
-  receiveData: (data: MonitorDataPoint) =>
-    http.post<R<void>>('/calculation/monitor/data', data),
+  receiveData: (data: MonitorDataPoint) => http.post<R<void>>('/calculation/monitor/data', data),
   getActiveAlarms: (pipelineId?: number) =>
     http.get<R<AlarmMessage[]>>('/calculation/monitor/alarms', { params: { pipelineId } }),
   acknowledgeAlarm: (alarmId: string, userId: string) =>
@@ -133,5 +135,42 @@ export const statisticsApi = {
     }),
 };
 
+export const reportApi = {
+  page: (params?: {
+    reportType?: string;
+    projectId?: number;
+    userId?: number;
+    pageNum?: number;
+    pageSize?: number;
+  }) => http.get<R<PageResult<AnalysisReport>>>('/calculation/report/page', { params }),
+  recent: (limit = 10, userId?: number) =>
+    http.get<R<AnalysisReport[]>>('/calculation/report/recent', {
+      params: { limit, userId },
+    }),
+  detail: (id: number) => http.get<R<AnalysisReport>>(`/calculation/report/${id}`),
+  delete: (id: number) => http.delete<R<void>>(`/calculation/report/${id}`),
+};
 
-
+export const calculationHistoryApi = {
+  page: (params?: {
+    calcType?: string;
+    projectId?: number;
+    userId?: number;
+    status?: number;
+    pageNum?: number;
+    pageSize?: number;
+    keyword?: string;
+  }) => http.get<R<PageResult<CalculationHistory>>>('/calculation/history/page', { params }),
+  byProject: (
+    projectId: number,
+    params?: {
+      pageNum?: number;
+      pageSize?: number;
+      calcType?: string;
+    },
+  ) =>
+    http.get<R<PageResult<CalculationHistory>>>(`/calculation/history/project/${projectId}`, {
+      params,
+    }),
+  detail: (id: number) => http.get<R<CalculationHistory>>(`/calculation/history/${id}`),
+};

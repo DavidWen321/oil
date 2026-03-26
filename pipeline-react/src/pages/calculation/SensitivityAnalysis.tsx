@@ -18,6 +18,7 @@ import ReactECharts from 'echarts-for-react';
 import AnimatedPage from '../../components/common/AnimatedPage';
 import styles from './SensitivityAnalysis.module.css';
 import { calculationApi, oilPropertyApi, pipelineApi, projectApi, pumpStationApi } from '../../api';
+import { useCalculationLinkStore } from '../../stores/calculationLinkStore';
 import type {
   HydraulicAnalysisParams,
   OilProperty,
@@ -172,10 +173,42 @@ export default function SensitivityAnalysis() {
   const handleSubmit = async () => {
     const values = await form.validateFields();
     const { variableType, ...params } = values;
+    const payload = {
+      ...params,
+      projectId: selectedProjectId ?? params.projectId,
+    };
     setLoading(true);
     try {
-      const response = await calculationApi.quickSensitivityAnalysis(variableType, params);
-      setResult(response.data ?? null);
+      const response = await calculationApi.quickSensitivityAnalysis(variableType, payload);
+      const nextResult = response.data ?? null;
+      setResult(nextResult);
+      if (nextResult) {
+        const project = projects.find((item) => item.proId === (payload.projectId ?? null));
+        const selectedVariable = variables.find((item) => item.code === variableType);
+        useCalculationLinkStore.getState().linkCalculation({
+          calcType: 'SENSITIVITY',
+          projectId: payload.projectId ?? null,
+          projectName: project?.name ?? null,
+          input: {
+            projectId: payload.projectId ?? null,
+            projectName: project?.name ?? null,
+            analysisType: 'SINGLE',
+            baseParams: payload,
+            variables: [
+              {
+                variableType,
+                variableName: selectedVariable?.name ?? variableType,
+                unit: selectedVariable?.unit ?? '',
+                startPercent: selectedVariable?.minChangePercent ?? -20,
+                endPercent: selectedVariable?.maxChangePercent ?? 20,
+                stepPercent: 5,
+              },
+            ],
+          },
+          output: nextResult as unknown as Record<string, unknown>,
+          updatedAt: new Date().toISOString(),
+        });
+      }
       message.success('敏感性分析完成');
     } finally {
       setLoading(false);

@@ -1,9 +1,7 @@
-/*
- * 管道能耗分析系统 - 数据库升级脚本
- * 版本: v1.1.0
- * 日期: 2025-12-28
- * 说明: 新增计算历史、分析报告、敏感性分析、操作日志等表
- */
+﻿/*
+ * 绠￠亾鑳借€楀垎鏋愮郴缁?- 鏁版嵁搴撳崌绾ц剼鏈? * 鐗堟湰: v1.1.0
+ * 鏃ユ湡: 2025-12-28
+ * 璇存槑: 鏂板璁＄畻鍘嗗彶銆佸垎鏋愭姤鍛娿€佹晱鎰熸€у垎鏋愩€佹搷浣滄棩蹇楃瓑琛? */
 
 USE `pipeline_cloud`;
 
@@ -11,86 +9,82 @@ SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
 
 -- ============================================================
--- 6. 计算历史记录表 (t_calculation_history)
--- 用途: 保存水力分析和优化计算的历史记录，支持对比分析
--- ============================================================
+-- 6. 璁＄畻鍘嗗彶璁板綍琛?(t_calculation_history)
+-- 鐢ㄩ€? 淇濆瓨姘村姏鍒嗘瀽鍜屼紭鍖栬绠楃殑鍘嗗彶璁板綍锛屾敮鎸佸姣斿垎鏋?-- ============================================================
 DROP TABLE IF EXISTS `t_calculation_history`;
 CREATE TABLE `t_calculation_history` (
-    `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-    `pro_id` bigint(20) NOT NULL COMMENT '项目ID',
-    `pipeline_id` bigint(20) NOT NULL COMMENT '管道ID',
-    `calc_type` varchar(50) NOT NULL COMMENT '计算类型: HYDRAULIC-水力分析, OPTIMIZATION-泵站优化',
-    `calc_name` varchar(100) DEFAULT NULL COMMENT '计算名称/备注',
+    `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '涓婚敭ID',
+    `pro_id` bigint(20) NOT NULL COMMENT '椤圭洰ID',
+    `pipeline_id` bigint(20) NOT NULL COMMENT '绠￠亾ID',
+    `calc_type` varchar(50) NOT NULL COMMENT '璁＄畻绫诲瀷: HYDRAULIC-姘村姏鍒嗘瀽, OPTIMIZATION-娉电珯浼樺寲',
+    `calc_name` varchar(100) DEFAULT NULL COMMENT '璁＄畻鍚嶇О/澶囨敞',
 
-    -- 输入参数(JSON格式存储完整参数)
-    `input_params` json NOT NULL COMMENT '输入参数JSON',
+    -- 杈撳叆鍙傛暟(JSON鏍煎紡瀛樺偍瀹屾暣鍙傛暟)
+    `input_params` json NOT NULL COMMENT '杈撳叆鍙傛暟JSON',
 
-    -- 核心计算结果
-    `flow_rate` decimal(12, 4) DEFAULT NULL COMMENT '流量(m³/h)',
-    `flow_velocity` decimal(12, 6) DEFAULT NULL COMMENT '流速(m/s)',
-    `reynolds_number` decimal(20, 4) DEFAULT NULL COMMENT '雷诺数',
-    `flow_regime` varchar(50) DEFAULT NULL COMMENT '流态: LAMINAR-层流, TRANSITION-过渡, HYDRAULIC_SMOOTH-水力光滑, MIXED_FRICTION-混合摩擦, ROUGH-粗糙',
-    `friction_factor` decimal(12, 8) DEFAULT NULL COMMENT '摩阻系数',
-    `friction_loss` decimal(16, 4) DEFAULT NULL COMMENT '沿程摩阻损失(m)',
-    `hydraulic_slope` decimal(12, 8) DEFAULT NULL COMMENT '水力坡降',
+    -- 鏍稿績璁＄畻缁撴灉
+    `flow_rate` decimal(12, 4) DEFAULT NULL COMMENT '娴侀噺(m鲁/h)',
+    `flow_velocity` decimal(12, 6) DEFAULT NULL COMMENT '娴侀€?m/s)',
+    `reynolds_number` decimal(20, 4) DEFAULT NULL COMMENT '闆疯鏁?,
+    `flow_regime` varchar(50) DEFAULT NULL COMMENT '娴佹€? LAMINAR-灞傛祦, TRANSITION-杩囨浮, HYDRAULIC_SMOOTH-姘村姏鍏夋粦, MIXED_FRICTION-娣峰悎鎽╂摝, ROUGH-绮楃硻',
+    `friction_factor` decimal(12, 8) DEFAULT NULL COMMENT '鎽╅樆绯绘暟',
+    `friction_loss` decimal(16, 4) DEFAULT NULL COMMENT '娌跨▼鎽╅樆鎹熷け(m)',
+    `hydraulic_slope` decimal(12, 8) DEFAULT NULL COMMENT '姘村姏鍧￠檷',
 
-    -- 优化结果(仅OPTIMIZATION类型)
-    `optimal_pump480` int(11) DEFAULT NULL COMMENT '最优方案-ZMI480泵数量',
-    `optimal_pump375` int(11) DEFAULT NULL COMMENT '最优方案-ZMI375泵数量',
-    `total_head` decimal(16, 4) DEFAULT NULL COMMENT '总扬程(m)',
-    `end_station_pressure` decimal(16, 4) DEFAULT NULL COMMENT '末站进站压力(m)',
-    `energy_consumption` decimal(20, 2) DEFAULT NULL COMMENT '年能耗(kWh)',
-    `annual_cost` decimal(20, 2) DEFAULT NULL COMMENT '年运行费用(元)',
+    -- 浼樺寲缁撴灉(浠匫PTIMIZATION绫诲瀷)
+    `optimal_pump480` int(11) DEFAULT NULL COMMENT '鏈€浼樻柟妗?ZMI480娉垫暟閲?,
+    `optimal_pump375` int(11) DEFAULT NULL COMMENT '鏈€浼樻柟妗?ZMI375娉垫暟閲?,
+    `total_head` decimal(16, 4) DEFAULT NULL COMMENT '鎬绘壃绋?m)',
+    `end_station_pressure` decimal(16, 4) DEFAULT NULL COMMENT '鏈珯杩涚珯鍘嬪姏(m)',
+    `energy_consumption` decimal(20, 2) DEFAULT NULL COMMENT '骞磋兘鑰?kWh)',
+    `annual_cost` decimal(20, 2) DEFAULT NULL COMMENT '骞磋繍琛岃垂鐢?鍏?',
 
-    -- 完整结果(JSON格式)
-    `output_result` json DEFAULT NULL COMMENT '完整输出结果JSON',
+    -- 瀹屾暣缁撴灉(JSON鏍煎紡)
+    `output_result` json DEFAULT NULL COMMENT '瀹屾暣杈撳嚭缁撴灉JSON',
 
-    -- 审计字段
-    `create_by` varchar(64) DEFAULT '' COMMENT '创建人',
-    `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    `remark` varchar(500) DEFAULT NULL COMMENT '备注',
+    -- 瀹¤瀛楁
+    `create_by` varchar(64) DEFAULT '' COMMENT '鍒涘缓浜?,
+    `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '鍒涘缓鏃堕棿',
+    `remark` varchar(500) DEFAULT NULL COMMENT '澶囨敞',
 
     PRIMARY KEY (`id`),
     KEY `idx_pro_id` (`pro_id`),
     KEY `idx_pipeline_id` (`pipeline_id`),
     KEY `idx_calc_type` (`calc_type`),
     KEY `idx_create_time` (`create_time`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='计算历史记录表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='璁＄畻鍘嗗彶璁板綍琛?;
 
 
 -- ============================================================
--- 7. 分析报告表 (t_analysis_report)
--- 用途: 存储生成的分析报告信息
--- ============================================================
+-- 7. 鍒嗘瀽鎶ュ憡琛?(t_analysis_report)
+-- 鐢ㄩ€? 瀛樺偍鐢熸垚鐨勫垎鏋愭姤鍛婁俊鎭?-- ============================================================
 DROP TABLE IF EXISTS `t_analysis_report`;
 CREATE TABLE `t_analysis_report` (
-    `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-    `pro_id` bigint(20) NOT NULL COMMENT '项目ID',
-    `pipeline_id` bigint(20) DEFAULT NULL COMMENT '管道ID(可选)',
+    `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '涓婚敭ID',
+    `pro_id` bigint(20) NOT NULL DEFAULT 0 COMMENT '椤圭洰ID',
+    `pipeline_id` bigint(20) DEFAULT NULL COMMENT '绠￠亾ID(鍙€?',
 
-    -- 报告信息
-    `report_no` varchar(50) NOT NULL COMMENT '报告编号',
-    `report_type` varchar(50) NOT NULL COMMENT '报告类型: HYDRAULIC-水力分析报告, OPTIMIZATION-优化方案报告, COMPARISON-对比分析报告, SENSITIVITY-敏感性分析报告',
-    `report_title` varchar(200) NOT NULL COMMENT '报告标题',
-    `report_summary` text DEFAULT NULL COMMENT '报告摘要',
+    -- 鎶ュ憡淇℃伅
+    `report_no` varchar(50) NOT NULL COMMENT '鎶ュ憡缂栧彿',
+    `report_type` varchar(50) NOT NULL COMMENT '鎶ュ憡绫诲瀷: HYDRAULIC-姘村姏鍒嗘瀽鎶ュ憡, OPTIMIZATION-浼樺寲鏂规鎶ュ憡, COMPARISON-瀵规瘮鍒嗘瀽鎶ュ憡, SENSITIVITY-鏁忔劅鎬у垎鏋愭姤鍛?,
+    `report_title` varchar(200) NOT NULL COMMENT '鎶ュ憡鏍囬',
+    `report_summary` text DEFAULT NULL COMMENT '鎶ュ憡鎽樿',
 
-    -- 文件信息
-    `file_name` varchar(200) DEFAULT NULL COMMENT '文件名',
-    `file_path` varchar(500) DEFAULT NULL COMMENT '文件存储路径(MinIO ObjectKey)',
-    `file_format` varchar(20) DEFAULT 'DOCX' COMMENT '文件格式: DOCX, PDF',
-    `file_size` bigint(20) DEFAULT NULL COMMENT '文件大小(bytes)',
+    -- 鏂囦欢淇℃伅
+    `file_name` varchar(200) DEFAULT NULL COMMENT '鏂囦欢鍚?,
+    `file_path` varchar(500) DEFAULT NULL COMMENT '鏂囦欢瀛樺偍璺緞(MinIO ObjectKey)',
+    `file_format` varchar(20) DEFAULT 'DOCX' COMMENT '鏂囦欢鏍煎紡: DOCX, PDF',
+    `file_size` bigint(20) DEFAULT NULL COMMENT '鏂囦欢澶у皬(bytes)',
 
-    -- 关联的计算历史
-    `history_ids` varchar(500) DEFAULT NULL COMMENT '关联的计算历史ID列表(逗号分隔)',
+    -- 鍏宠仈鐨勮绠楀巻鍙?    `history_ids` varchar(500) DEFAULT NULL COMMENT '鍏宠仈鐨勮绠楀巻鍙睮D鍒楄〃(閫楀彿鍒嗛殧)',
 
-    -- 状态
-    `status` tinyint(4) NOT NULL DEFAULT 0 COMMENT '状态: 0-生成中, 1-已完成, 2-生成失败',
-    `error_msg` varchar(500) DEFAULT NULL COMMENT '错误信息',
+    -- 鐘舵€?    `status` tinyint(4) NOT NULL DEFAULT 0 COMMENT '鐘舵€? 0-鐢熸垚涓? 1-宸插畬鎴? 2-鐢熸垚澶辫触',
+    `error_msg` varchar(500) DEFAULT NULL COMMENT '閿欒淇℃伅',
 
-    -- 审计字段
-    `create_by` varchar(64) DEFAULT '' COMMENT '创建人',
-    `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    -- 瀹¤瀛楁
+    `create_by` varchar(64) DEFAULT '' COMMENT '鍒涘缓浜?,
+    `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '鍒涘缓鏃堕棿',
+    `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '鏇存柊鏃堕棿',
 
     PRIMARY KEY (`id`),
     UNIQUE KEY `uk_report_no` (`report_no`),
@@ -98,173 +92,170 @@ CREATE TABLE `t_analysis_report` (
     KEY `idx_pipeline_id` (`pipeline_id`),
     KEY `idx_report_type` (`report_type`),
     KEY `idx_create_time` (`create_time`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='分析报告表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='鍒嗘瀽鎶ュ憡琛?;
 
 
 -- ============================================================
--- 8. 敏感性分析结果表 (t_sensitivity_analysis)
--- 用途: 存储参数敏感性分析结果
--- ============================================================
+-- 8. 鏁忔劅鎬у垎鏋愮粨鏋滆〃 (t_sensitivity_analysis)
+-- 鐢ㄩ€? 瀛樺偍鍙傛暟鏁忔劅鎬у垎鏋愮粨鏋?-- ============================================================
 DROP TABLE IF EXISTS `t_sensitivity_analysis`;
 CREATE TABLE `t_sensitivity_analysis` (
-    `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-    `pipeline_id` bigint(20) NOT NULL COMMENT '管道ID',
-    `history_id` bigint(20) DEFAULT NULL COMMENT '基准计算历史ID',
+    `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '涓婚敭ID',
+    `pipeline_id` bigint(20) NOT NULL COMMENT '绠￠亾ID',
+    `history_id` bigint(20) DEFAULT NULL COMMENT '鍩哄噯璁＄畻鍘嗗彶ID',
 
-    -- 分析配置
-    `analysis_type` varchar(50) NOT NULL COMMENT '分析类型: SINGLE-单因素, CROSS-交叉分析',
-    `variable_name` varchar(50) NOT NULL COMMENT '分析变量: FLOW_RATE-流量, VISCOSITY-粘度, ROUGHNESS-粗糙度, DIAMETER-管径',
-    `base_value` decimal(20, 6) NOT NULL COMMENT '基准值',
-    `variation_range` decimal(5, 2) NOT NULL COMMENT '变化范围(±百分比)',
-    `steps` int(11) NOT NULL DEFAULT 5 COMMENT '分析步数',
+    -- 鍒嗘瀽閰嶇疆
+    `analysis_type` varchar(50) NOT NULL COMMENT '鍒嗘瀽绫诲瀷: SINGLE-鍗曞洜绱? CROSS-浜ゅ弶鍒嗘瀽',
+    `variable_name` varchar(50) NOT NULL COMMENT '鍒嗘瀽鍙橀噺: FLOW_RATE-娴侀噺, VISCOSITY-绮樺害, ROUGHNESS-绮楃硻搴? DIAMETER-绠″緞',
+    `base_value` decimal(20, 6) NOT NULL COMMENT '鍩哄噯鍊?,
+    `variation_range` decimal(5, 2) NOT NULL COMMENT '鍙樺寲鑼冨洿(卤鐧惧垎姣?',
+    `steps` int(11) NOT NULL DEFAULT 5 COMMENT '鍒嗘瀽姝ユ暟',
 
-    -- 分析结果
-    `results` json NOT NULL COMMENT '分析结果JSON数组',
-    `conclusion` text DEFAULT NULL COMMENT '分析结论',
-    `sensitivity_index` decimal(10, 4) DEFAULT NULL COMMENT '敏感性指数',
+    -- 鍒嗘瀽缁撴灉
+    `results` json NOT NULL COMMENT '鍒嗘瀽缁撴灉JSON鏁扮粍',
+    `conclusion` text DEFAULT NULL COMMENT '鍒嗘瀽缁撹',
+    `sensitivity_index` decimal(10, 4) DEFAULT NULL COMMENT '鏁忔劅鎬ф寚鏁?,
 
-    -- 审计字段
-    `create_by` varchar(64) DEFAULT '' COMMENT '创建人',
-    `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    -- 瀹¤瀛楁
+    `create_by` varchar(64) DEFAULT '' COMMENT '鍒涘缓浜?,
+    `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '鍒涘缓鏃堕棿',
 
     PRIMARY KEY (`id`),
     KEY `idx_pipeline_id` (`pipeline_id`),
     KEY `idx_variable_name` (`variable_name`),
     KEY `idx_create_time` (`create_time`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='敏感性分析结果表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='鏁忔劅鎬у垎鏋愮粨鏋滆〃';
 
 
 -- ============================================================
--- 9. 操作日志表 (t_operation_log)
--- 用途: 记录用户操作日志，用于审计和问题排查
+-- 9. 鎿嶄綔鏃ュ織琛?(t_operation_log)
+-- 鐢ㄩ€? 璁板綍鐢ㄦ埛鎿嶄綔鏃ュ織锛岀敤浜庡璁″拰闂鎺掓煡
 -- ============================================================
 DROP TABLE IF EXISTS `t_operation_log`;
 CREATE TABLE `t_operation_log` (
-    `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '涓婚敭ID',
 
-    -- 用户信息
-    `user_id` bigint(20) DEFAULT NULL COMMENT '用户ID',
-    `user_name` varchar(64) DEFAULT '' COMMENT '用户名',
+    -- 鐢ㄦ埛淇℃伅
+    `user_id` bigint(20) DEFAULT NULL COMMENT '鐢ㄦ埛ID',
+    `user_name` varchar(64) DEFAULT '' COMMENT '鐢ㄦ埛鍚?,
 
-    -- 操作信息
-    `module` varchar(50) DEFAULT '' COMMENT '模块名称',
-    `operation` varchar(100) DEFAULT '' COMMENT '操作描述',
-    `method` varchar(200) DEFAULT '' COMMENT '请求方法',
-    `request_url` varchar(500) DEFAULT '' COMMENT '请求URL',
-    `request_method` varchar(10) DEFAULT '' COMMENT 'HTTP方法',
-    `request_params` text DEFAULT NULL COMMENT '请求参数',
-    `response_result` text DEFAULT NULL COMMENT '响应结果',
+    -- 鎿嶄綔淇℃伅
+    `module` varchar(50) DEFAULT '' COMMENT '妯″潡鍚嶇О',
+    `operation` varchar(100) DEFAULT '' COMMENT '鎿嶄綔鎻忚堪',
+    `method` varchar(200) DEFAULT '' COMMENT '璇锋眰鏂规硶',
+    `request_url` varchar(500) DEFAULT '' COMMENT '璇锋眰URL',
+    `request_method` varchar(10) DEFAULT '' COMMENT 'HTTP鏂规硶',
+    `request_params` text DEFAULT NULL COMMENT '璇锋眰鍙傛暟',
+    `response_result` text DEFAULT NULL COMMENT '鍝嶅簲缁撴灉',
 
-    -- 执行信息
-    `ip` varchar(64) DEFAULT '' COMMENT 'IP地址',
-    `location` varchar(100) DEFAULT '' COMMENT '操作地点',
-    `cost_time` bigint(20) DEFAULT 0 COMMENT '耗时(ms)',
-    `status` tinyint(4) DEFAULT 0 COMMENT '状态: 0-成功, 1-失败',
-    `error_msg` text DEFAULT NULL COMMENT '错误信息',
+    -- 鎵ц淇℃伅
+    `ip` varchar(64) DEFAULT '' COMMENT 'IP鍦板潃',
+    `location` varchar(100) DEFAULT '' COMMENT '鎿嶄綔鍦扮偣',
+    `cost_time` bigint(20) DEFAULT 0 COMMENT '鑰楁椂(ms)',
+    `status` tinyint(4) DEFAULT 0 COMMENT '鐘舵€? 0-鎴愬姛, 1-澶辫触',
+    `error_msg` text DEFAULT NULL COMMENT '閿欒淇℃伅',
 
-    -- 时间
-    `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    -- 鏃堕棿
+    `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '鍒涘缓鏃堕棿',
 
     PRIMARY KEY (`id`),
     KEY `idx_user_id` (`user_id`),
     KEY `idx_module` (`module`),
     KEY `idx_status` (`status`),
     KEY `idx_create_time` (`create_time`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='操作日志表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='鎿嶄綔鏃ュ織琛?;
 
 
 -- ============================================================
--- 10. 数据字典表 (sys_dict_type)
--- 用途: 系统数据字典类型
+-- 10. 鏁版嵁瀛楀吀琛?(sys_dict_type)
+-- 鐢ㄩ€? 绯荤粺鏁版嵁瀛楀吀绫诲瀷
 -- ============================================================
 DROP TABLE IF EXISTS `sys_dict_type`;
 CREATE TABLE `sys_dict_type` (
-    `dict_id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '字典主键',
-    `dict_name` varchar(100) NOT NULL COMMENT '字典名称',
-    `dict_type` varchar(100) NOT NULL COMMENT '字典类型',
-    `status` char(1) DEFAULT '0' COMMENT '状态（0正常 1停用）',
-    `create_by` varchar(64) DEFAULT '' COMMENT '创建者',
-    `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    `update_by` varchar(64) DEFAULT '' COMMENT '更新者',
-    `update_time` datetime DEFAULT NULL COMMENT '更新时间',
-    `remark` varchar(500) DEFAULT NULL COMMENT '备注',
+    `dict_id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '瀛楀吀涓婚敭',
+    `dict_name` varchar(100) NOT NULL COMMENT '瀛楀吀鍚嶇О',
+    `dict_type` varchar(100) NOT NULL COMMENT '瀛楀吀绫诲瀷',
+    `status` char(1) DEFAULT '0' COMMENT '鐘舵€侊紙0姝ｅ父 1鍋滅敤锛?,
+    `create_by` varchar(64) DEFAULT '' COMMENT '鍒涘缓鑰?,
+    `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '鍒涘缓鏃堕棿',
+    `update_by` varchar(64) DEFAULT '' COMMENT '鏇存柊鑰?,
+    `update_time` datetime DEFAULT NULL COMMENT '鏇存柊鏃堕棿',
+    `remark` varchar(500) DEFAULT NULL COMMENT '澶囨敞',
     PRIMARY KEY (`dict_id`),
     UNIQUE KEY `uk_dict_type` (`dict_type`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='字典类型表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='瀛楀吀绫诲瀷琛?;
 
 
 -- ============================================================
--- 11. 数据字典数据表 (sys_dict_data)
--- 用途: 系统数据字典数据
+-- 11. 鏁版嵁瀛楀吀鏁版嵁琛?(sys_dict_data)
+-- 鐢ㄩ€? 绯荤粺鏁版嵁瀛楀吀鏁版嵁
 -- ============================================================
 DROP TABLE IF EXISTS `sys_dict_data`;
 CREATE TABLE `sys_dict_data` (
-    `dict_code` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '字典编码',
-    `dict_sort` int(4) DEFAULT 0 COMMENT '字典排序',
-    `dict_label` varchar(100) NOT NULL COMMENT '字典标签',
-    `dict_value` varchar(100) NOT NULL COMMENT '字典键值',
-    `dict_type` varchar(100) NOT NULL COMMENT '字典类型',
-    `css_class` varchar(100) DEFAULT NULL COMMENT '样式属性',
-    `list_class` varchar(100) DEFAULT NULL COMMENT '表格回显样式',
-    `is_default` char(1) DEFAULT 'N' COMMENT '是否默认（Y是 N否）',
-    `status` char(1) DEFAULT '0' COMMENT '状态（0正常 1停用）',
-    `create_by` varchar(64) DEFAULT '' COMMENT '创建者',
-    `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    `update_by` varchar(64) DEFAULT '' COMMENT '更新者',
-    `update_time` datetime DEFAULT NULL COMMENT '更新时间',
-    `remark` varchar(500) DEFAULT NULL COMMENT '备注',
+    `dict_code` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '瀛楀吀缂栫爜',
+    `dict_sort` int(4) DEFAULT 0 COMMENT '瀛楀吀鎺掑簭',
+    `dict_label` varchar(100) NOT NULL COMMENT '瀛楀吀鏍囩',
+    `dict_value` varchar(100) NOT NULL COMMENT '瀛楀吀閿€?,
+    `dict_type` varchar(100) NOT NULL COMMENT '瀛楀吀绫诲瀷',
+    `css_class` varchar(100) DEFAULT NULL COMMENT '鏍峰紡灞炴€?,
+    `list_class` varchar(100) DEFAULT NULL COMMENT '琛ㄦ牸鍥炴樉鏍峰紡',
+    `is_default` char(1) DEFAULT 'N' COMMENT '鏄惁榛樿锛圷鏄?N鍚︼級',
+    `status` char(1) DEFAULT '0' COMMENT '鐘舵€侊紙0姝ｅ父 1鍋滅敤锛?,
+    `create_by` varchar(64) DEFAULT '' COMMENT '鍒涘缓鑰?,
+    `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '鍒涘缓鏃堕棿',
+    `update_by` varchar(64) DEFAULT '' COMMENT '鏇存柊鑰?,
+    `update_time` datetime DEFAULT NULL COMMENT '鏇存柊鏃堕棿',
+    `remark` varchar(500) DEFAULT NULL COMMENT '澶囨敞',
     PRIMARY KEY (`dict_code`),
     KEY `idx_dict_type` (`dict_type`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='字典数据表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='瀛楀吀鏁版嵁琛?;
 
 
 -- ============================================================
--- 初始化数据字典
--- ============================================================
+-- 鍒濆鍖栨暟鎹瓧鍏?-- ============================================================
 
--- 计算类型字典
+-- 璁＄畻绫诲瀷瀛楀吀
 INSERT INTO `sys_dict_type` (`dict_name`, `dict_type`, `status`, `create_by`, `remark`) VALUES
-('计算类型', 'calc_type', '0', 'admin', '计算类型字典');
+('璁＄畻绫诲瀷', 'calc_type', '0', 'admin', '璁＄畻绫诲瀷瀛楀吀');
 
 INSERT INTO `sys_dict_data` (`dict_sort`, `dict_label`, `dict_value`, `dict_type`, `is_default`, `status`, `create_by`, `remark`) VALUES
-(1, '水力分析', 'HYDRAULIC', 'calc_type', 'Y', '0', 'admin', '水力特性分析'),
-(2, '泵站优化', 'OPTIMIZATION', 'calc_type', 'N', '0', 'admin', '运行方案优化');
+(1, '姘村姏鍒嗘瀽', 'HYDRAULIC', 'calc_type', 'Y', '0', 'admin', '姘村姏鐗规€у垎鏋?),
+(2, '娉电珯浼樺寲', 'OPTIMIZATION', 'calc_type', 'N', '0', 'admin', '杩愯鏂规浼樺寲');
 
--- 流态类型字典
-INSERT INTO `sys_dict_type` (`dict_name`, `dict_type`, `status`, `create_by`, `remark`) VALUES
-('流态类型', 'flow_regime', '0', 'admin', '流体流动状态');
-
-INSERT INTO `sys_dict_data` (`dict_sort`, `dict_label`, `dict_value`, `dict_type`, `is_default`, `status`, `create_by`, `remark`) VALUES
-(1, '层流', 'LAMINAR', 'flow_regime', 'N', '0', 'admin', 'Re < 2300'),
-(2, '过渡流', 'TRANSITION', 'flow_regime', 'N', '0', 'admin', '2300 ≤ Re < 3000'),
-(3, '水力光滑区', 'HYDRAULIC_SMOOTH', 'flow_regime', 'N', '0', 'admin', '3000 < Re < Re1'),
-(4, '混合摩擦区', 'MIXED_FRICTION', 'flow_regime', 'N', '0', 'admin', 'Re1 ≤ Re < Re2'),
-(5, '粗糙区', 'ROUGH', 'flow_regime', 'Y', '0', 'admin', 'Re ≥ Re2');
-
--- 报告类型字典
-INSERT INTO `sys_dict_type` (`dict_name`, `dict_type`, `status`, `create_by`, `remark`) VALUES
-('报告类型', 'report_type', '0', 'admin', '分析报告类型');
+-- 娴佹€佺被鍨嬪瓧鍏?INSERT INTO `sys_dict_type` (`dict_name`, `dict_type`, `status`, `create_by`, `remark`) VALUES
+('娴佹€佺被鍨?, 'flow_regime', '0', 'admin', '娴佷綋娴佸姩鐘舵€?);
 
 INSERT INTO `sys_dict_data` (`dict_sort`, `dict_label`, `dict_value`, `dict_type`, `is_default`, `status`, `create_by`, `remark`) VALUES
-(1, '水力分析报告', 'HYDRAULIC', 'report_type', 'Y', '0', 'admin', '水力分析报告'),
-(2, '优化方案报告', 'OPTIMIZATION', 'report_type', 'N', '0', 'admin', '泵站优化方案报告'),
-(3, '对比分析报告', 'COMPARISON', 'report_type', 'N', '0', 'admin', '多方案对比报告'),
-(4, '敏感性分析报告', 'SENSITIVITY', 'report_type', 'N', '0', 'admin', '参数敏感性分析报告');
+(1, '灞傛祦', 'LAMINAR', 'flow_regime', 'N', '0', 'admin', 'Re < 2300'),
+(2, '杩囨浮娴?, 'TRANSITION', 'flow_regime', 'N', '0', 'admin', '2300 鈮?Re < 3000'),
+(3, '姘村姏鍏夋粦鍖?, 'HYDRAULIC_SMOOTH', 'flow_regime', 'N', '0', 'admin', '3000 < Re < Re1'),
+(4, '娣峰悎鎽╂摝鍖?, 'MIXED_FRICTION', 'flow_regime', 'N', '0', 'admin', 'Re1 鈮?Re < Re2'),
+(5, '绮楃硻鍖?, 'ROUGH', 'flow_regime', 'Y', '0', 'admin', 'Re 鈮?Re2');
 
--- 敏感性分析变量字典
+-- 鎶ュ憡绫诲瀷瀛楀吀
 INSERT INTO `sys_dict_type` (`dict_name`, `dict_type`, `status`, `create_by`, `remark`) VALUES
-('敏感性分析变量', 'sensitivity_variable', '0', 'admin', '敏感性分析变量');
+('鎶ュ憡绫诲瀷', 'report_type', '0', 'admin', '鍒嗘瀽鎶ュ憡绫诲瀷');
 
 INSERT INTO `sys_dict_data` (`dict_sort`, `dict_label`, `dict_value`, `dict_type`, `is_default`, `status`, `create_by`, `remark`) VALUES
-(1, '流量', 'FLOW_RATE', 'sensitivity_variable', 'Y', '0', 'admin', '流量变化'),
-(2, '粘度', 'VISCOSITY', 'sensitivity_variable', 'N', '0', 'admin', '运动粘度变化'),
-(3, '粗糙度', 'ROUGHNESS', 'sensitivity_variable', 'N', '0', 'admin', '管道粗糙度变化'),
-(4, '管径', 'DIAMETER', 'sensitivity_variable', 'N', '0', 'admin', '管道直径变化');
+(1, '姘村姏鍒嗘瀽鎶ュ憡', 'HYDRAULIC', 'report_type', 'Y', '0', 'admin', '姘村姏鍒嗘瀽鎶ュ憡'),
+(2, '浼樺寲鏂规鎶ュ憡', 'OPTIMIZATION', 'report_type', 'N', '0', 'admin', '娉电珯浼樺寲鏂规鎶ュ憡'),
+(3, '瀵规瘮鍒嗘瀽鎶ュ憡', 'COMPARISON', 'report_type', 'N', '0', 'admin', '澶氭柟妗堝姣旀姤鍛?),
+(4, '鏁忔劅鎬у垎鏋愭姤鍛?, 'SENSITIVITY', 'report_type', 'N', '0', 'admin', '鍙傛暟鏁忔劅鎬у垎鏋愭姤鍛?);
+
+-- 鏁忔劅鎬у垎鏋愬彉閲忓瓧鍏?INSERT INTO `sys_dict_type` (`dict_name`, `dict_type`, `status`, `create_by`, `remark`) VALUES
+('鏁忔劅鎬у垎鏋愬彉閲?, 'sensitivity_variable', '0', 'admin', '鏁忔劅鎬у垎鏋愬彉閲?);
+
+INSERT INTO `sys_dict_data` (`dict_sort`, `dict_label`, `dict_value`, `dict_type`, `is_default`, `status`, `create_by`, `remark`) VALUES
+(1, '娴侀噺', 'FLOW_RATE', 'sensitivity_variable', 'Y', '0', 'admin', '娴侀噺鍙樺寲'),
+(2, '绮樺害', 'VISCOSITY', 'sensitivity_variable', 'N', '0', 'admin', '杩愬姩绮樺害鍙樺寲'),
+(3, '绮楃硻搴?, 'ROUGHNESS', 'sensitivity_variable', 'N', '0', 'admin', '绠￠亾绮楃硻搴﹀彉鍖?),
+(4, '绠″緞', 'DIAMETER', 'sensitivity_variable', 'N', '0', 'admin', '绠￠亾鐩村緞鍙樺寲');
 
 
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- ============================================================
--- 升级完成提示
+-- 鍗囩骇瀹屾垚鎻愮ず
 -- ============================================================
-SELECT '数据库升级至 v1.1.0 完成!' AS message;
+SELECT '鏁版嵁搴撳崌绾ц嚦 v1.1.0 瀹屾垚!' AS message;
+
