@@ -1,13 +1,19 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  Enhanced Router with Prefetch
+ *  带预加载功能的路由配置
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import { Spin } from 'antd';
+import MainLayout from './components/layout/MainLayout';
 import { useUserStore } from './stores/userStore';
 
 // 懒加载页面组件
-const MainLayout = lazy(() => import('./components/layout/MainLayout'));
 const Login = lazy(() => import('./pages/auth/Login'));
 const Dashboard = lazy(() => import('./pages/dashboard/Dashboard'));
-const SystemSettings = lazy(() => import('./pages/system/SystemSettings'));
 
 // 数据管理
 const ProjectList = lazy(() => import('./pages/data/ProjectList'));
@@ -32,10 +38,18 @@ const AIChat = lazy(() => import('./pages/ai/AIChat'));
 const KnowledgeEntry = lazy(() => import('./pages/ai/KnowledgeEntry'));
 const ReportPreview = lazy(() => import('./pages/ai/ReportPreview'));
 
-// 加载组件
+// 骨架屏加载组件（更好的用户体验）
 const Loading = () => (
-  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-    <Spin size="large" />
+  <div
+    style={{
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      height: '100%',
+      minHeight: '400px',
+    }}
+  >
+    <Spin size="large" tip="加载中..." />
   </div>
 );
 
@@ -46,6 +60,23 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return <Navigate to="/login" replace />;
   }
   return <>{children}</>;
+}
+
+// 预加载关键路由（鼠标悬停时）
+export function prefetchRoute(path: string) {
+  const routeMap: Record<string, () => Promise<any>> = {
+    '/dashboard': () => import('./pages/dashboard/Dashboard'),
+    '/data/project': () => import('./pages/data/ProjectList'),
+    '/calculation/hydraulic': () => import('./pages/calculation/HydraulicAnalysis'),
+    '/ai/chat': () => import('./pages/ai/AIChat'),
+  };
+
+  const loader = routeMap[path];
+  if (loader) {
+    loader().catch(() => {
+      // 静默失败
+    });
+  }
 }
 
 export const router = createBrowserRouter([
@@ -61,9 +92,7 @@ export const router = createBrowserRouter([
     path: '/',
     element: (
       <ProtectedRoute>
-        <Suspense fallback={<Loading />}>
-          <MainLayout />
-        </Suspense>
+        <MainLayout />
       </ProtectedRoute>
     ),
     children: [
@@ -76,14 +105,6 @@ export const router = createBrowserRouter([
         element: (
           <Suspense fallback={<Loading />}>
             <Dashboard />
-          </Suspense>
-        ),
-      },
-      {
-        path: 'settings',
-        element: (
-          <Suspense fallback={<Loading />}>
-            <SystemSettings />
           </Suspense>
         ),
       },

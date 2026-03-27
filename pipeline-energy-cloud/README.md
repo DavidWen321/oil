@@ -26,5 +26,5 @@ mvn clean package -DskipTests
 - `pipeline-gateway`: 网关服务 (Port: 8080)
 - `pipeline-auth`: 认证服务 (Port: 9200)
 - `pipeline-system`: 系统管理服务 (Port: 9300)
-- `pipeline-data`: 数据中心服务 (Port: 9400)
+- `pipeline-data`: 数据中心服务 (Port: 9440)
 - `pipeline-calculation`: 计算引擎服务 (Port: 9500)

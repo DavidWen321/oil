@@ -1,3 +1,11 @@
+<<<<<<< Updated upstream
+=======
+/**
+ * Main Layout Component
+ * Design: Apple HIG + Linear + Stripe Light Theme
+ */
+
+>>>>>>> Stashed changes
 import { useCallback, useEffect, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Avatar, Badge, Button, Dropdown, Layout, Menu } from 'antd';
@@ -9,13 +17,20 @@ import {
   BellOutlined,
   CalculatorOutlined,
   CloudOutlined,
+<<<<<<< Updated upstream
+=======
+  CloudUploadOutlined,
+>>>>>>> Stashed changes
   CloseOutlined,
   ControlOutlined,
   DashboardOutlined,
   DatabaseOutlined,
   DeploymentUnitOutlined,
   ExperimentOutlined,
+<<<<<<< Updated upstream
   FileSearchOutlined,
+=======
+>>>>>>> Stashed changes
   LogoutOutlined,
   MenuFoldOutlined,
   MenuOutlined,
@@ -89,8 +104,13 @@ const menuItems: MenuProps['items'] = [
     label: 'AI 智能体',
     children: [
       { key: '/ai/chat', icon: <DeploymentUnitOutlined />, label: '智能对话' },
+<<<<<<< Updated upstream
       { key: '/ai/trace', icon: <FileSearchOutlined />, label: '执行追踪' },
       { key: '/ai/report', icon: <BarChartOutlined />, label: '报告预览' },
+=======
+      { key: '/ai/knowledge', icon: <CloudUploadOutlined />, label: '知识库录入' },
+      { key: '/ai/report', icon: <BarChartOutlined />, label: '智能报告' },
+>>>>>>> Stashed changes
     ],
   },
 ];
@@ -107,6 +127,7 @@ export default function MainLayout() {
   const { resolved, setMode } = useThemeStore();
   const alarms = useMonitorStore((state) => state.alarms);
   const monitorConnected = useMonitorStore((state) => state.connected);
+<<<<<<< Updated upstream
 
   useWebSocket({ scope: 'all', subscribeMonitor: false, subscribeAlarms: true });
 
@@ -128,6 +149,14 @@ export default function MainLayout() {
   }, [location.pathname, mobileMenuOpen]);
 
   useEffect(() => {
+=======
+  const activeCount = alarms.filter((alarm) => alarm.status === 'ACTIVE').length;
+  const { isMobile, isTablet, width } = useResponsive();
+
+  useWebSocket({ scope: 'all', subscribeMonitor: false, subscribeAlarms: true });
+
+  useEffect(() => {
+>>>>>>> Stashed changes
     document.body.style.overflow = mobileMenuOpen ? 'hidden' : '';
     return () => {
       document.body.style.overflow = '';
@@ -145,6 +174,44 @@ export default function MainLayout() {
     }
   };
 
+<<<<<<< Updated upstream
+=======
+  const handleUserMenuClick: MenuProps['onClick'] = ({ key }) => {
+    if (key === 'logout') {
+      logout();
+      navigate('/login');
+    }
+  };
+
+  const toggleMobileMenu = useCallback(() => {
+    setMobileMenuOpen((prev) => !prev);
+  }, []);
+
+  const toggleCollapsed = useCallback(() => {
+    setCollapsed((prev) => !prev);
+  }, []);
+
+  const getSelectedKeys = () => [location.pathname];
+
+  const getOpenKeys = () => {
+    const path = location.pathname;
+    if (path.startsWith('/data')) return ['data'];
+    if (path.startsWith('/calculation')) return ['calculation'];
+    if (path.startsWith('/features')) return ['features'];
+    if (path.startsWith('/ai')) return ['ai'];
+    return [];
+  };
+
+  const getSiderWidth = () => {
+    if (isMobile) return 280;
+    if (width < 768) return 200;
+    if (width < 1024) return 220;
+    return 260;
+  };
+
+  const siderCollapsed = isMobile ? false : isTablet ? true : collapsed;
+
+>>>>>>> Stashed changes
   const userMenuItems: MenuProps['items'] = [
     {
       key: 'profile',
@@ -167,6 +234,7 @@ export default function MainLayout() {
     },
   ];
 
+<<<<<<< Updated upstream
   const handleUserMenuClick: MenuProps['onClick'] = ({ key }) => {
     if (key === 'settings') {
       navigate('/settings');
@@ -208,24 +276,34 @@ export default function MainLayout() {
   return (
     <Layout className={styles.layout}>
       {isMobile && (
+=======
+  return (
+    <Layout className={styles.layout}>
+      {isMobile ? (
+>>>>>>> Stashed changes
         <div
           className={`${styles.overlay} ${mobileMenuOpen ? styles.visible : ''}`}
           onClick={handleOverlayClick}
           aria-hidden="true"
         />
-      )}
+      ) : null}
 
       <Sider
         trigger={null}
         collapsible
-        collapsed={isMobile ? false : collapsed}
+        collapsed={siderCollapsed}
         className={`${styles.sider} ${mobileMenuOpen ? styles.mobileOpen : ''}`}
         width={getSiderWidth()}
         collapsedWidth={72}
       >
         <div className={styles.logo}>
+<<<<<<< Updated upstream
           <span className={styles.logoIcon}>⚡</span>
           {(!collapsed || isMobile) && <span className={styles.logoText}>管道能耗分析</span>}
+=======
+          <span className={styles.logoIcon}>Q</span>
+          {!siderCollapsed || isMobile ? <span className={styles.logoText}>管道能耗</span> : null}
+>>>>>>> Stashed changes
         </div>
 
         <Menu
@@ -234,7 +312,7 @@ export default function MainLayout() {
           defaultOpenKeys={collapsed ? [] : getOpenKeys()}
           items={menuItems}
           onClick={handleMenuClick}
-          inlineCollapsed={!isMobile && collapsed}
+          inlineCollapsed={!isMobile && siderCollapsed}
         />
       </Sider>
 
@@ -287,7 +365,11 @@ export default function MainLayout() {
             >
               <div className={styles.userInfo} role="button" tabIndex={0}>
                 <Avatar size="small" icon={<UserOutlined />} />
+<<<<<<< Updated upstream
                 <span className={styles.userName}>{userInfo?.nickname || '用户'}</span>
+=======
+                <span className={styles.userName}>{userInfo?.nickname || '当前用户'}</span>
+>>>>>>> Stashed changes
               </div>
             </Dropdown>
           </div>
@@ -309,7 +391,7 @@ export default function MainLayout() {
           )}
         </Content>
 
-        {isMobile && <MobileTabBar />}
+        {isMobile ? <MobileTabBar /> : null}
       </Layout>
     </Layout>
   );

@@ -12,13 +12,18 @@ import type {
   DiagnosisResult,
   HydraulicAnalysisParams,
   HydraulicAnalysisResult,
+  KnowledgeIngestTask,
   LoginParams,
   LoginResult,
   MonitorDataPoint,
   OilProperty,
   OptimizationParams,
   OptimizationResult,
+<<<<<<< Updated upstream
   PageResult,
+=======
+  KnowledgeDocument,
+>>>>>>> Stashed changes
   Pipeline,
   Project,
   PumpStation,
@@ -61,6 +66,14 @@ export const oilPropertyApi = {
   create: (data: Partial<OilProperty>) => http.post<R<boolean>>('/oil-property', data),
   update: (data: Partial<OilProperty>) => http.put<R<boolean>>('/oil-property', data),
   delete: (ids: number[]) => http.delete<R<boolean>>(`/oil-property/${ids.join(',')}`),
+};
+
+export const knowledgeDocumentApi = {
+  list: () => http.get<R<KnowledgeDocument[]>>('/knowledge-doc/list'),
+  listTasks: (id: number) => http.get<R<KnowledgeIngestTask[]>>(`/knowledge-doc/${id}/tasks`),
+  upload: (data: FormData) => http.post<R<KnowledgeDocument>>('/knowledge-doc/upload', data),
+  retry: (id: number) => http.post<R<KnowledgeDocument>>(`/knowledge-doc/${id}/retry`),
+  delete: (id: number) => http.delete<R<boolean>>(`/knowledge-doc/${id}`),
 };
 
 export const calculationApi = {

@@ -68,6 +68,47 @@ class RAGPipeline:
         self.query_rewriter = get_query_rewriter()
         self.graph_rag = graph_rag or GraphRAGRetriever(get_knowledge_graph_builder())
 
+    def rebuild_sparse_index_from_store(self) -> int:
+        """Rebuild the in-memory BM25 index from chunks already stored in Milvus."""
+        chunks = self.vector_store.list_chunks()
+        self.retriever.build_sparse_index(chunks)
+        logger.info("Sparse retrieval corpus refreshed from vector store, chunk_count=%s", len(chunks))
+        return len(chunks)
+
+    def safe_refresh_sparse_index_from_store(self) -> Dict[str, Any]:
+        """Refresh sparse retrieval state without failing a completed vector-store update."""
+        if not self.embeddings.use_sparse:
+            self.retriever.build_sparse_index([])
+            return {
+                "success": True,
+                "chunk_count": 0,
+                "message": "sparse retrieval disabled",
+            }
+
+        try:
+            chunk_count = self.rebuild_sparse_index_from_store()
+            return {
+                "success": True,
+                "chunk_count": chunk_count,
+                "message": "",
+            }
+        except Exception as exc:
+            logger.error("Sparse index refresh failed after vector update: %s", exc)
+            return {
+                "success": False,
+                "chunk_count": self.retriever.sparse_corpus_size(),
+                "message": str(exc),
+            }
+
+    def ensure_retriever_ready(self) -> int:
+        """Ensure hybrid retrieval state exists after upload, delete, or process restart."""
+        if not self.embeddings.use_sparse:
+            self.retriever.build_sparse_index([])
+            return 0
+        if self.retriever.has_sparse_index():
+            return self.retriever.sparse_corpus_size()
+        return self.rebuild_sparse_index_from_store()
+
     def index_documents(
         self,
         knowledge_base_path: str = "knowledge_base",
@@ -91,6 +132,7 @@ class RAGPipeline:
 
         if not documents:
             logger.warning("没有找到可索引的文档")
+            self.retriever.build_sparse_index([])
             return 0
 
         # 2. 创建/重建Collection
@@ -138,8 +180,7 @@ class RAGPipeline:
             self.vector_store.insert_chunks(all_chunks, all_embeddings)
 
         # 5. 构建BM25索引
-        if bm25_corpus:
-            self.retriever.build_sparse_index(bm25_corpus)
+        self.retriever.build_sparse_index(bm25_corpus)
 
         logger.info(f"索引完成，共 {len(documents)} 个文档，{len(all_chunks)} 个分块")
         return len(documents)
@@ -190,6 +231,7 @@ class RAGPipeline:
             rewritten_query = self.query_rewriter.rewrite(query)
 
         # 3. 混合检索
+        self.ensure_retriever_ready()
         retrieval_results = self.retriever.retrieve(
             query=rewritten_query,
             top_k=top_k * 2,  # 检索更多，留给重排序筛选
@@ -308,7 +350,7 @@ class RAGPipeline:
 
         return sources
 
-    def add_document(self, file_path: str) -> bool:
+    def add_document(self, file_path: str) -> Dict[str, Any]:
         """
         添加单个文档到知识库
 
@@ -322,7 +364,7 @@ class RAGPipeline:
             # 加载文档
             doc = self.document_processor.load_document(file_path)
             if not doc:
-                return False
+                return {"success": False, "message": "无法读取文档内容"}
 
             # 分块
             chunks = self.chunker.chunk_document(doc)
@@ -333,16 +375,27 @@ class RAGPipeline:
 
             # 插入Milvus
             self.vector_store.insert_chunks(chunks, embeddings)
-
-            # 更新BM25索引（需要重建）
-            # 这里简化处理，实际可以增量更新
+            sparse_refresh = self.safe_refresh_sparse_index_from_store()
 
             logger.info(f"已添加文档: {file_path}")
-            return True
+            message = "文档已完成解析并写入向量库"
+            if not sparse_refresh["success"]:
+                message += f"；但 BM25 稀疏索引刷新失败，当前仅保证 Dense 检索可用: {sparse_refresh['message']}"
+            return {
+                "success": True,
+                "doc_id": doc.doc_id,
+                "doc_title": doc.title or "",
+                "chunk_count": len(chunks),
+                "category": doc.category.value if doc.category else None,
+                "source": doc.source,
+                "sparse_chunk_count": sparse_refresh["chunk_count"],
+                "sparse_ready": sparse_refresh["success"],
+                "message": message
+            }
 
         except Exception as e:
             logger.error(f"添加文档失败: {e}")
-            return False
+            return {"success": False, "message": str(e)}
 
     def delete_document(self, doc_id: str) -> bool:
         """
@@ -356,15 +409,27 @@ class RAGPipeline:
         """
         try:
             self.vector_store.delete_by_doc_id(doc_id)
-            logger.info(f"已删除文档: {doc_id}")
-            return True
         except Exception as e:
             logger.error(f"删除文档失败: {e}")
             return False
 
+        sparse_refresh = self.safe_refresh_sparse_index_from_store()
+        if not sparse_refresh["success"]:
+            logger.warning(
+                "Document %s was deleted from vector store, but sparse index refresh failed: %s",
+                doc_id,
+                sparse_refresh["message"],
+            )
+
+        logger.info(f"已删除文档: {doc_id}")
+        return True
+
     def get_stats(self) -> Dict[str, Any]:
         """获取知识库统计信息"""
-        return self.vector_store.get_stats()
+        stats = self.vector_store.get_stats()
+        stats["sparse_ready"] = self.retriever.has_sparse_index()
+        stats["sparse_chunks"] = self.retriever.sparse_corpus_size()
+        return stats
 
 
 # 全局实例

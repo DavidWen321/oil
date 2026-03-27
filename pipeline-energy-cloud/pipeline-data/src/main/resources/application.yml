@@ -1,5 +1,5 @@
 server:
-  port: 9400
+  port: 9440
 
 spring:
   application:
@@ -33,4 +33,30 @@ mybatis-plus:
 
 logging:
   level:
+<<<<<<< Updated upstream
     com.pipeline.data: DEBUG
+=======
+    com.pipeline.data: debug
+
+knowledge:
+  document:
+    agent-base-url: http://localhost:8100
+    upload-path: /api/v1/knowledge/upload
+    delete-path: /api/v1/knowledge/document/{docId}
+    internal-token:
+    internal-key:
+    connect-timeout-ms: 5000
+    read-timeout-ms: 120000
+    legacy-base-path:
+    allowed-categories:
+      - standards
+      - formulas
+      - operations
+      - cases
+      - faq
+    minio:
+      endpoint: http://localhost:9000
+      access-key: minioadmin
+      secret-key: minioadmin
+      bucket: knowledge-base
+>>>>>>> Stashed changes

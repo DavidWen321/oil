@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#0F172A" flood-opacity="0.12"/>
+    </filter>
+    <linearGradient id="topBar" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#1D4ED8"/>
+      <stop offset="100%" stop-color="#0F766E"/>
+    </linearGradient>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M0,0 L12,6 L0,12 z" fill="#475569" />
+    </marker>
+  </defs>
+  <rect width="100%" height="100%" fill="#F5F7FB" />
+  <rect x="32" y="28" width="1536" height="74" rx="22" fill="url(#topBar)" filter="url(#shadow)" />
+  <text x="800.0" y="73" text-anchor="middle" font-size="32" font-weight="700" font-family="Microsoft YaHei, SimHei, sans-serif" fill="#FFFFFF">图3 系统架构图</text>
+
+<rect x="54" y="124" width="1492" height="718" rx="28" fill="none" stroke="#CBD5E1" stroke-width="2.5" stroke-dasharray="12 10"/><text x="78" y="160" font-size="22" font-weight="700" font-family="Microsoft YaHei, SimHei, sans-serif" fill="#475569">分层架构与外部依赖</text>
+<rect x="104" y="180" width="300" height="132" rx="24" fill="#FFFFFF" stroke="#2563EB" stroke-width="2" filter="url(#shadow)"/>
+<text x="132" y="222" font-size="26" font-weight="700" font-family="Microsoft YaHei, SimHei, sans-serif" fill="#1F2937">用户与浏览器</text>
+<text x="134" y="266" font-size="21" font-family="Microsoft YaHei, SimHei, sans-serif" fill="#6B7280">业务人员 / 管理员</text>
+<text x="134" y="304" font-size="21" font-family="Microsoft YaHei, SimHei, sans-serif" fill="#6B7280">PC 浏览器访问</text>
+<rect x="522" y="180" width="556" height="132" rx="24" fill="#DBEAFE" stroke="#2563EB" stroke-width="2" filter="url(#shadow)"/>
+<text x="550" y="222" font-size="26" font-weight="700" font-family="Microsoft YaHei, SimHei, sans-serif" fill="#1F2937">前端应用层</text>
+<text x="552" y="266" font-size="21" font-family="Microsoft YaHei, SimHei, sans-serif" fill="#6B7280">pipeline-react：登录、数据管理、计算分析、特色功能、智能助手、报告中心</text>
+<rect x="1194" y="180" width="252" height="132" rx="24" fill="#FFFFFF" stroke="#7C3AED" stroke-width="2" filter="url(#shadow)"/>
+<text x="1222" y="222" font-size="26" font-weight="700" font-family="Microsoft YaHei, SimHei, sans-serif" fill="#1F2937">智能接口层</text>
+<text x="1224" y="266" font-size="21" font-family="Microsoft YaHei, SimHei, sans-serif" fill="#6B7280">SSE 流式响应</text>
+<text x="1224" y="304" font-size="21" font-family="Microsoft YaHei, SimHei, sans-serif" fill="#6B7280">REST API</text>
+<rect x="112" y="402" width="320" height="204" rx="24" fill="#D1FAE5" stroke="#059669" stroke-width="2" filter="url(#shadow)"/>
+<text x="140" y="444" font-size="26" font-weight="700" font-family="Microsoft YaHei, SimHei, sans-serif" fill="#1F2937">Java 微服务集群</text>
+<text x="142" y="488" font-size="21" font-family="Microsoft YaHei, SimHei, sans-serif" fill="#6B7280">Gateway</text>
+<text x="142" y="526" font-size="21" font-family="Microsoft YaHei, SimHei, sans-serif" fill="#6B7280">Auth</text>
+<text x="142" y="564" font-size="21" font-family="Microsoft YaHei, SimHei, sans-serif" fill="#6B7280">System</text>
+<text x="142" y="602" font-size="21" font-family="Microsoft YaHei, SimHei, sans-serif" fill="#6B7280">Data</text>
+<text x="142" y="640" font-size="21" font-family="Microsoft YaHei, SimHei, sans-serif" fill="#6B7280">Calculation</text>
+<rect x="500" y="402" width="360" height="204" rx="24" fill="#EDE9FE" stroke="#7C3AED" stroke-width="2" filter="url(#shadow)"/>
+<text x="528" y="444" font-size="26" font-weight="700" font-family="Microsoft YaHei, SimHei, sans-serif" fill="#1F2937">Python 智能体服务</text>
+<text x="530" y="488" font-size="21" font-family="Microsoft YaHei, SimHei, sans-serif" fill="#6B7280">Chat / Trace / Knowledge / Report</text>
+<text x="530" y="526" font-size="21" font-family="Microsoft YaHei, SimHei, sans-serif" fill="#6B7280">Graph Workflow / MCP / RAG</text>
+<rect x="928" y="402" width="520" height="204" rx="24" fill="#FEF3C7" stroke="#D97706" stroke-width="2" filter="url(#shadow)"/>
+<text x="956" y="444" font-size="26" font-weight="700" font-family="Microsoft YaHei, SimHei, sans-serif" fill="#1F2937">基础设施与平台能力</text>
+<text x="958" y="488" font-size="21" font-family="Microsoft YaHei, SimHei, sans-serif" fill="#6B7280">MySQL、Redis、Nacos</text>
+<text x="958" y="526" font-size="21" font-family="Microsoft YaHei, SimHei, sans-serif" fill="#6B7280">MinIO、Milvus</text>
+<text x="958" y="564" font-size="21" font-family="Microsoft YaHei, SimHei, sans-serif" fill="#6B7280">日志、配置、服务发现</text>
+<rect x="214" y="674" width="364" height="108" rx="24" fill="#CFFAFE" stroke="#0891B2" stroke-width="2" filter="url(#shadow)"/>
+<text x="242" y="716" font-size="26" font-weight="700" font-family="Microsoft YaHei, SimHei, sans-serif" fill="#1F2937">专业分析结果</text>
+<text x="244" y="760" font-size="21" font-family="Microsoft YaHei, SimHei, sans-serif" fill="#6B7280">水力指标、泵站优化结果、敏感性分析、报告记录</text>
+<rect x="648" y="674" width="364" height="108" rx="24" fill="#FFFFFF" stroke="#7C3AED" stroke-width="2" filter="url(#shadow)"/>
+<text x="676" y="716" font-size="26" font-weight="700" font-family="Microsoft YaHei, SimHei, sans-serif" fill="#1F2937">知识增强结果</text>
+<text x="678" y="760" font-size="21" font-family="Microsoft YaHei, SimHei, sans-serif" fill="#6B7280">知识库问答、故障诊断建议、方案说明、报告摘要</text>
+<rect x="1082" y="674" width="256" height="108" rx="24" fill="#FFFFFF" stroke="#DC2626" stroke-width="2" filter="url(#shadow)"/>
+<text x="1110" y="716" font-size="26" font-weight="700" font-family="Microsoft YaHei, SimHei, sans-serif" fill="#1F2937">输出形态</text>
+<text x="1112" y="760" font-size="21" font-family="Microsoft YaHei, SimHei, sans-serif" fill="#6B7280">页面图表 + 报告下载</text>
+<line x1="404" y1="246" x2="522" y2="246" stroke="#475569" stroke-width="4" marker-end="url(#arrow)"/>
+<rect x="389.0" y="228.0" width="148" height="34" rx="17" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
+<text x="463.0" y="252.0" text-anchor="middle" font-size="18" font-family="Microsoft YaHei, SimHei, sans-serif" fill="#475569">访问</text>
+<line x1="1078" y1="246" x2="1194" y2="246" stroke="#475569" stroke-width="4" marker-end="url(#arrow)"/>
+<rect x="1062.0" y="228.0" width="148" height="34" rx="17" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
+<text x="1136.0" y="252.0" text-anchor="middle" font-size="18" font-family="Microsoft YaHei, SimHei, sans-serif" fill="#475569">流式/接口</text>
+<line x1="800" y1="312" x2="272" y2="402" stroke="#475569" stroke-width="4" marker-end="url(#arrow)"/>
+<rect x="462.0" y="339.0" width="148" height="34" rx="17" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
+<text x="536.0" y="363.0" text-anchor="middle" font-size="18" font-family="Microsoft YaHei, SimHei, sans-serif" fill="#475569">业务请求</text>
+<line x1="800" y1="312" x2="680" y2="402" stroke="#475569" stroke-width="4" marker-end="url(#arrow)"/>
+<rect x="666.0" y="339.0" width="148" height="34" rx="17" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
+<text x="740.0" y="363.0" text-anchor="middle" font-size="18" font-family="Microsoft YaHei, SimHei, sans-serif" fill="#475569">AI请求</text>
+<line x1="1320" y1="312" x2="1188" y2="402" stroke="#475569" stroke-width="4" marker-end="url(#arrow)"/>
+<rect x="1180.0" y="339.0" width="148" height="34" rx="17" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
+<text x="1254.0" y="363.0" text-anchor="middle" font-size="18" font-family="Microsoft YaHei, SimHei, sans-serif" fill="#475569">接口支撑</text>
+<line x1="432" y1="504" x2="928" y2="504" stroke="#475569" stroke-width="4" marker-end="url(#arrow)"/>
+<rect x="606.0" y="486.0" width="148" height="34" rx="17" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
+<text x="680.0" y="510.0" text-anchor="middle" font-size="18" font-family="Microsoft YaHei, SimHei, sans-serif" fill="#475569">共享基础设施</text>
+<line x1="860" y1="504" x2="928" y2="504" stroke="#475569" stroke-width="4" marker-end="url(#arrow)"/>
+<rect x="820.0" y="486.0" width="148" height="34" rx="17" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
+<text x="894.0" y="510.0" text-anchor="middle" font-size="18" font-family="Microsoft YaHei, SimHei, sans-serif" fill="#475569">检索/存储</text>
+<line x1="272" y1="606" x2="396" y2="674" stroke="#475569" stroke-width="4" marker-end="url(#arrow)"/>
+<rect x="260.0" y="622.0" width="148" height="34" rx="17" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
+<text x="334.0" y="646.0" text-anchor="middle" font-size="18" font-family="Microsoft YaHei, SimHei, sans-serif" fill="#475569">计算输出</text>
+<line x1="680" y1="606" x2="830" y2="674" stroke="#475569" stroke-width="4" marker-end="url(#arrow)"/>
+<rect x="681.0" y="622.0" width="148" height="34" rx="17" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
+<text x="755.0" y="646.0" text-anchor="middle" font-size="18" font-family="Microsoft YaHei, SimHei, sans-serif" fill="#475569">智能输出</text>
+<line x1="1188" y1="606" x2="1210" y2="674" stroke="#475569" stroke-width="4" marker-end="url(#arrow)"/>
+<rect x="1125.0" y="622.0" width="148" height="34" rx="17" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
+<text x="1199.0" y="646.0" text-anchor="middle" font-size="18" font-family="Microsoft YaHei, SimHei, sans-serif" fill="#475569">聚合输出</text>
+<line x1="1012" y1="728" x2="1082" y2="728" stroke="#475569" stroke-width="4" marker-end="url(#arrow)"/>
+<rect x="973.0" y="710.0" width="148" height="34" rx="17" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
+<text x="1047.0" y="734.0" text-anchor="middle" font-size="18" font-family="Microsoft YaHei, SimHei, sans-serif" fill="#475569">汇总</text>
+</svg>

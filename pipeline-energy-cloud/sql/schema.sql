@@ -235,3 +235,61 @@ CREATE TABLE `t_operation_log` (
     KEY `idx_module` (`module`),
     KEY `idx_create_time` (`create_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+
+-- ============================================================
+-- 10. 知识库文档元数据表 (t_kb_document)
+-- ============================================================
+DROP TABLE IF EXISTS `t_kb_document`;
+CREATE TABLE `t_kb_document` (
+    `id` bigint(20) NOT NULL AUTO_INCREMENT,
+    `title` varchar(200) NOT NULL,
+    `category` varchar(50) NOT NULL,
+    `source_type` varchar(50) DEFAULT NULL,
+    `tags` varchar(500) DEFAULT NULL,
+    `remark` varchar(1000) DEFAULT NULL,
+    `file_name` varchar(255) NOT NULL,
+    `file_extension` varchar(20) DEFAULT NULL,
+    `file_size` bigint(20) DEFAULT 0,
+    `file_hash` varchar(64) NOT NULL,
+    `storage_type` varchar(32) NOT NULL DEFAULT 'MINIO',
+    `storage_bucket` varchar(128) NOT NULL,
+    `storage_object_key` varchar(500) NOT NULL,
+    `agent_doc_id` varchar(64) DEFAULT NULL,
+    `chunk_count` int(11) DEFAULT 0,
+    `retry_count` int(11) DEFAULT 0,
+    `status` varchar(32) NOT NULL DEFAULT 'UPLOADED',
+    `failure_reason` varchar(1000) DEFAULT NULL,
+    `last_ingest_time` datetime DEFAULT NULL,
+    `create_by` varchar(64) DEFAULT '',
+    `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    `is_deleted` tinyint(1) DEFAULT 0,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_file_hash` (`file_hash`),
+    KEY `idx_category` (`category`),
+    KEY `idx_status` (`status`),
+    KEY `idx_agent_doc_id` (`agent_doc_id`),
+    KEY `idx_create_time` (`create_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+DROP TABLE IF EXISTS `t_kb_ingest_task`;
+CREATE TABLE `t_kb_ingest_task` (
+    `id` bigint(20) NOT NULL AUTO_INCREMENT,
+    `document_id` bigint(20) NOT NULL,
+    `task_type` varchar(32) NOT NULL,
+    `attempt_no` int(11) NOT NULL DEFAULT 1,
+    `status` varchar(32) NOT NULL DEFAULT 'PENDING',
+    `agent_doc_id` varchar(64) DEFAULT NULL,
+    `chunk_count` int(11) DEFAULT 0,
+    `failure_reason` varchar(1000) DEFAULT NULL,
+    `create_by` varchar(64) DEFAULT '',
+    `started_at` datetime DEFAULT NULL,
+    `finished_at` datetime DEFAULT NULL,
+    `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    KEY `idx_document_id` (`document_id`),
+    KEY `idx_task_status` (`status`),
+    KEY `idx_task_create_time` (`create_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

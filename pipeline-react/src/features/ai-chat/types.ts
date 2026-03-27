@@ -1,4 +1,8 @@
+<<<<<<< Updated upstream
 ﻿import type { ToolExecutionEvent } from '../../types/agent';
+=======
+import type { ToolExecutionEvent } from '../../types/agent';
+>>>>>>> Stashed changes
 
 export type ChatMode = 'standard' | 'diagnosis' | 'optimization';
 

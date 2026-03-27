@@ -17,6 +17,19 @@ import type { PendingStreamTarget, UIMessage } from '../../features/ai-chat/type
 import { getFriendlyError, getStreamLabel, WELCOME_PROMPTS } from '../../features/ai-chat/utils/chatUi';
 
 const BUSY_STATES = new Set(['planning', 'executing', 'waiting_hitl']);
+const MODE_PREFIX: Record<'standard' | 'diagnosis' | 'optimization', string> = {
+  standard: '',
+  diagnosis: '请以故障诊断模式回答，优先做异常定位、原因链分析、风险等级与排查步骤。\n\n',
+  optimization: '请以优化建议模式回答，优先给出节能调度、泵站组合优化、约束条件、预期收益与实施建议。\n\n',
+};
+
+function buildOutboundMessage(content: string, mode: 'standard' | 'diagnosis' | 'optimization') {
+  const prefix = MODE_PREFIX[mode];
+  if (!prefix) {
+    return content;
+  }
+  return `${prefix}用户问题：${content}`;
+}
 
 export default function AIChat() {
   const [draft, setDraft] = useState('');
@@ -113,7 +126,7 @@ export default function AIChat() {
       requestText: content,
     });
     setDraft('');
-    startChat(content);
+    startChat(buildOutboundMessage(content, activeMode), activeMode);
   };
 
   const handleRetry = (message: UIMessage) => {
