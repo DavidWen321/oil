@@ -115,7 +115,7 @@ export default function KnowledgeEntry() {
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const taskRequestSeqRef = useRef(0);
-  const selectedDocumentIdRef = useRef<number>();
+  const selectedDocumentIdRef = useRef<number | undefined>(undefined);
 
   const hasRunningTask = useMemo(
     () => documents.some((item) => item.status === 'PROCESSING' || item.status === 'UPLOADED'),

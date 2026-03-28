@@ -19,11 +19,8 @@ import type {
   OilProperty,
   OptimizationParams,
   OptimizationResult,
-<<<<<<< Updated upstream
   PageResult,
-=======
   KnowledgeDocument,
->>>>>>> Stashed changes
   Pipeline,
   Project,
   PumpStation,

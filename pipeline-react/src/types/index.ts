@@ -1,4 +1,4 @@
-// ========== 通用类型 ==========
+﻿// ========== 閫氱敤绫诲瀷 ==========
 
 export interface R<T> {
   code: number;
@@ -57,7 +57,7 @@ export interface CalculationHistory {
   createTime?: string;
 }
 
-// ========== 用户认证 ==========
+// ========== 鐢ㄦ埛璁よ瘉 ==========
 
 export interface LoginParams {
   username: string;
@@ -79,7 +79,7 @@ export interface UserInfo {
   roles: string[];
 }
 
-// ========== 数据管理 ==========
+// ========== 鏁版嵁绠＄悊 ==========
 
 export interface Project {
   proId: number;
@@ -130,9 +130,7 @@ export interface OilProperty {
   updateTime?: string;
 }
 
-<<<<<<< Updated upstream
-// ========== 水力分析 ==========
-=======
+// ========== 姘村姏鍒嗘瀽 ==========
 export interface KnowledgeDocument {
   id: number;
   title: string;
@@ -174,8 +172,7 @@ export interface KnowledgeIngestTask {
   updateTime?: string;
 }
 
-// ========== 姓力分析 ==========
->>>>>>> Stashed changes
+// ========== 濮撳姏鍒嗘瀽 ==========
 
 export interface HydraulicAnalysisParams {
   projectId?: number;
@@ -207,7 +204,7 @@ export interface HydraulicAnalysisResult {
   endStationInPressure: number;
 }
 
-// ========== 泵站优化 ==========
+// ========== 娉电珯浼樺寲 ==========
 
 export interface OptimizationParams {
   projectId?: number;
@@ -241,7 +238,7 @@ export interface OptimizationResult {
   description: string;
 }
 
-// ========== 敏感性分析 ==========
+// ========== 鏁忔劅鎬у垎鏋?==========
 
 export interface SensitivityVariableConfig {
   variableType: string;
@@ -308,7 +305,7 @@ export interface SensitivityRanking {
   description: string;
 }
 
-// ========== 故障诊断 ==========
+// ========== 鏁呴殰璇婃柇 ==========
 
 export interface DiagnosisRequest {
   pipelineId: number;
@@ -384,7 +381,7 @@ export interface DiagnosisMetrics {
   energyStatus: string;
 }
 
-// ========== 多方案对比 ==========
+// ========== 澶氭柟妗堝姣?==========
 
 export interface ComparisonRequest {
   projectId: number;
@@ -476,7 +473,7 @@ export interface RecommendedScheme {
   };
 }
 
-// ========== 碳排放核算 ==========
+// ========== 纰虫帓鏀炬牳绠?==========
 
 export interface CarbonCalculationRequest {
   projectId: number;
@@ -549,7 +546,7 @@ export interface CarbonQuota {
   projectedTradingAmount: number;
 }
 
-// ========== 实时监控 ==========
+// ========== 瀹炴椂鐩戞帶 ==========
 
 export interface MonitorDataPoint {
   dataId: string;
@@ -606,7 +603,7 @@ export interface AlarmRule {
   description: string;
 }
 
-// ========== 前端监控类型 ==========
+// ========== 鍓嶇鐩戞帶绫诲瀷 ==========
 
 export interface MonitorData {
   pipelineId: number;

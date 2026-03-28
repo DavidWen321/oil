@@ -251,7 +251,7 @@ export default function AIChat() {
         <button
           type="button"
           className="absolute bottom-36 right-6 inline-flex h-11 w-11 items-center justify-center rounded-full bg-white text-neutral-700 shadow-[0_10px_30px_rgba(15,23,42,0.12)] ring-1 ring-black/5 transition hover:text-neutral-950"
-          onClick={scrollToBottom}
+          onClick={() => scrollToBottom()}
           aria-label="滚动到底部"
         >
           <ChevronDown className="h-5 w-5" />
