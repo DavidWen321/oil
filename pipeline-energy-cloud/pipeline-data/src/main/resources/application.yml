@@ -13,12 +13,8 @@ spring:
     nacos:
       discovery:
         server-addr: localhost:8848
-        username: nacos
-        password: 20050607hxr
       config:
         server-addr: localhost:8848
-        username: nacos
-        password: 20050607hxr
 
 mybatis-plus:
   mapper-locations: classpath*:mapper/**/*Mapper.xml
@@ -33,10 +29,7 @@ mybatis-plus:
 
 logging:
   level:
-<<<<<<< Updated upstream
     com.pipeline.data: DEBUG
-=======
-    com.pipeline.data: debug
 
 knowledge:
   document:
@@ -59,4 +52,3 @@ knowledge:
       access-key: minioadmin
       secret-key: minioadmin
       bucket: knowledge-base
->>>>>>> Stashed changes

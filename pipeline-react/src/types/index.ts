@@ -130,9 +130,7 @@ export interface OilProperty {
   updateTime?: string;
 }
 
-<<<<<<< Updated upstream
 // ========== 水力分析 ==========
-=======
 export interface KnowledgeDocument {
   id: number;
   title: string;
@@ -175,7 +173,6 @@ export interface KnowledgeIngestTask {
 }
 
 // ========== 姓力分析 ==========
->>>>>>> Stashed changes
 
 export interface HydraulicAnalysisParams {
   projectId?: number;

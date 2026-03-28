@@ -73,17 +73,12 @@ export const agentApi = {
   ) {
     const response = await fetch(`${AGENT_API_BASE}/report/generate`, {
       method: 'POST',
-<<<<<<< Updated upstream
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAgentHeaders(true),
       body: JSON.stringify({
         user_request: userRequest,
         session_id: sessionId,
         report_context: reportContext,
       }),
-=======
-      headers: getAgentHeaders(true),
-      body: JSON.stringify({ user_request: userRequest, session_id: sessionId }),
->>>>>>> Stashed changes
     });
 
     if (!response.ok) {

@@ -1,5 +1,5 @@
 server:
-  port: 8080
+  port: 8180
 
 spring:
   application:
@@ -42,7 +42,7 @@ spring:
           filters:
             - StripPrefix=1
         - id: pipeline-data
-          uri: http://127.0.0.1:9400
+          uri: http://127.0.0.1:9440
           predicates:
             - Path=/data/**
           filters:

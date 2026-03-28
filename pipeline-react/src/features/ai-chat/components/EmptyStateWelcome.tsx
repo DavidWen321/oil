@@ -9,7 +9,7 @@ export function EmptyStateWelcome({ prompts, onPromptSelect }: EmptyStateWelcome
   return (
     <div className="flex min-h-full flex-col items-center justify-center px-2 py-10 text-center">
       <div className="mx-auto flex max-w-[720px] flex-col items-center">
-        <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-3xl bg-neutral-950 text-white shadow-[0_12px_28px_rgba(15,23,42,0.16)]">
+        <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-3xl bg-[linear-gradient(135deg,#e0f2fe_0%,#dbeafe_55%,#e2e8f0_100%)] text-slate-700 shadow-[0_14px_32px_rgba(148,163,184,0.18)] ring-1 ring-white/90">
           <Sparkles className="h-6 w-6" />
         </div>
         <h1 className="text-3xl font-semibold tracking-[-0.04em] text-neutral-950 md:text-4xl">

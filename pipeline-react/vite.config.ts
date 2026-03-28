@@ -6,6 +6,7 @@ import type { ManualChunkMeta } from 'rollup';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
+  const gatewayTarget = env.VITE_GATEWAY_URL || 'http://localhost:8180';
   const agentProxyHeaders: Record<string, string> = {};
   const internalServiceToken = env.INTERNAL_SERVICE_TOKEN || process.env.INTERNAL_SERVICE_TOKEN;
   const internalApiKey = env.INTERNAL_API_KEY || process.env.INTERNAL_API_KEY;
@@ -56,36 +57,36 @@ export default defineConfig(({ mode }) => {
     server: {
       proxy: {
         '/auth': {
-          target: 'http://localhost:8080',
+          target: gatewayTarget,
           changeOrigin: true,
         },
         '/project': {
-          target: 'http://localhost:8080',
+          target: gatewayTarget,
           changeOrigin: true,
           rewrite: (path) => `/data${path}`,
         },
         '/pipeline': {
-          target: 'http://localhost:8080',
+          target: gatewayTarget,
           changeOrigin: true,
           rewrite: (path) => `/data${path}`,
         },
         '/pump-station': {
-          target: 'http://localhost:8080',
+          target: gatewayTarget,
           changeOrigin: true,
           rewrite: (path) => `/data${path}`,
         },
         '/oil-property': {
-          target: 'http://localhost:8080',
+          target: gatewayTarget,
           changeOrigin: true,
           rewrite: (path) => `/data${path}`,
         },
         '/knowledge-doc': {
-          target: 'http://localhost:8080',
+          target: gatewayTarget,
           changeOrigin: true,
           rewrite: (path) => `/data${path}`,
         },
         '/calculation': {
-          target: 'http://localhost:8080',
+          target: gatewayTarget,
           changeOrigin: true,
           ws: true,
         },

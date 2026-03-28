@@ -52,4 +52,14 @@ public interface CalculationHistoryMapper extends BaseMapper<CalculationHistory>
     long countByCalcTypeAndTimeRange(@Param("calcType") String calcType,
                                      @Param("startTime") LocalDateTime startTime,
                                      @Param("endTime") LocalDateTime endTime);
+
+    @Select("SELECT COUNT(DISTINCT create_by) FROM t_calculation_history " +
+            "WHERE create_time BETWEEN #{startTime} AND #{endTime} AND create_by IS NOT NULL")
+    long countDistinctCreateByInRange(@Param("startTime") LocalDateTime startTime,
+                                      @Param("endTime") LocalDateTime endTime);
+
+    @Select("SELECT COUNT(DISTINCT pro_id) FROM t_calculation_history " +
+            "WHERE create_time BETWEEN #{startTime} AND #{endTime} AND pro_id IS NOT NULL")
+    long countDistinctProjectInRange(@Param("startTime") LocalDateTime startTime,
+                                     @Param("endTime") LocalDateTime endTime);
 }

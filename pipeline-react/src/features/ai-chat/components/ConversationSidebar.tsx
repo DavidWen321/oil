@@ -29,9 +29,9 @@ export function ConversationSidebar({
   onDelete,
 }: ConversationSidebarProps) {
   return (
-    <aside className="flex h-full min-h-0 flex-col border-r border-neutral-200/80 bg-neutral-50 px-4 py-4">
+    <aside className="flex h-full min-h-0 flex-col border-r border-slate-200/80 bg-[linear-gradient(180deg,#f8fbff_0%,#f5f7fb_100%)] px-4 py-4">
       <div className="flex items-center gap-3 px-1 pb-4">
-        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-neutral-950 text-white shadow-sm">
+        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#dbeafe_0%,#bfdbfe_52%,#e2e8f0_100%)] text-slate-700 shadow-[0_10px_24px_rgba(148,163,184,0.22)] ring-1 ring-white/80">
           <Sparkles className="h-4 w-4" />
         </div>
         <div>
@@ -43,7 +43,7 @@ export function ConversationSidebar({
       <button
         type="button"
         onClick={onCreate}
-        className="inline-flex items-center justify-center gap-2 rounded-2xl bg-neutral-950 px-4 py-3 text-sm font-medium text-white transition hover:bg-neutral-800"
+        className="inline-flex items-center justify-center gap-2 rounded-2xl border border-sky-200/80 bg-[linear-gradient(135deg,#eff6ff_0%,#dbeafe_100%)] px-4 py-3 text-sm font-medium text-slate-800 shadow-[0_12px_24px_rgba(147,197,253,0.18)] transition hover:border-sky-300 hover:bg-[linear-gradient(135deg,#e0f2fe_0%,#dbeafe_100%)] hover:text-slate-900"
       >
         <MessageSquarePlus className="h-4 w-4" />
         新建会话
@@ -65,8 +65,10 @@ export function ConversationSidebar({
               <div
                 key={conversation.id}
                 className={[
-                  'group rounded-2xl p-2 transition',
-                  active ? 'bg-neutral-950 text-white shadow-sm' : 'hover:bg-white',
+                  'group rounded-2xl border p-2 transition',
+                  active
+                    ? 'border-sky-200/90 bg-[linear-gradient(135deg,rgba(239,246,255,0.98)_0%,rgba(219,234,254,0.96)_100%)] text-slate-900 shadow-[0_12px_26px_rgba(148,163,184,0.16)]'
+                    : 'border-transparent hover:bg-white/90',
                 ].join(' ')}
               >
                 <button
@@ -75,17 +77,17 @@ export function ConversationSidebar({
                   onClick={() => onSelect(conversation.id)}
                 >
                   <div className="truncate text-sm font-medium">{conversation.title}</div>
-                  <div className={['mt-1 line-clamp-2 text-xs', active ? 'text-neutral-300' : 'text-neutral-500'].join(' ')}>
+                  <div className={['mt-1 line-clamp-2 text-xs', active ? 'text-slate-600' : 'text-neutral-500'].join(' ')}>
                     {conversation.preview}
                   </div>
-                  <div className={['mt-2 text-[11px]', active ? 'text-neutral-400' : 'text-neutral-400'].join(' ')}>
+                  <div className={['mt-2 text-[11px]', active ? 'text-slate-500' : 'text-neutral-400'].join(' ')}>
                     {formatConversationTime(conversation.updatedAt)}
                   </div>
                 </button>
-                <div className={['mt-2 flex items-center justify-end gap-1', active ? 'text-neutral-300' : 'text-neutral-400'].join(' ')}>
+                <div className={['mt-2 flex items-center justify-end gap-1', active ? 'text-slate-500' : 'text-neutral-400'].join(' ')}>
                   <button
                     type="button"
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-full transition hover:bg-black/5 hover:text-neutral-900"
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-full transition hover:bg-white/70 hover:text-neutral-900"
                     aria-label="更多"
                   >
                     <MoreHorizontal className="h-4 w-4" />
