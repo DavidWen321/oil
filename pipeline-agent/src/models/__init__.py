@@ -17,6 +17,22 @@ from .state import (
     AgentState,
     create_initial_state,
 )
+from .scheme_card import (
+    ApprovalStatus,
+    EvidenceItem,
+    RiskLevel,
+    SchemeCard,
+    SchemeOption,
+)
+from .knowledge_base import (
+    KnowledgeFileType,
+    KnowledgeSourceType,
+    KnowledgeDocumentStatus,
+    KnowledgeDocumentMetadata,
+    KnowledgeDocumentManifest,
+    KnowledgeStageBaseline,
+    build_stage0_baseline,
+)
 from .schemas import (
     ChatRequest,
     ChatResponse,
@@ -57,6 +73,18 @@ __all__ = [
     "ReflexionMemory",
     "AgentState",
     "create_initial_state",
+    "RiskLevel",
+    "ApprovalStatus",
+    "EvidenceItem",
+    "SchemeOption",
+    "SchemeCard",
+    "KnowledgeFileType",
+    "KnowledgeSourceType",
+    "KnowledgeDocumentStatus",
+    "KnowledgeDocumentMetadata",
+    "KnowledgeDocumentManifest",
+    "KnowledgeStageBaseline",
+    "build_stage0_baseline",
     "ChatRequest",
     "ChatResponse",
     "StreamChunk",

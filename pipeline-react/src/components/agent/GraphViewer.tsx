@@ -3,13 +3,13 @@
 interface GraphNode {
   id: string;
   name: string;
-  type?: string;
+  type?: string | null;
 }
 
 interface GraphEdge {
   source: string;
   target: string;
-  type?: string;
+  type?: string | null;
 }
 
 interface GraphViewerProps {

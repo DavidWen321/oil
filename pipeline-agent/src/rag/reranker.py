@@ -205,6 +205,7 @@ class DashScopeReranker:
         reranker_config = rag_config.reranker
         self.model_name = model_name or reranker_config["model"]
         self.threshold = threshold or reranker_config["threshold"]
+        self.enabled = reranker_config["enabled"]
 
     def rerank(
         self,
@@ -219,6 +220,8 @@ class DashScopeReranker:
             return []
 
         top_k = top_k or rag_config.retrieval["final_k"]
+        if not self.enabled:
+            return self._fallback(results, top_k)
 
         documents = [
             {"content": r.full_text or r.content}
@@ -311,15 +314,10 @@ class LLMReranker:
 评分："""
 
     def __init__(self):
-        from langchain_openai import ChatOpenAI
-
-        self.llm = ChatOpenAI(
-            api_key=settings.OPENAI_API_KEY,
-            base_url=settings.OPENAI_API_BASE,
-            model=settings.LLM_MODEL,
-            temperature=0,
-            max_tokens=64,
-        )
+        reranker_config = rag_config.reranker
+        self.llm = get_cached_llm("tool_result_format")
+        self.threshold = reranker_config["threshold"]
+        self.enabled = reranker_config["enabled"]
 
     def rerank(
         self,
@@ -332,6 +330,9 @@ class LLMReranker:
 
         if not results:
             return []
+
+        if not self.enabled:
+            return self._fallback(results, top_k)
 
         scored_results = []
 
@@ -348,6 +349,8 @@ class LLMReranker:
                 # 解析分数
                 score_text = response.content.strip()
                 score = float(score_text) / 10.0  # 归一化到0-1
+                if score < self.threshold:
+                    continue
 
                 scored_results.append(RerankResult(
                     chunk_id=result.chunk_id,
@@ -369,6 +372,24 @@ class LLMReranker:
         scored_results.sort(key=lambda x: x.rerank_score, reverse=True)
 
         return scored_results[:top_k]
+
+    @staticmethod
+    def _fallback(results: List[RetrievalResult], top_k: int) -> List[RerankResult]:
+        return [
+            RerankResult(
+                chunk_id=r.chunk_id,
+                content=r.content,
+                full_text=r.full_text,
+                doc_id=r.doc_id,
+                doc_title=r.doc_title,
+                source=r.source,
+                category=r.category,
+                original_score=r.score,
+                rerank_score=r.score,
+                final_score=r.score,
+            )
+            for r in results
+        ][:top_k]
 
 
 # 全局实例

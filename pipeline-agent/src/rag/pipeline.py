@@ -33,6 +33,16 @@ class RAGResponse:
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass
+class IndexingReport:
+    """Indexing summary used by knowledge-base management flows."""
+
+    documents_loaded: int
+    documents_indexed: int
+    document_ids: List[str] = field(default_factory=list)
+    chunk_count: int = 0
+
+
 class RAGPipeline:
     """
     RAG Pipeline
@@ -68,52 +78,11 @@ class RAGPipeline:
         self.query_rewriter = get_query_rewriter()
         self.graph_rag = graph_rag or GraphRAGRetriever(get_knowledge_graph_builder())
 
-    def rebuild_sparse_index_from_store(self) -> int:
-        """Rebuild the in-memory BM25 index from chunks already stored in Milvus."""
-        chunks = self.vector_store.list_chunks()
-        self.retriever.build_sparse_index(chunks)
-        logger.info("Sparse retrieval corpus refreshed from vector store, chunk_count=%s", len(chunks))
-        return len(chunks)
-
-    def safe_refresh_sparse_index_from_store(self) -> Dict[str, Any]:
-        """Refresh sparse retrieval state without failing a completed vector-store update."""
-        if not self.embeddings.use_sparse:
-            self.retriever.build_sparse_index([])
-            return {
-                "success": True,
-                "chunk_count": 0,
-                "message": "sparse retrieval disabled",
-            }
-
-        try:
-            chunk_count = self.rebuild_sparse_index_from_store()
-            return {
-                "success": True,
-                "chunk_count": chunk_count,
-                "message": "",
-            }
-        except Exception as exc:
-            logger.error("Sparse index refresh failed after vector update: %s", exc)
-            return {
-                "success": False,
-                "chunk_count": self.retriever.sparse_corpus_size(),
-                "message": str(exc),
-            }
-
-    def ensure_retriever_ready(self) -> int:
-        """Ensure hybrid retrieval state exists after upload, delete, or process restart."""
-        if not self.embeddings.use_sparse:
-            self.retriever.build_sparse_index([])
-            return 0
-        if self.retriever.has_sparse_index():
-            return self.retriever.sparse_corpus_size()
-        return self.rebuild_sparse_index_from_store()
-
-    def index_documents(
+    def index_documents_report(
         self,
         knowledge_base_path: str = "knowledge_base",
         recreate: bool = False
-    ) -> int:
+    ) -> IndexingReport:
         """
         索引知识库文档
 
@@ -132,8 +101,13 @@ class RAGPipeline:
 
         if not documents:
             logger.warning("没有找到可索引的文档")
-            self.retriever.build_sparse_index([])
-            return 0
+            self.retriever.clear_sparse_index()
+            return IndexingReport(
+                documents_loaded=0,
+                documents_indexed=0,
+                document_ids=[],
+                chunk_count=0,
+            )
 
         # 2. 创建/重建Collection
         self.vector_store.create_collection(recreate=recreate)
@@ -142,6 +116,7 @@ class RAGPipeline:
         all_chunks = []
         all_embeddings = []
         bm25_corpus = []
+        indexed_doc_ids = []
 
         for doc in documents:
             logger.info(f"处理文档: {doc.title}")
@@ -166,6 +141,7 @@ class RAGPipeline:
                 embeddings = self.embeddings.embed_documents(texts_to_embed)
                 all_chunks.extend(chunks)
                 all_embeddings.extend(embeddings)
+                indexed_doc_ids.append(doc.doc_id)
 
                 # 收集BM25语料
                 for chunk in chunks:
@@ -180,9 +156,70 @@ class RAGPipeline:
             self.vector_store.insert_chunks(all_chunks, all_embeddings)
 
         # 5. 构建BM25索引
-        self.retriever.build_sparse_index(bm25_corpus)
+        if bm25_corpus:
+            self.retriever.build_sparse_index(bm25_corpus)
+        else:
+            self.retriever.clear_sparse_index()
 
         logger.info(f"索引完成，共 {len(documents)} 个文档，{len(all_chunks)} 个分块")
+        return IndexingReport(
+            documents_loaded=len(documents),
+            documents_indexed=len(indexed_doc_ids),
+            document_ids=indexed_doc_ids,
+            chunk_count=len(all_chunks),
+        )
+
+    def index_documents(
+        self,
+        knowledge_base_path: str = "knowledge_base",
+        recreate: bool = False
+    ) -> int:
+        """Keep the legacy int-return API for existing callers."""
+
+        report = self.index_documents_report(
+            knowledge_base_path=knowledge_base_path,
+            recreate=recreate,
+        )
+        return report.documents_loaded
+
+    def refresh_sparse_index(self, knowledge_base_path: str = "knowledge_base") -> int:
+        """
+        仅刷新BM25稀疏索引，保持向量索引不变。
+
+        Args:
+            knowledge_base_path: 知识库路径
+
+        Returns:
+            已纳入BM25语料的文档数量
+        """
+        processor = DocumentProcessor(knowledge_base_path)
+        documents = processor.load_all_documents()
+        if not documents:
+            self.retriever.clear_sparse_index()
+            logger.info("知识库为空，已清空BM25索引")
+            return 0
+
+        bm25_corpus = []
+        for doc in documents:
+            chunks = self.chunker.chunk_document(doc)
+            for chunk in chunks:
+                bm25_corpus.append({
+                    "chunk_id": chunk.chunk_id,
+                    "content": chunk.content,
+                    "full_text": chunk.full_text,
+                    "doc_id": chunk.doc_id,
+                    "doc_title": chunk.doc_title,
+                    "source": chunk.source,
+                    "category": chunk.category,
+                    "chunk_index": chunk.chunk_index,
+                })
+
+        if bm25_corpus:
+            self.retriever.build_sparse_index(bm25_corpus)
+        else:
+            self.retriever.clear_sparse_index()
+
+        logger.info(f"BM25索引刷新完成，文档数: {len(documents)}，分块数: {len(bm25_corpus)}")
         return len(documents)
 
     def retrieve(
