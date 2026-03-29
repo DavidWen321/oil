@@ -1,5 +1,5 @@
 server:
-  port: 9440
+  port: 9400
 
 spring:
   application:
@@ -13,8 +13,12 @@ spring:
     nacos:
       discovery:
         server-addr: localhost:8848
+        username: nacos
+        password: 20050607hxr
       config:
         server-addr: localhost:8848
+        username: nacos
+        password: 20050607hxr
 
 mybatis-plus:
   mapper-locations: classpath*:mapper/**/*Mapper.xml

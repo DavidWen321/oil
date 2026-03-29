@@ -1,8 +1,5 @@
 import { http } from './request';
 import type {
-<<<<<<< Updated upstream
-  R,
-=======
   AlarmMessage,
   AlarmRule,
   AnalysisReport,
@@ -15,43 +12,6 @@ import type {
   DiagnosisResult,
   HydraulicAnalysisParams,
   HydraulicAnalysisResult,
->>>>>>> Stashed changes
-  LoginParams,
-  LoginResult,
-  Project,
-  Pipeline,
-  PumpStation,
-  OilProperty,
-<<<<<<< Updated upstream
-  HydraulicAnalysisParams,
-  HydraulicAnalysisResult,
-=======
-  PageResult,
->>>>>>> Stashed changes
-  OptimizationParams,
-  OptimizationResult,
-  SensitivityParams,
-  SensitivityResult,
-  DiagnosisRequest,
-  DiagnosisResult,
-  ComparisonRequest,
-  ComparisonResult,
-  CarbonCalculationRequest,
-  CarbonCalculationResult,
-  MonitorDataPoint,
-  AlarmMessage,
-  AlarmRule,
-  AnalysisReport,
-  CarbonCalculationRequest,
-  CarbonCalculationResult,
-  ComparisonRequest,
-  ComparisonResult,
-  CalculationHistory,
-  DiagnosisRequest,
-  DiagnosisResult,
-  HydraulicAnalysisParams,
-  HydraulicAnalysisResult,
-  KnowledgeIngestTask,
   LoginParams,
   LoginResult,
   MonitorDataPoint,
@@ -59,7 +19,6 @@ import type {
   OptimizationParams,
   OptimizationResult,
   PageResult,
-  KnowledgeDocument,
   Pipeline,
   Project,
   PumpStation,
@@ -102,14 +61,6 @@ export const oilPropertyApi = {
   create: (data: Partial<OilProperty>) => http.post<R<boolean>>('/oil-property', data),
   update: (data: Partial<OilProperty>) => http.put<R<boolean>>('/oil-property', data),
   delete: (ids: number[]) => http.delete<R<boolean>>(`/oil-property/${ids.join(',')}`),
-};
-
-export const knowledgeDocumentApi = {
-  list: () => http.get<R<KnowledgeDocument[]>>('/knowledge-doc/list'),
-  listTasks: (id: number) => http.get<R<KnowledgeIngestTask[]>>(`/knowledge-doc/${id}/tasks`),
-  upload: (data: FormData) => http.post<R<KnowledgeDocument>>('/knowledge-doc/upload', data),
-  retry: (id: number) => http.post<R<KnowledgeDocument>>(`/knowledge-doc/${id}/retry`),
-  delete: (id: number) => http.delete<R<boolean>>(`/knowledge-doc/${id}`),
 };
 
 export const calculationApi = {
@@ -183,8 +134,6 @@ export const statisticsApi = {
       params: { startDate, endDate },
     }),
 };
-<<<<<<< Updated upstream
-=======
 
 export const reportApi = {
   page: (params?: {

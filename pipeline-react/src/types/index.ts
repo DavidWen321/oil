@@ -18,9 +18,6 @@ export interface PageResult<T> {
   pageSize: number;
 }
 
-<<<<<<< Updated upstream
-// ========== 用户认证 ==========
-=======
 export interface AnalysisReport {
   id: number;
   proId?: number;
@@ -134,48 +131,6 @@ export interface OilProperty {
 }
 
 // ========== 水力分析 ==========
-export interface KnowledgeDocument {
-  id: number;
-  title: string;
-  category: string;
-  sourceType?: string;
-  tags?: string;
-  remark?: string;
-  fileName: string;
-  fileExtension?: string;
-  fileSize?: number;
-  fileHash?: string;
-  storageType?: string;
-  storageBucket?: string;
-  storageObjectKey?: string;
-  agentDocId?: string;
-  chunkCount?: number;
-  retryCount?: number;
-  status: string;
-  failureReason?: string;
-  lastIngestTime?: string;
-  createBy?: string;
-  createTime?: string;
-  updateTime?: string;
-}
-
-export interface KnowledgeIngestTask {
-  id: number;
-  documentId: number;
-  taskType: string;
-  attemptNo: number;
-  status: string;
-  agentDocId?: string;
-  chunkCount?: number;
-  failureReason?: string;
-  createBy?: string;
-  startedAt?: string;
-  finishedAt?: string;
-  createTime?: string;
-  updateTime?: string;
-}
-
-// ========== 姓力分析 ==========
 
 export interface HydraulicAnalysisParams {
   projectId?: number;

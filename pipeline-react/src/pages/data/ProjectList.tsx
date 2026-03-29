@@ -54,34 +54,6 @@ function nowrapTitle(text: string) {
   return <span style={{ whiteSpace: 'nowrap' }}>{text}</span>;
 }
 
-const mockData: Project[] = [
-  {
-    proId: 1,
-    number: 'GD-2024-001',
-    name: '西部原油管道工程',
-    responsible: '刘伟',
-    createTime: '2024-01-15 10:00:00',
-  },
-  {
-    proId: 2,
-    number: 'GD-2024-002',
-    name: '东部成品油管道项目',
-    responsible: '张明',
-    createTime: '2024-02-20 14:30:00',
-  },
-  {
-    proId: 3,
-    number: 'GD-2024-003',
-    name: '北方输送系统优化项目',
-    responsible: '王敏',
-    createTime: '2024-03-10 09:15:00',
-  },
-];
-
-function nowrapTitle(text: string) {
-  return <span style={{ whiteSpace: 'nowrap' }}>{text}</span>;
-}
-
 export default function ProjectList() {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<Project[]>([]);
