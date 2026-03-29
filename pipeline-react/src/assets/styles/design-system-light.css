@@ -334,7 +334,7 @@
 :root {
   /* 侧边栏尺寸 */
   --sidebar-width: 260px;
-  --sidebar-width-collapsed: 72px;
+  --sidebar-width-collapsed: 84px;
   --sidebar-width-mobile: 280px;
 
   /* 头部高度 */
