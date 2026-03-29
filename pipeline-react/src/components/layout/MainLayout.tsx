@@ -23,6 +23,7 @@ import {
   ApiOutlined,
   ControlOutlined,
   ExperimentOutlined,
+  BookOutlined,
   AlertOutlined,
   SwapOutlined,
   CloudOutlined,
@@ -31,7 +32,6 @@ import {
   CloseOutlined,
   RobotOutlined,
   DeploymentUnitOutlined,
-  FileSearchOutlined,
   SunOutlined,
   MoonOutlined,
 } from '@ant-design/icons';
@@ -45,7 +45,6 @@ import styles from './MainLayout.module.css';
 
 const { Header, Sider, Content } = Layout;
 
-// Menu Items Configuration
 const menuItems: MenuProps['items'] = [
   {
     key: '/dashboard',
@@ -95,13 +94,12 @@ const menuItems: MenuProps['items'] = [
     label: '智能助手',
     children: [
       { key: '/ai/chat', icon: <DeploymentUnitOutlined />, label: '智能对话' },
-      { key: '/ai/trace', icon: <FileSearchOutlined />, label: '执行追踪' },
+      { key: '/ai/trace', icon: <BookOutlined />, label: '知识库录入' },
       { key: '/ai/report', icon: <BarChartOutlined />, label: '智能报告' },
     ],
   },
 ];
 
-// MainLayout Component
 export default function MainLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -117,10 +115,8 @@ export default function MainLayout() {
   useWebSocket({ scope: 'all', subscribeMonitor: false, subscribeAlarms: true });
   const activeCount = alarms.filter((alarm) => alarm.status === 'ACTIVE').length;
 
-  // Responsive detection
   const { isMobile, isTablet, width } = useResponsive();
 
-  // Auto collapse sidebar on tablet/mobile
   useEffect(() => {
     if (isTablet) {
       setCollapsed(true);
@@ -129,20 +125,16 @@ export default function MainLayout() {
     }
   }, [isMobile, isTablet, width]);
 
-  // Close mobile menu on route change
   useEffect(() => {
     if (mobileMenuOpen) {
       setMobileMenuOpen(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.pathname]);
+  }, [location.pathname, mobileMenuOpen]);
 
-  // Handle overlay click
   const handleOverlayClick = useCallback(() => {
     setMobileMenuOpen(false);
   }, []);
 
-  // Prevent body scroll when mobile menu is open
   useEffect(() => {
     if (mobileMenuOpen) {
       document.body.style.overflow = 'hidden';
@@ -154,7 +146,6 @@ export default function MainLayout() {
     };
   }, [mobileMenuOpen]);
 
-  // Handle menu click
   const handleMenuClick: MenuProps['onClick'] = ({ key }) => {
     navigate(key);
     if (isMobile) {
@@ -162,7 +153,6 @@ export default function MainLayout() {
     }
   };
 
-  // User menu items
   const userMenuItems: MenuProps['items'] = [
     {
       key: 'profile',
@@ -192,33 +182,25 @@ export default function MainLayout() {
     }
   };
 
-  // Get selected menu keys
-  const getSelectedKeys = () => {
-    const path = location.pathname;
-    return [path];
-  };
+  const getSelectedKeys = () => [location.pathname];
 
-  // Get open menu keys
   const getOpenKeys = () => {
-    const path = location.pathname;
-    if (path.startsWith('/data')) return ['data'];
-    if (path.startsWith('/calculation')) return ['calculation'];
-    if (path.startsWith('/features')) return ['features'];
-    if (path.startsWith('/ai')) return ['ai'];
+    const { pathname } = location;
+    if (pathname.startsWith('/data')) return ['data'];
+    if (pathname.startsWith('/calculation')) return ['calculation'];
+    if (pathname.startsWith('/features')) return ['features'];
+    if (pathname.startsWith('/ai')) return ['ai'];
     return [];
   };
 
-  // Toggle mobile menu
   const toggleMobileMenu = useCallback(() => {
-    setMobileMenuOpen(prev => !prev);
+    setMobileMenuOpen((prev) => !prev);
   }, []);
 
-  // Toggle sidebar collapse
   const toggleCollapsed = useCallback(() => {
-    setCollapsed(prev => !prev);
+    setCollapsed((prev) => !prev);
   }, []);
 
-  // Get sidebar width
   const getSiderWidth = () => {
     if (isMobile) return 280;
     if (width < 768) return 200;
@@ -228,7 +210,6 @@ export default function MainLayout() {
 
   return (
     <Layout className={styles.layout}>
-      {/* Mobile overlay */}
       {isMobile && (
         <div
           className={`${styles.overlay} ${mobileMenuOpen ? styles.visible : ''}`}
@@ -237,7 +218,6 @@ export default function MainLayout() {
         />
       )}
 
-      {/* Sidebar */}
       <Sider
         trigger={null}
         collapsible
@@ -246,15 +226,11 @@ export default function MainLayout() {
         width={getSiderWidth()}
         collapsedWidth={72}
       >
-        {/* Logo */}
         <div className={styles.logo}>
-          <span className={styles.logoIcon}>⚡</span>
-          {(!collapsed || isMobile) && (
-            <span className={styles.logoText}>管道能耗</span>
-          )}
+          <span className={styles.logoIcon}>P</span>
+          {(!collapsed || isMobile) && <span className={styles.logoText}>管道能耗</span>}
         </div>
 
-        {/* Menu */}
         <Menu
           mode="inline"
           selectedKeys={getSelectedKeys()}
@@ -265,12 +241,9 @@ export default function MainLayout() {
         />
       </Sider>
 
-      {/* Main content area */}
       <Layout>
-        {/* Header */}
         <Header className={styles.header}>
           <div className={styles.headerLeft}>
-            {/* Mobile menu toggle */}
             {isMobile ? (
               <Button
                 type="text"
@@ -299,8 +272,12 @@ export default function MainLayout() {
               aria-label={resolved === 'dark' ? '切换为浅色模式' : '切换为深色模式'}
             />
 
-            {/* Alarm notifications */}
-            <Badge count={activeCount} size="small" offset={[-2, 2]} color={monitorConnected ? undefined : '#faad14'}>
+            <Badge
+              count={activeCount}
+              size="small"
+              offset={[-2, 2]}
+              color={monitorConnected ? undefined : '#faad14'}
+            >
               <Button
                 type="text"
                 icon={<BellOutlined />}
@@ -311,26 +288,19 @@ export default function MainLayout() {
               />
             </Badge>
 
-            {/* User dropdown */}
             <Dropdown
               menu={{ items: userMenuItems, onClick: handleUserMenuClick }}
               placement="bottomRight"
               trigger={['click']}
             >
               <div className={styles.userInfo} role="button" tabIndex={0}>
-                <Avatar
-                  size="small"
-                  icon={<UserOutlined />}
-                />
-                <span className={styles.userName}>
-                  {userInfo?.nickname || '当前用户'}
-                </span>
+                <Avatar size="small" icon={<UserOutlined />} />
+                <span className={styles.userName}>{userInfo?.nickname || '当前用户'}</span>
               </div>
             </Dropdown>
           </div>
         </Header>
 
-        {/* Content */}
         <Content className={`${styles.content} container-responsive`}>
           {isFeatureRoute ? (
             <div className={styles.featureViewport}>

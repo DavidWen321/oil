@@ -24,6 +24,15 @@ from .scheme_card import (
     SchemeCard,
     SchemeOption,
 )
+from .knowledge_base import (
+    KnowledgeFileType,
+    KnowledgeSourceType,
+    KnowledgeDocumentStatus,
+    KnowledgeDocumentMetadata,
+    KnowledgeDocumentManifest,
+    KnowledgeStageBaseline,
+    build_stage0_baseline,
+)
 from .schemas import (
     ChatRequest,
     ChatResponse,
@@ -69,6 +78,13 @@ __all__ = [
     "EvidenceItem",
     "SchemeOption",
     "SchemeCard",
+    "KnowledgeFileType",
+    "KnowledgeSourceType",
+    "KnowledgeDocumentStatus",
+    "KnowledgeDocumentMetadata",
+    "KnowledgeDocumentManifest",
+    "KnowledgeStageBaseline",
+    "build_stage0_baseline",
     "ChatRequest",
     "ChatResponse",
     "StreamChunk",

@@ -871,6 +871,17 @@ export function useAgentTrace(sessionId: string) {
     setState(initialState(sessionId));
   }, [disconnect, sessionId]);
 
+  useEffect(() => {
+    disconnect();
+    chunkBufferRef.current = '';
+    smoothQueueRef.current = '';
+    if (rafIdRef.current !== null) {
+      cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
+    }
+    setState(initialState(sessionId));
+  }, [disconnect, sessionId]);
+
   // Cleanup rAF on unmount
   useEffect(() => {
     return () => {

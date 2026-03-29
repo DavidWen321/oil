@@ -133,6 +133,12 @@ class Settings(BaseSettings):
     RERANKER_THRESHOLD: float = Field(default=0.5)
     RERANKER_MODE: Literal["api", "local", "llm"] = Field(default="api", description="api=DashScope gte-rerank; local=本地BGE模型; llm=用LLM打分")
 
+    # ===== Knowledge Base Ingestion =====
+    KB_ALLOWED_EXTENSIONS: str = Field(default="md,txt,pdf,docx")
+    KB_REQUIRED_METADATA_FIELDS: str = Field(default="title,source,category,tags")
+    KB_MAX_FILE_SIZE_MB: int = Field(default=50)
+    KB_DEFAULT_LANGUAGE: str = Field(default="zh-CN")
+
     # ===== API 配置 =====
     API_HOST: str = Field(default="0.0.0.0")
     API_PORT: int = Field(default=8100)
@@ -222,6 +228,14 @@ class Settings(BaseSettings):
     @property
     def sql_blocked_tables(self) -> set[str]:
         return {item.strip().lower() for item in str(self.SQL_BLOCKED_TABLES or "").split(",") if item.strip()}
+
+    @property
+    def kb_allowed_extensions(self) -> list[str]:
+        return [item.strip().lower() for item in str(self.KB_ALLOWED_EXTENSIONS or "").split(",") if item.strip()]
+
+    @property
+    def kb_required_metadata_fields(self) -> list[str]:
+        return [item.strip() for item in str(self.KB_REQUIRED_METADATA_FIELDS or "").split(",") if item.strip()]
 
 
 class RAGConfig:
