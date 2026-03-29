@@ -22,33 +22,9 @@ import type { ColumnsType } from 'antd/es/table';
 import { projectApi } from '../../api';
 import AnimatedPage from '../../components/common/AnimatedPage';
 import ResponsiveTable from '../../components/common/ResponsiveTable';
-import type { Project } from '../../types';
+import type { Project, R } from '../../types';
 import ProjectCalculationDetailPanel from './ProjectCalculationDetailPanel';
 import styles from './DataPage.module.css';
-
-const mockData: Project[] = [
-  {
-    proId: 1,
-    number: 'GD-2024-001',
-    name: '西部原油管道工程',
-    responsible: '刘伟',
-    createTime: '2024-01-15 10:00:00',
-  },
-  {
-    proId: 2,
-    number: 'GD-2024-002',
-    name: '东部成品油管道项目',
-    responsible: '张明',
-    createTime: '2024-02-20 14:30:00',
-  },
-  {
-    proId: 3,
-    number: 'GD-2024-003',
-    name: '北方输送系统优化项目',
-    responsible: '王敏',
-    createTime: '2024-03-10 09:15:00',
-  },
-];
 
 function nowrapTitle(text: string) {
   return <span style={{ whiteSpace: 'nowrap' }}>{text}</span>;
@@ -65,7 +41,7 @@ export default function ProjectList() {
   const detailRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    fetchData();
+    void fetchData();
   }, []);
 
   useEffect(() => {
@@ -80,9 +56,9 @@ export default function ProjectList() {
     setLoading(true);
     try {
       const res = await projectApi.list();
-      setData(res.data || []);
+      setData(Array.isArray(res.data) ? res.data : []);
     } catch {
-      setData(mockData);
+      setData([]);
     } finally {
       setLoading(false);
     }
@@ -106,30 +82,37 @@ export default function ProjectList() {
 
   const handleDelete = async (id: number) => {
     try {
-      await projectApi.delete([id]);
+      const res = await projectApi.delete([id]);
+      if (!res.data) {
+        message.error('删除失败，数据库未更新');
+        return;
+      }
+
       message.success('删除成功');
-      fetchData();
+      await fetchData();
     } catch {
-      message.success('删除成功（演示模式）');
-      setData((current) => current.filter((item) => item.proId !== id));
+      // 请求层已统一提示错误，这里不再做本地假删
     }
   };
 
   const handleSubmit = async () => {
+    const values = await form.validateFields();
+
     try {
-      const values = await form.validateFields();
-      if (editingItem) {
-        await projectApi.update({ ...editingItem, ...values });
-        message.success('修改成功');
-      } else {
-        await projectApi.create(values);
-        message.success('新增成功');
+      const res: R<boolean> = editingItem
+        ? await projectApi.update({ ...editingItem, ...values })
+        : await projectApi.create(values);
+
+      if (!res.data) {
+        message.error(editingItem ? '修改失败，数据库未更新' : '新增失败，数据库未写入');
+        return;
       }
+
+      message.success(editingItem ? '修改成功' : '新增成功');
       setModalVisible(false);
-      fetchData();
+      await fetchData();
     } catch {
-      message.success('操作成功（演示模式）');
-      setModalVisible(false);
+      // 请求层已统一提示错误，表单保留给用户继续修改
     }
   };
 
@@ -146,13 +129,21 @@ export default function ProjectList() {
     );
   }, [data, searchText]);
 
+  const serialNumberMap = useMemo(() => {
+    const map = new Map<number, number>();
+    filteredData.forEach((item, index) => {
+      map.set(item.proId, index + 1);
+    });
+    return map;
+  }, [filteredData]);
+
   const columns: ColumnsType<Project> = [
     {
       title: nowrapTitle('编号'),
-      dataIndex: 'proId',
-      key: 'proId',
+      key: 'serialNumber',
       width: 90,
       align: 'center',
+      render: (_, record) => serialNumberMap.get(record.proId) ?? '-',
     },
     {
       title: nowrapTitle('项目编号'),
@@ -233,7 +224,7 @@ export default function ProjectList() {
           </Button>
           <Popconfirm
             title="确定删除吗？"
-            description="此操作不可恢复"
+            description="此操作会删除数据库中的项目记录，且不可恢复。"
             onConfirm={() => handleDelete(record.proId)}
             okText="确定"
             cancelText="取消"
@@ -257,125 +248,129 @@ export default function ProjectList() {
   return (
     <AnimatedPage className={styles.page}>
       <div className={styles.pageContent}>
-        {!viewingProject ? <header className={styles.header}>
-          <div className={styles.headerTop}>
-            <div className={styles.headerInfo}>
-              <h1 className={styles.title}>项目管理</h1>
-              <p className={styles.subtitle}>管理管道工程项目基本信息，包括项目创建、编辑、删除和计算详情查看。</p>
+        {!viewingProject ? (
+          <header className={styles.header}>
+            <div className={styles.headerTop}>
+              <div className={styles.headerInfo}>
+                <h1 className={styles.title}>项目管理</h1>
+                <p className={styles.subtitle}>
+                  管理管道工程项目基本信息，包括项目创建、编辑、删除和计算详情查看。
+                </p>
+              </div>
+              <div className={styles.headerActions}>
+                <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd} size="middle">
+                  新增项目
+                </Button>
+              </div>
             </div>
-            <div className={styles.headerActions}>
-              <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd} size="middle">
-                新增项目
-              </Button>
-            </div>
-          </div>
-        </header> : null}
+          </header>
+        ) : null}
 
         {!viewingProject ? (
           <Card className={styles.tableCard} bordered={false}>
-          <div className={styles.toolbar}>
-            <div className={styles.toolbarLeft}>
-              <Input
-                placeholder="搜索项目名称或负责人..."
-                prefix={<SearchOutlined style={{ color: 'var(--text-muted)' }} />}
-                value={searchText}
-                onChange={(event) => setSearchText(event.target.value)}
-                className={styles.searchInput}
-                allowClear
-              />
+            <div className={styles.toolbar}>
+              <div className={styles.toolbarLeft}>
+                <Input
+                  placeholder="搜索项目名称或负责人..."
+                  prefix={<SearchOutlined style={{ color: 'var(--text-muted)' }} />}
+                  value={searchText}
+                  onChange={(event) => setSearchText(event.target.value)}
+                  className={styles.searchInput}
+                  allowClear
+                />
+              </div>
+              <div className={styles.toolbarRight}>
+                <Tooltip title="刷新数据">
+                  <Button icon={<ReloadOutlined />} onClick={() => void fetchData()} loading={loading} />
+                </Tooltip>
+              </div>
             </div>
-            <div className={styles.toolbarRight}>
-              <Tooltip title="刷新数据">
-                <Button icon={<ReloadOutlined />} onClick={fetchData} loading={loading} />
-              </Tooltip>
-            </div>
-          </div>
 
-          <ResponsiveTable
-            columns={columns}
-            dataSource={filteredData}
-            rowKey="proId"
-            loading={loading}
-            scroll={{ x: 1100 }}
-            pagination={{
-              pageSize: 10,
-              showSizeChanger: true,
-              showQuickJumper: true,
-              showTotal: (total) => `共 ${total} 条记录`,
-            }}
-            cardRender={(record) => (
-              <div
-                style={{
-                  padding: 'var(--space-4)',
-                  background: 'var(--bg-elevated)',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: 'var(--radius-lg)',
-                }}
-              >
+            <ResponsiveTable
+              columns={columns}
+              dataSource={filteredData}
+              rowKey="proId"
+              loading={loading}
+              scroll={{ x: 1100 }}
+              pagination={{
+                pageSize: 10,
+                showSizeChanger: true,
+                showQuickJumper: true,
+                showTotal: (total) => `共 ${total} 条记录`,
+              }}
+              cardRender={(record) => (
                 <div
                   style={{
-                    fontWeight: 600,
-                    color: 'var(--text-primary)',
-                    fontSize: 15,
-                    marginBottom: 8,
+                    padding: 'var(--space-4)',
+                    background: 'var(--bg-elevated)',
+                    border: '1px solid var(--border-subtle)',
+                    borderRadius: 'var(--radius-lg)',
                   }}
                 >
-                  {record.name}
-                </div>
-                <div
-                  style={{
-                    fontSize: 13,
-                    color: 'var(--text-tertiary)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 4,
-                  }}
-                >
-                  <span>编号: {record.number || '-'}</span>
-                  <span>负责人: {record.responsible || '-'}</span>
-                  <span>创建时间: {record.createTime || '-'}</span>
-                </div>
-                <Space wrap style={{ marginTop: 12 }}>
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={<EyeOutlined />}
-                    onClick={() => handleView(record)}
-                    className={styles.actionBtn}
+                  <div
+                    style={{
+                      fontWeight: 600,
+                      color: 'var(--text-primary)',
+                      fontSize: 15,
+                      marginBottom: 8,
+                    }}
                   >
-                    查看
-                  </Button>
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={<EditOutlined />}
-                    onClick={() => handleEdit(record)}
-                    className={styles.actionBtn}
+                    {record.name}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color: 'var(--text-tertiary)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 4,
+                    }}
                   >
-                    编辑
-                  </Button>
-                  <Popconfirm
-                    title="确定删除吗？"
-                    description="此操作不可恢复"
-                    onConfirm={() => handleDelete(record.proId)}
-                    okText="确定"
-                    cancelText="取消"
-                    okButtonProps={{ danger: true }}
-                  >
+                    <span>项目编号: {record.number || '-'}</span>
+                    <span>负责人: {record.responsible || '-'}</span>
+                    <span>创建时间: {record.createTime || '-'}</span>
+                  </div>
+                  <Space wrap style={{ marginTop: 12 }}>
                     <Button
                       type="text"
                       size="small"
-                      danger
-                      icon={<DeleteOutlined />}
+                      icon={<EyeOutlined />}
+                      onClick={() => handleView(record)}
                       className={styles.actionBtn}
                     >
-                      删除
+                      查看
                     </Button>
-                  </Popconfirm>
-                </Space>
-              </div>
-            )}
-          />
+                    <Button
+                      type="text"
+                      size="small"
+                      icon={<EditOutlined />}
+                      onClick={() => handleEdit(record)}
+                      className={styles.actionBtn}
+                    >
+                      编辑
+                    </Button>
+                    <Popconfirm
+                      title="确定删除吗？"
+                      description="此操作会删除数据库中的项目记录，且不可恢复。"
+                      onConfirm={() => handleDelete(record.proId)}
+                      okText="确定"
+                      cancelText="取消"
+                      okButtonProps={{ danger: true }}
+                    >
+                      <Button
+                        type="text"
+                        size="small"
+                        danger
+                        icon={<DeleteOutlined />}
+                        className={styles.actionBtn}
+                      >
+                        删除
+                      </Button>
+                    </Popconfirm>
+                  </Space>
+                </div>
+              )}
+            />
           </Card>
         ) : null}
 
@@ -391,7 +386,7 @@ export default function ProjectList() {
         <Modal
           title={editingItem ? '编辑项目' : '新增项目'}
           open={modalVisible}
-          onOk={handleSubmit}
+          onOk={() => void handleSubmit()}
           onCancel={() => setModalVisible(false)}
           destroyOnClose
           className={styles.modal}
@@ -400,7 +395,11 @@ export default function ProjectList() {
           width={520}
         >
           <Form form={form} layout="vertical">
-            <Form.Item name="name" label="项目名称" rules={[{ required: true, message: '请输入项目名称' }]}>
+            <Form.Item
+              name="name"
+              label="项目名称"
+              rules={[{ required: true, message: '请输入项目名称' }]}
+            >
               <Input placeholder="请输入项目名称" />
             </Form.Item>
             <Form.Item name="number" label="项目编号">

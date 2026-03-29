@@ -19,7 +19,6 @@ import {
   LogoutOutlined,
   MenuFoldOutlined,
   MenuOutlined,
-  MenuUnfoldOutlined,
   MonitorOutlined,
   MoonOutlined,
   ProjectOutlined,
@@ -95,6 +94,45 @@ const menuItems: MenuProps['items'] = [
   },
 ];
 
+const GENERIC_USER_NAMES = new Set(['管理员', 'admin', 'Admin', 'ADMIN', '当前用户']);
+
+const ROLE_LABEL_MAP: Record<string, string> = {
+  admin: '系统管理员',
+  operator: '运行人员',
+  analyst: '分析人员',
+  user: '平台用户',
+};
+
+function getRoleLabel(role?: string) {
+  if (!role) {
+    return '平台用户';
+  }
+
+  return ROLE_LABEL_MAP[role.toLowerCase()] || role;
+}
+
+function buildUserSummary(userInfo: {
+  nickname?: string;
+  username?: string;
+  roles?: string[];
+} | null) {
+  const nickname = userInfo?.nickname?.trim();
+  const username = userInfo?.username?.trim();
+  const primaryRole = getRoleLabel(userInfo?.roles?.[0]);
+
+  const displayName =
+    nickname && !GENERIC_USER_NAMES.has(nickname) ? nickname : primaryRole;
+
+  const secondaryText =
+    username && username !== displayName
+      ? `账号 ${username}`
+      : primaryRole !== displayName
+        ? primaryRole
+        : '点击展开';
+
+  return { displayName, secondaryText };
+}
+
 export default function MainLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -109,6 +147,7 @@ export default function MainLayout() {
   const monitorConnected = useMonitorStore((state) => state.connected);
   const activeCount = alarms.filter((alarm) => alarm.status === 'ACTIVE').length;
   const { isMobile, isTablet, width } = useResponsive();
+  const userSummary = buildUserSummary(userInfo);
 
   useWebSocket({ scope: 'all', subscribeMonitor: false, subscribeAlarms: true });
 
@@ -218,14 +257,27 @@ export default function MainLayout() {
         trigger={null}
         collapsible
         collapsed={siderCollapsed}
-        className={`${styles.sider} ${mobileMenuOpen ? styles.mobileOpen : ''}`}
+        className={`${styles.sider} ${mobileMenuOpen ? styles.mobileOpen : ''} ${siderCollapsed && !isMobile ? styles.siderCollapsed : ''}`}
         width={getSiderWidth()}
-        collapsedWidth={72}
+        collapsedWidth={84}
       >
-        <div className={styles.logo}>
-          <span className={styles.logoIcon}>P</span>
+        <div className={`${styles.logo} ${siderCollapsed && !isMobile ? styles.logoCollapsed : ''}`}>
           {!siderCollapsed || isMobile ? (
-            <span className={styles.logoText}>管道能耗分析</span>
+            <div className={styles.logoBrand}>
+              <span className={styles.logoIcon}>P</span>
+              <span className={styles.logoText}>管道能耗分析</span>
+            </div>
+          ) : null}
+
+          {!isMobile ? (
+            <Button
+              type="text"
+              icon={siderCollapsed ? <MenuOutlined /> : <MenuFoldOutlined />}
+              onClick={toggleCollapsed}
+              className={styles.logoTrigger}
+              aria-label={siderCollapsed ? '展开侧边栏' : '收起侧边栏'}
+              title={siderCollapsed ? '展开侧边栏' : '收起侧边栏'}
+            />
           ) : null}
         </div>
 
@@ -250,15 +302,7 @@ export default function MainLayout() {
                 className={styles.mobileMenuBtn}
                 aria-label={mobileMenuOpen ? '关闭菜单' : '打开菜单'}
               />
-            ) : (
-              <Button
-                type="text"
-                icon={siderCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-                onClick={toggleCollapsed}
-                className={styles.trigger}
-                aria-label={siderCollapsed ? '展开侧边栏' : '收起侧边栏'}
-              />
-            )}
+            ) : null}
           </div>
 
           <div className={styles.headerRight}>
@@ -291,9 +335,18 @@ export default function MainLayout() {
               placement="bottomRight"
               trigger={['click']}
             >
-              <div className={styles.userInfo} role="button" tabIndex={0}>
-                <Avatar size="small" icon={<UserOutlined />} />
-                <span className={styles.userName}>{userInfo?.nickname || '当前用户'}</span>
+              <div
+                className={styles.userInfo}
+                role="button"
+                tabIndex={0}
+                title={
+                  userSummary.secondaryText === '点击展开'
+                    ? userSummary.displayName
+                    : `${userSummary.displayName} · ${userSummary.secondaryText}`
+                }
+              >
+                <Avatar size={34} icon={<UserOutlined />} />
+                <span className={styles.userName}>{userSummary.displayName}</span>
               </div>
             </Dropdown>
           </div>
