@@ -1,21 +1,7 @@
-import { useUserStore } from '../stores/userStore';
-import type { HITLResponse } from '../types/agent';
+﻿import type { HITLResponse } from '../types/agent';
 
 const AGENT_API_BASE =
-  import.meta.env.VITE_AGENT_API_BASE_URL?.replace(/\/+$/, '') || '/api/v1';
-
-function getAgentHeaders(json = false): HeadersInit {
-  const token = useUserStore.getState().token;
-  return {
-    ...(json ? { 'Content-Type': 'application/json' } : {}),
-    ...(token
-      ? {
-          satoken: token,
-          Authorization: `Bearer ${token}`,
-        }
-      : {}),
-  };
-}
+  import.meta.env.VITE_AGENT_API_BASE_URL || 'http://localhost:8100/api/v1';
 
 async function parseJson<T>(response: Response): Promise<T> {
   const text = await response.text();
@@ -31,7 +17,7 @@ export const agentApi = {
   async chat(message: string, sessionId: string) {
     const response = await fetch(`${AGENT_API_BASE}/chat`, {
       method: 'POST',
-      headers: getAgentHeaders(true),
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message, session_id: sessionId }),
     });
 
@@ -45,8 +31,8 @@ export const agentApi = {
   async confirm(sessionId: string, responsePayload: HITLResponse) {
     const response = await fetch(`${AGENT_API_BASE}/chat/confirm`, {
       method: 'POST',
-      headers: getAgentHeaders(true),
-      body: JSON.stringify({ session_id: sessionId, ...responsePayload }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId, response: responsePayload }),
     });
 
     if (!response.ok) {
@@ -57,9 +43,7 @@ export const agentApi = {
   },
 
   async getTrace(traceId: string) {
-    const response = await fetch(`${AGENT_API_BASE}/trace/${traceId}`, {
-      headers: getAgentHeaders(),
-    });
+    const response = await fetch(`${AGENT_API_BASE}/trace/${traceId}`);
     if (!response.ok) {
       throw new Error(`trace request failed: ${response.status}`);
     }
@@ -73,7 +57,7 @@ export const agentApi = {
   ) {
     const response = await fetch(`${AGENT_API_BASE}/report/generate`, {
       method: 'POST',
-      headers: getAgentHeaders(true),
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         user_request: userRequest,
         session_id: sessionId,
@@ -110,9 +94,7 @@ export const agentApi = {
       page_num: String(pageNum),
       page_size: String(pageSize),
     });
-    const response = await fetch(`${AGENT_API_BASE}/report/java/reports?${params.toString()}`, {
-      headers: getAgentHeaders(),
-    });
+    const response = await fetch(`${AGENT_API_BASE}/report/java/reports?${params.toString()}`);
     if (!response.ok) {
       throw new Error(`list java reports failed: ${response.status}`);
     }
@@ -125,9 +107,7 @@ export const agentApi = {
 
   async queryGraph(query: string) {
     const params = new URLSearchParams({ query });
-    const response = await fetch(`${AGENT_API_BASE}/graph/query?${params.toString()}`, {
-      headers: getAgentHeaders(),
-    });
+    const response = await fetch(`${AGENT_API_BASE}/graph/query?${params.toString()}`);
     if (!response.ok) {
       throw new Error(`graph request failed: ${response.status}`);
     }

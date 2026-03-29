@@ -13,7 +13,7 @@ import {
   ChatMessageItem,
 } from '../../features/ai-chat/components';
 import { useChatConversations } from '../../features/ai-chat/hooks/useChatConversations';
-import type { PendingStreamTarget, UIMessage } from '../../features/ai-chat/types';
+import type { PendingStreamTarget, UIMessage } from '../../features/ai-chat/types-fixed';
 import { getFriendlyError, getStreamLabel, WELCOME_PROMPTS } from '../../features/ai-chat/utils/chatUi';
 
 const BUSY_STATES = new Set(['planning', 'executing', 'waiting_hitl']);

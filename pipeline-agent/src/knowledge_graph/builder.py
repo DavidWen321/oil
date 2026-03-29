@@ -247,6 +247,33 @@ class KnowledgeGraphBuilder:
 
         return {"nodes": list(nodes.values()), "edges": edges}
 
+    def query_fuzzy(self, text: str, depth: int = 2, limit: int = 3) -> dict:
+        """Return fuzzy matched nodes plus a visualization-ready subgraph."""
+
+        self.ensure_ready()
+        matched_ids = self.match_nodes_by_text(text)
+        if not matched_ids:
+            return {
+                "message": f"未找到与 '{text}' 相关的知识图谱信息。",
+                "matched_nodes": [],
+                "center_node": None,
+                "visualization": {"nodes": [], "edges": []},
+                "total_matches": 0,
+            }
+
+        limited_ids = matched_ids[: max(limit, 1)]
+        matched_nodes = [self._node_view(node_id) for node_id in limited_ids]
+        center_node = limited_ids[0]
+        visualization = self.get_subgraph_for_visualization(center_node, depth=depth)
+
+        return {
+            "message": f"已匹配 {len(matched_ids)} 个图谱节点，当前展示 {len(visualization.get('nodes', []))} 个节点的关联子图。",
+            "matched_nodes": matched_nodes,
+            "center_node": center_node,
+            "visualization": visualization,
+            "total_matches": len(matched_ids),
+        }
+
     def sync_to_database(self, clear_existing: bool = True) -> None:
         """Sync in-memory graph to MySQL tables."""
 

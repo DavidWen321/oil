@@ -1,4 +1,4 @@
-﻿// ========== 閫氱敤绫诲瀷 ==========
+// ========== 通用类型 ==========
 
 export interface R<T> {
   code: number;
@@ -57,7 +57,7 @@ export interface CalculationHistory {
   createTime?: string;
 }
 
-// ========== 鐢ㄦ埛璁よ瘉 ==========
+// ========== 用户认证 ==========
 
 export interface LoginParams {
   username: string;
@@ -79,7 +79,7 @@ export interface UserInfo {
   roles: string[];
 }
 
-// ========== 鏁版嵁绠＄悊 ==========
+// ========== 数据管理 ==========
 
 export interface Project {
   proId: number;
@@ -130,49 +130,7 @@ export interface OilProperty {
   updateTime?: string;
 }
 
-// ========== 姘村姏鍒嗘瀽 ==========
-export interface KnowledgeDocument {
-  id: number;
-  title: string;
-  category: string;
-  sourceType?: string;
-  tags?: string;
-  remark?: string;
-  fileName: string;
-  fileExtension?: string;
-  fileSize?: number;
-  fileHash?: string;
-  storageType?: string;
-  storageBucket?: string;
-  storageObjectKey?: string;
-  agentDocId?: string;
-  chunkCount?: number;
-  retryCount?: number;
-  status: string;
-  failureReason?: string;
-  lastIngestTime?: string;
-  createBy?: string;
-  createTime?: string;
-  updateTime?: string;
-}
-
-export interface KnowledgeIngestTask {
-  id: number;
-  documentId: number;
-  taskType: string;
-  attemptNo: number;
-  status: string;
-  agentDocId?: string;
-  chunkCount?: number;
-  failureReason?: string;
-  createBy?: string;
-  startedAt?: string;
-  finishedAt?: string;
-  createTime?: string;
-  updateTime?: string;
-}
-
-// ========== 濮撳姏鍒嗘瀽 ==========
+// ========== 水力分析 ==========
 
 export interface HydraulicAnalysisParams {
   projectId?: number;
@@ -204,7 +162,7 @@ export interface HydraulicAnalysisResult {
   endStationInPressure: number;
 }
 
-// ========== 娉电珯浼樺寲 ==========
+// ========== 泵站优化 ==========
 
 export interface OptimizationParams {
   projectId?: number;
@@ -238,7 +196,7 @@ export interface OptimizationResult {
   description: string;
 }
 
-// ========== 鏁忔劅鎬у垎鏋?==========
+// ========== 敏感性分析 ==========
 
 export interface SensitivityVariableConfig {
   variableType: string;
@@ -305,7 +263,7 @@ export interface SensitivityRanking {
   description: string;
 }
 
-// ========== 鏁呴殰璇婃柇 ==========
+// ========== 故障诊断 ==========
 
 export interface DiagnosisRequest {
   pipelineId: number;
@@ -381,7 +339,7 @@ export interface DiagnosisMetrics {
   energyStatus: string;
 }
 
-// ========== 澶氭柟妗堝姣?==========
+// ========== 多方案对比 ==========
 
 export interface ComparisonRequest {
   projectId: number;
@@ -473,7 +431,7 @@ export interface RecommendedScheme {
   };
 }
 
-// ========== 纰虫帓鏀炬牳绠?==========
+// ========== 碳排放核算 ==========
 
 export interface CarbonCalculationRequest {
   projectId: number;
@@ -546,7 +504,7 @@ export interface CarbonQuota {
   projectedTradingAmount: number;
 }
 
-// ========== 瀹炴椂鐩戞帶 ==========
+// ========== 实时监控 ==========
 
 export interface MonitorDataPoint {
   dataId: string;
@@ -603,7 +561,7 @@ export interface AlarmRule {
   description: string;
 }
 
-// ========== 鍓嶇鐩戞帶绫诲瀷 ==========
+// ========== 前端监控类型 ==========
 
 export interface MonitorData {
   pipelineId: number;

@@ -29,7 +29,7 @@ const RealtimeMonitor = lazy(() => import('./pages/features/RealtimeMonitor'));
 // 报表
 const Report = lazy(() => import('./pages/report/Report'));
 const AIChat = lazy(() => import('./pages/ai/AIChat'));
-const KnowledgeEntry = lazy(() => import('./pages/ai/KnowledgeEntry'));
+const AgentTrace = lazy(() => import('./pages/ai/AgentTrace'));
 const ReportPreview = lazy(() => import('./pages/ai/ReportPreview'));
 
 // 加载组件
@@ -197,10 +197,10 @@ export const router = createBrowserRouter([
         ),
       },
       {
-        path: 'ai/knowledge',
+        path: 'ai/trace',
         element: (
           <Suspense fallback={<Loading />}>
-            <KnowledgeEntry />
+            <AgentTrace />
           </Suspense>
         ),
       },

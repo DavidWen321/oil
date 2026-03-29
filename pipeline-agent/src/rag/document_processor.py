@@ -3,6 +3,7 @@
 负责加载和预处理各种格式的文档
 """
 
+import json
 import os
 from pathlib import Path
 from typing import List, Optional, Dict, Any
@@ -129,21 +130,32 @@ class DocumentProcessor:
             return None
 
         # 提取标题
-        title = self._extract_title(content, file_path)
+        sidecar_payload = self._load_sidecar_payload(file_path)
+        sidecar_metadata = dict(sidecar_payload.get("metadata") or {})
+        title = str(sidecar_metadata.get("title") or self._extract_title(content, file_path))
 
         # 生成文档ID
         doc_id = self._generate_doc_id(file_path)
+        if sidecar_metadata.get("category"):
+            category = self.category_mapping.get(str(sidecar_metadata.get("category")), category)
 
         return Document(
             content=content,
-            source=str(file_path),
+            source=str(sidecar_metadata.get("source") or file_path),
             doc_id=doc_id,
             title=title,
             category=category,
             metadata={
                 "file_name": file_path.name,
                 "file_size": file_path.stat().st_size,
-                "extension": suffix
+                "extension": suffix,
+                "tags": sidecar_metadata.get("tags", []),
+                "author": sidecar_metadata.get("author"),
+                "summary": sidecar_metadata.get("summary"),
+                "language": sidecar_metadata.get("language"),
+                "version": sidecar_metadata.get("version"),
+                "external_id": sidecar_metadata.get("external_id"),
+                "effective_at": sidecar_metadata.get("effective_at"),
             }
         )
 
@@ -220,6 +232,18 @@ class DocumentProcessor:
         import hashlib
         path_str = str(file_path.absolute())
         return hashlib.md5(path_str.encode()).hexdigest()[:12]
+
+    def _load_sidecar_payload(self, file_path: Path) -> Dict[str, Any]:
+        """Load optional sidecar metadata stored next to the source file."""
+
+        sidecar_path = file_path.with_name(f"{file_path.name}.meta.json")
+        if not sidecar_path.exists():
+            return {}
+        try:
+            return json.loads(sidecar_path.read_text(encoding="utf-8"))
+        except Exception as e:
+            logger.warning(f"元数据 sidecar 读取失败 {sidecar_path}: {e}")
+            return {}
 
 
 def create_document_processor(knowledge_base_path: str = "knowledge_base") -> DocumentProcessor:

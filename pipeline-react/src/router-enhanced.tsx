@@ -1,8 +1,5 @@
 /**
- * ═══════════════════════════════════════════════════════════════════════════
- *  Enhanced Router with Prefetch
- *  带预加载功能的路由配置
- * ═══════════════════════════════════════════════════════════════════════════
+ * Enhanced Router with Prefetch
  */
 
 import { createBrowserRouter, Navigate } from 'react-router-dom';
@@ -11,34 +8,28 @@ import { Spin } from 'antd';
 import MainLayout from './components/layout/MainLayout';
 import { useUserStore } from './stores/userStore';
 
-// 懒加载页面组件
 const Login = lazy(() => import('./pages/auth/Login'));
 const Dashboard = lazy(() => import('./pages/dashboard/Dashboard'));
 
-// 数据管理
 const ProjectList = lazy(() => import('./pages/data/ProjectList'));
 const PipelineList = lazy(() => import('./pages/data/PipelineList'));
 const PumpStationList = lazy(() => import('./pages/data/PumpStationList'));
 const OilPropertyList = lazy(() => import('./pages/data/OilPropertyList'));
+const KnowledgeBase = lazy(() => import('./pages/data/KnowledgeBase'));
 
-// 计算分析
 const HydraulicAnalysis = lazy(() => import('./pages/calculation/HydraulicAnalysis'));
 const Optimization = lazy(() => import('./pages/calculation/Optimization'));
 const SensitivityAnalysis = lazy(() => import('./pages/calculation/SensitivityAnalysis'));
 
-// 特色功能
 const FaultDiagnosis = lazy(() => import('./pages/features/FaultDiagnosis'));
 const SchemeComparison = lazy(() => import('./pages/features/SchemeComparison'));
 const CarbonCalculation = lazy(() => import('./pages/features/CarbonCalculation'));
 const RealtimeMonitor = lazy(() => import('./pages/features/RealtimeMonitor'));
 
-// 报表
 const Report = lazy(() => import('./pages/report/Report'));
 const AIChat = lazy(() => import('./pages/ai/AIChat'));
-const KnowledgeEntry = lazy(() => import('./pages/ai/KnowledgeEntry'));
 const ReportPreview = lazy(() => import('./pages/ai/ReportPreview'));
 
-// 骨架屏加载组件（更好的用户体验）
 const Loading = () => (
   <div
     style={{
@@ -53,7 +44,6 @@ const Loading = () => (
   </div>
 );
 
-// 路由守卫
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isLoggedIn = useUserStore((s) => s.isLoggedIn);
   if (!isLoggedIn) {
@@ -62,19 +52,19 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-// 预加载关键路由（鼠标悬停时）
 export function prefetchRoute(path: string) {
-  const routeMap: Record<string, () => Promise<any>> = {
+  const routeMap: Record<string, () => Promise<unknown>> = {
     '/dashboard': () => import('./pages/dashboard/Dashboard'),
     '/data/project': () => import('./pages/data/ProjectList'),
     '/calculation/hydraulic': () => import('./pages/calculation/HydraulicAnalysis'),
     '/ai/chat': () => import('./pages/ai/AIChat'),
+    '/ai/trace': () => import('./pages/data/KnowledgeBase'),
   };
 
   const loader = routeMap[path];
   if (loader) {
     loader().catch(() => {
-      // 静默失败
+      // Ignore prefetch failures.
     });
   }
 }
@@ -108,7 +98,6 @@ export const router = createBrowserRouter([
           </Suspense>
         ),
       },
-      // 数据管理
       {
         path: 'data/project',
         element: (
@@ -141,7 +130,10 @@ export const router = createBrowserRouter([
           </Suspense>
         ),
       },
-      // 计算分析
+      {
+        path: 'data/knowledge',
+        element: <Navigate to="/ai/trace" replace />,
+      },
       {
         path: 'calculation/hydraulic',
         element: (
@@ -166,7 +158,6 @@ export const router = createBrowserRouter([
           </Suspense>
         ),
       },
-      // 特色功能
       {
         path: 'features/diagnosis',
         element: (
@@ -199,7 +190,6 @@ export const router = createBrowserRouter([
           </Suspense>
         ),
       },
-      // 报表
       {
         path: 'report',
         element: (
@@ -208,7 +198,6 @@ export const router = createBrowserRouter([
           </Suspense>
         ),
       },
-      // AI 智能体
       {
         path: 'ai/chat',
         element: (
@@ -218,10 +207,10 @@ export const router = createBrowserRouter([
         ),
       },
       {
-        path: 'ai/knowledge',
+        path: 'ai/trace',
         element: (
           <Suspense fallback={<Loading />}>
-            <KnowledgeEntry />
+            <KnowledgeBase />
           </Suspense>
         ),
       },

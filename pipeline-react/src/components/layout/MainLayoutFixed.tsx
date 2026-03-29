@@ -1,8 +1,3 @@
-/**
- * Main Layout Component
- * Design: Apple HIG + Linear + Stripe Light Theme
- */
-
 import { useCallback, useEffect, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Avatar, Badge, Button, Dropdown, Layout, Menu } from 'antd';
@@ -12,9 +7,9 @@ import {
   ApiOutlined,
   BarChartOutlined,
   BellOutlined,
-  BookOutlined,
   CalculatorOutlined,
   CloudOutlined,
+  CloudUploadOutlined,
   CloseOutlined,
   ControlOutlined,
   DashboardOutlined,
@@ -24,6 +19,7 @@ import {
   LogoutOutlined,
   MenuFoldOutlined,
   MenuOutlined,
+  MenuUnfoldOutlined,
   MonitorOutlined,
   MoonOutlined,
   ProjectOutlined,
@@ -48,7 +44,7 @@ const menuItems: MenuProps['items'] = [
   {
     key: '/dashboard',
     icon: <DashboardOutlined />,
-    label: '首页总览',
+    label: '首页大屏',
   },
   {
     key: 'data',
@@ -58,7 +54,7 @@ const menuItems: MenuProps['items'] = [
       { key: '/data/project', icon: <ProjectOutlined />, label: '项目管理' },
       { key: '/data/pipeline', icon: <ApiOutlined />, label: '管道参数' },
       { key: '/data/pump', icon: <ControlOutlined />, label: '泵站参数' },
-      { key: '/data/oil', icon: <ExperimentOutlined />, label: '油品参数' },
+      { key: '/data/oil', icon: <ExperimentOutlined />, label: '油品物性' },
     ],
   },
   {
@@ -76,68 +72,30 @@ const menuItems: MenuProps['items'] = [
     icon: <ThunderboltOutlined />,
     label: '特色功能',
     children: [
-      { key: '/features/diagnosis', icon: <AlertOutlined />, label: '故障诊断' },
-      { key: '/features/comparison', icon: <SwapOutlined />, label: '方案对比' },
-      { key: '/features/carbon', icon: <CloudOutlined />, label: '碳排核算' },
+      { key: '/features/diagnosis', icon: <AlertOutlined />, label: '智能故障诊断' },
+      { key: '/features/comparison', icon: <SwapOutlined />, label: '多方案对比' },
+      { key: '/features/carbon', icon: <CloudOutlined />, label: '碳排放核算' },
       { key: '/features/monitor', icon: <MonitorOutlined />, label: '实时监控' },
     ],
   },
   {
     key: '/report',
     icon: <BarChartOutlined />,
-    label: '报告中心',
+    label: '统计报表',
   },
   {
     key: 'ai',
     icon: <RobotOutlined />,
-    label: '智能助手',
+    label: 'AI 智能体',
     children: [
       { key: '/ai/chat', icon: <DeploymentUnitOutlined />, label: '智能对话' },
-      { key: '/ai/trace', icon: <BookOutlined />, label: '知识库录入' },
+      { key: '/ai/knowledge', icon: <CloudUploadOutlined />, label: '知识库录入' },
       { key: '/ai/report', icon: <BarChartOutlined />, label: '智能报告' },
     ],
   },
 ];
 
-const GENERIC_USER_NAMES = new Set(['管理员', 'admin', 'Admin', 'ADMIN', '当前用户']);
-
-const ROLE_LABEL_MAP: Record<string, string> = {
-  admin: '系统管理员',
-  operator: '运行人员',
-  analyst: '分析人员',
-  user: '平台用户',
-};
-
-function getRoleLabel(role?: string) {
-  if (!role) {
-    return '平台用户';
-  }
-
-  return ROLE_LABEL_MAP[role.toLowerCase()] || role;
-}
-
-function buildUserSummary(userInfo: {
-  nickname?: string;
-  username?: string;
-  roles?: string[];
-} | null) {
-  const nickname = userInfo?.nickname?.trim();
-  const username = userInfo?.username?.trim();
-  const primaryRole = getRoleLabel(userInfo?.roles?.[0]);
-
-  const displayName = nickname && !GENERIC_USER_NAMES.has(nickname) ? nickname : primaryRole;
-
-  const secondaryText =
-    username && username !== displayName
-      ? `账号 ${username}`
-      : primaryRole !== displayName
-        ? primaryRole
-        : '点击展开';
-
-  return { displayName, secondaryText };
-}
-
-export default function MainLayout() {
+export default function MainLayoutFixed() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
@@ -151,7 +109,6 @@ export default function MainLayout() {
   const monitorConnected = useMonitorStore((state) => state.connected);
   const activeCount = alarms.filter((alarm) => alarm.status === 'ACTIVE').length;
   const { isMobile, isTablet, width } = useResponsive();
-  const userSummary = buildUserSummary(userInfo);
 
   useWebSocket({ scope: 'all', subscribeMonitor: false, subscribeAlarms: true });
 
@@ -164,8 +121,10 @@ export default function MainLayout() {
   }, [isMobile, isTablet, width]);
 
   useEffect(() => {
-    setMobileMenuOpen(false);
-  }, [location.pathname]);
+    if (mobileMenuOpen) {
+      setMobileMenuOpen(false);
+    }
+  }, [location.pathname, mobileMenuOpen]);
 
   useEffect(() => {
     document.body.style.overflow = mobileMenuOpen ? 'hidden' : '';
@@ -223,13 +182,13 @@ export default function MainLayout() {
     return 260;
   };
 
-  const siderCollapsed = isMobile ? false : collapsed;
+  const siderCollapsed = isMobile ? false : isTablet ? true : collapsed;
 
   const userMenuItems: MenuProps['items'] = [
     {
       key: 'profile',
       icon: <UserOutlined />,
-      label: '个人资料',
+      label: '个人中心',
     },
     {
       key: 'settings',
@@ -249,46 +208,31 @@ export default function MainLayout() {
 
   return (
     <Layout className={styles.layout}>
-      {isMobile && (
+      {isMobile ? (
         <div
           className={`${styles.overlay} ${mobileMenuOpen ? styles.visible : ''}`}
           onClick={handleOverlayClick}
           aria-hidden="true"
         />
-      )}
+      ) : null}
 
       <Sider
         trigger={null}
         collapsible
         collapsed={siderCollapsed}
-        className={`${styles.sider} ${mobileMenuOpen ? styles.mobileOpen : ''} ${siderCollapsed && !isMobile ? styles.siderCollapsed : ''}`}
+        className={`${styles.sider} ${mobileMenuOpen ? styles.mobileOpen : ''}`}
         width={getSiderWidth()}
-        collapsedWidth={84}
+        collapsedWidth={72}
       >
-        <div className={`${styles.logo} ${siderCollapsed && !isMobile ? styles.logoCollapsed : ''}`}>
-          {!siderCollapsed || isMobile ? (
-            <div className={styles.logoBrand}>
-              <span className={styles.logoIcon}>P</span>
-              <span className={styles.logoText}>管道能耗分析</span>
-            </div>
-          ) : null}
-
-          {!isMobile ? (
-            <Button
-              type="text"
-              icon={siderCollapsed ? <MenuOutlined /> : <MenuFoldOutlined />}
-              onClick={toggleCollapsed}
-              className={styles.logoTrigger}
-              aria-label={siderCollapsed ? '展开侧边栏' : '收起侧边栏'}
-              title={siderCollapsed ? '展开侧边栏' : '收起侧边栏'}
-            />
-          ) : null}
+        <div className={styles.logo}>
+          <span className={styles.logoIcon}>Q</span>
+          {!siderCollapsed || isMobile ? <span className={styles.logoText}>管道能耗</span> : null}
         </div>
 
         <Menu
           mode="inline"
           selectedKeys={getSelectedKeys()}
-          defaultOpenKeys={siderCollapsed ? [] : getOpenKeys()}
+          defaultOpenKeys={collapsed ? [] : getOpenKeys()}
           items={menuItems}
           onClick={handleMenuClick}
           inlineCollapsed={!isMobile && siderCollapsed}
@@ -306,7 +250,15 @@ export default function MainLayout() {
                 className={styles.mobileMenuBtn}
                 aria-label={mobileMenuOpen ? '关闭菜单' : '打开菜单'}
               />
-            ) : null}
+            ) : (
+              <Button
+                type="text"
+                icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+                onClick={toggleCollapsed}
+                className={styles.trigger}
+                aria-label={collapsed ? '展开侧边栏' : '收起侧边栏'}
+              />
+            )}
           </div>
 
           <div className={styles.headerRight}>
@@ -318,12 +270,7 @@ export default function MainLayout() {
               aria-label={resolved === 'dark' ? '切换为浅色模式' : '切换为深色模式'}
             />
 
-            <Badge
-              count={activeCount}
-              size="small"
-              offset={[-2, 2]}
-              color={monitorConnected ? undefined : '#faad14'}
-            >
+            <Badge count={activeCount} size="small" offset={[-2, 2]} color={monitorConnected ? undefined : '#faad14'}>
               <Button
                 type="text"
                 icon={<BellOutlined />}
@@ -339,18 +286,9 @@ export default function MainLayout() {
               placement="bottomRight"
               trigger={['click']}
             >
-              <div
-                className={styles.userInfo}
-                role="button"
-                tabIndex={0}
-                title={
-                  userSummary.secondaryText === '点击展开'
-                    ? userSummary.displayName
-                    : `${userSummary.displayName} · ${userSummary.secondaryText}`
-                }
-              >
-                <Avatar size={34} icon={<UserOutlined />} />
-                <span className={styles.userName}>{userSummary.displayName}</span>
+              <div className={styles.userInfo} role="button" tabIndex={0}>
+                <Avatar size="small" icon={<UserOutlined />} />
+                <span className={styles.userName}>{userInfo?.nickname || '用户'}</span>
               </div>
             </Dropdown>
           </div>
