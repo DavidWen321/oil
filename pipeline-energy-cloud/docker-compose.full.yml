@@ -178,10 +178,13 @@ services:
         HTTPS_PROXY: ${HTTPS_PROXY}
         NO_PROXY: ${NO_PROXY}
     container_name: pipeline-react
+    env_file:
+      - ../pipeline-agent/.env
     ports:
       - "3000:80"
     depends_on:
       - pipeline-gateway
+      - pipeline-agent
 
   # ---------- Milvus (Vector DB for Agent RAG) ----------
   milvus-etcd:

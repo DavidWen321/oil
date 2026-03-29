@@ -725,7 +725,7 @@ export function useAgentTrace(sessionId: string) {
   const { connect, connected, disconnect, streaming } = sse;
 
   const startChat = useCallback(
-    (message: string) => {
+    (message: string, mode = 'standard') => {
       chunkBufferRef.current = '';
       smoothQueueRef.current = '';
       if (rafIdRef.current !== null) {
@@ -746,6 +746,7 @@ export function useAgentTrace(sessionId: string) {
         body: {
           message,
           session_id: sessionId,
+          mode,
         },
       });
     },

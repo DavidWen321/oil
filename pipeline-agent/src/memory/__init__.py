@@ -2,7 +2,6 @@
 
 from .summary import ConversationSummarizer, get_summarizer
 from .long_term import LongTermMemoryItem, LongTermMemoryStore, get_long_term_store
-from .manager import MemoryManager, get_memory_manager
 
 __all__ = [
     "ConversationSummarizer",
@@ -10,6 +9,4 @@ __all__ = [
     "LongTermMemoryItem",
     "LongTermMemoryStore",
     "get_long_term_store",
-    "MemoryManager",
-    "get_memory_manager",
 ]

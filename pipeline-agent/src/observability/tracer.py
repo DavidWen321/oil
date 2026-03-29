@@ -1,4 +1,4 @@
-"""Agent tracer implementation."""
+﻿"""Agent tracer implementation."""
 
 from __future__ import annotations
 
@@ -66,11 +66,10 @@ class AgentTracer:
 
         queue = self._ensure_queue()
         timeout = 300  # 5 min total
-        loop = asyncio.get_running_loop()
-        deadline = loop.time() + timeout
+        deadline = asyncio.get_event_loop().time() + timeout
 
         while True:
-            remaining = deadline - loop.time()
+            remaining = deadline - asyncio.get_event_loop().time()
             if remaining <= 0:
                 yield {"event": "error", "data": json.dumps({"error": "stream timeout"})}
                 break

@@ -1,21 +1,26 @@
-﻿import { http } from './request';
+import { http } from './request';
 import type {
   AlarmMessage,
   AlarmRule,
+  AnalysisReport,
   CarbonCalculationRequest,
   CarbonCalculationResult,
   ComparisonRequest,
   ComparisonResult,
+  CalculationHistory,
   DiagnosisRequest,
   DiagnosisResult,
   HydraulicAnalysisParams,
   HydraulicAnalysisResult,
+  KnowledgeIngestTask,
   LoginParams,
   LoginResult,
   MonitorDataPoint,
   OilProperty,
   OptimizationParams,
   OptimizationResult,
+  PageResult,
+  KnowledgeDocument,
   Pipeline,
   Project,
   PumpStation,
@@ -58,6 +63,14 @@ export const oilPropertyApi = {
   create: (data: Partial<OilProperty>) => http.post<R<boolean>>('/oil-property', data),
   update: (data: Partial<OilProperty>) => http.put<R<boolean>>('/oil-property', data),
   delete: (ids: number[]) => http.delete<R<boolean>>(`/oil-property/${ids.join(',')}`),
+};
+
+export const knowledgeDocumentApi = {
+  list: () => http.get<R<KnowledgeDocument[]>>('/knowledge-doc/list'),
+  listTasks: (id: number) => http.get<R<KnowledgeIngestTask[]>>(`/knowledge-doc/${id}/tasks`),
+  upload: (data: FormData) => http.post<R<KnowledgeDocument>>('/knowledge-doc/upload', data),
+  retry: (id: number) => http.post<R<KnowledgeDocument>>(`/knowledge-doc/${id}/retry`),
+  delete: (id: number) => http.delete<R<boolean>>(`/knowledge-doc/${id}`),
 };
 
 export const calculationApi = {
@@ -103,8 +116,7 @@ export const monitorApi = {
   getCurrentData: (pipelineId: number) =>
     http.get<R<MonitorDataPoint>>(`/calculation/monitor/current/${pipelineId}`),
   getAllCurrentData: () => http.get<R<MonitorDataPoint[]>>('/calculation/monitor/current/all'),
-  receiveData: (data: MonitorDataPoint) =>
-    http.post<R<void>>('/calculation/monitor/data', data),
+  receiveData: (data: MonitorDataPoint) => http.post<R<void>>('/calculation/monitor/data', data),
   getActiveAlarms: (pipelineId?: number) =>
     http.get<R<AlarmMessage[]>>('/calculation/monitor/alarms', { params: { pipelineId } }),
   acknowledgeAlarm: (alarmId: string, userId: string) =>
@@ -133,5 +145,42 @@ export const statisticsApi = {
     }),
 };
 
+export const reportApi = {
+  page: (params?: {
+    reportType?: string;
+    projectId?: number;
+    userId?: number;
+    pageNum?: number;
+    pageSize?: number;
+  }) => http.get<R<PageResult<AnalysisReport>>>('/calculation/report/page', { params }),
+  recent: (limit = 10, userId?: number) =>
+    http.get<R<AnalysisReport[]>>('/calculation/report/recent', {
+      params: { limit, userId },
+    }),
+  detail: (id: number) => http.get<R<AnalysisReport>>(`/calculation/report/${id}`),
+  delete: (id: number) => http.delete<R<void>>(`/calculation/report/${id}`),
+};
 
-
+export const calculationHistoryApi = {
+  page: (params?: {
+    calcType?: string;
+    projectId?: number;
+    userId?: number;
+    status?: number;
+    pageNum?: number;
+    pageSize?: number;
+    keyword?: string;
+  }) => http.get<R<PageResult<CalculationHistory>>>('/calculation/history/page', { params }),
+  byProject: (
+    projectId: number,
+    params?: {
+      pageNum?: number;
+      pageSize?: number;
+      calcType?: string;
+    },
+  ) =>
+    http.get<R<PageResult<CalculationHistory>>>(`/calculation/history/project/${projectId}`, {
+      params,
+    }),
+  detail: (id: number) => http.get<R<CalculationHistory>>(`/calculation/history/${id}`),
+};

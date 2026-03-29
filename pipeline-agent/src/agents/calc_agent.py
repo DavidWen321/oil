@@ -4,14 +4,13 @@ Calc Agent
 """
 
 import json
-import threading
 from typing import Optional, Dict, Any
 
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
-from langchain.agents import AgentExecutor, create_tool_calling_agent
+from langchain_classic.agents import AgentExecutor, create_tool_calling_agent
 
-from src.llm import get_cached_llm
+from src.config import settings
 from src.utils import logger
 from src.tools.calculation_tools import CALCULATION_TOOLS
 from src.tools.java_service_tools import JAVA_SERVICE_TOOLS
@@ -39,7 +38,13 @@ class CalcAgent:
     def llm(self) -> ChatOpenAI:
         """获取LLM实例"""
         if self._llm is None:
-            self._llm = get_cached_llm("scheme_comparison")
+            self._llm = ChatOpenAI(
+                api_key=settings.OPENAI_API_KEY,
+                base_url=settings.OPENAI_API_BASE,
+                model=settings.LLM_MODEL,
+                temperature=0,
+                max_tokens=4096,
+            )
         return self._llm
 
     @property
@@ -173,14 +178,11 @@ class CalcAgent:
 
 # 全局实例
 _calc_agent: Optional[CalcAgent] = None
-_calc_agent_lock = threading.Lock()
 
 
 def get_calc_agent() -> CalcAgent:
     """获取Calc Agent实例"""
     global _calc_agent
     if _calc_agent is None:
-        with _calc_agent_lock:
-            if _calc_agent is None:
-                _calc_agent = CalcAgent()
+        _calc_agent = CalcAgent()
     return _calc_agent

@@ -58,7 +58,7 @@ export function ChatMessageItem({
 
   return (
     <article className="group flex gap-3">
-      <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-neutral-950 text-[11px] font-semibold tracking-[0.08em] text-white shadow-[0_10px_20px_rgba(15,23,42,0.15)]">
+      <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#e0f2fe_0%,#dbeafe_55%,#e2e8f0_100%)] text-[11px] font-semibold tracking-[0.08em] text-slate-700 shadow-[0_10px_20px_rgba(148,163,184,0.18)] ring-1 ring-white/90">
         智
       </div>
       <div className="min-w-0 flex-1">

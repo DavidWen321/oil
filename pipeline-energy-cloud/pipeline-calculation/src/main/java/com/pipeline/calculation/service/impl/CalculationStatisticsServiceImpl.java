@@ -185,27 +185,14 @@ public class CalculationStatisticsServiceImpl implements ICalculationStatisticsS
     public long countActiveUsers(int days) {
         LocalDateTime startTime = LocalDate.now().minusDays(days).atStartOfDay();
         LocalDateTime endTime = LocalDateTime.now();
-
-        LambdaQueryWrapper<CalculationHistory> wrapper = new LambdaQueryWrapper<>();
-        wrapper.select(CalculationHistory::getCreateBy)
-               .between(CalculationHistory::getCreateTime, startTime, endTime)
-               .groupBy(CalculationHistory::getCreateBy);
-
-        return calculationHistoryMapper.selectCount(wrapper);
+        return calculationHistoryMapper.countDistinctCreateByInRange(startTime, endTime);
     }
 
     @Override
     public long countActiveProjects(int days) {
         LocalDateTime startTime = LocalDate.now().minusDays(days).atStartOfDay();
         LocalDateTime endTime = LocalDateTime.now();
-
-        LambdaQueryWrapper<CalculationHistory> wrapper = new LambdaQueryWrapper<>();
-        wrapper.select(CalculationHistory::getProId)
-               .between(CalculationHistory::getCreateTime, startTime, endTime)
-               .isNotNull(CalculationHistory::getProId)
-               .groupBy(CalculationHistory::getProId);
-
-        return calculationHistoryMapper.selectCount(wrapper);
+        return calculationHistoryMapper.countDistinctProjectInRange(startTime, endTime);
     }
 
     /**

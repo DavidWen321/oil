@@ -1,11 +1,9 @@
-/**
- * ═══════════════════════════════════════════════════════════════════
- *  Dashboard - 油气管道智能监测系统
- *  设计理念: Apple + Linear + Vercel 极简主义风格
- * ═══════════════════════════════════════════════════════════════════
- */
+﻿/**
+ * 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺? *  Dashboard - 娌规皵绠￠亾鏅鸿兘鐩戞祴绯荤粺
+ *  璁捐鐞嗗康: Apple + Linear + Vercel 鏋佺畝涓讳箟椋庢牸
+ * 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺? */
 
-import { useEffect, useState, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { motion } from 'motion/react'
 import type { EChartsOption } from 'echarts'
 import {
@@ -15,13 +13,10 @@ import {
   RiArrowRightSLine,
   RiTimeLine,
   RiMapPinLine,
-  RiSettings3Line,
-  RiRefreshLine,
   RiArrowUpLine,
   RiArrowDownLine,
   RiFlashlightLine,
   RiPulseLine,
-  RiBarChartBoxLine,
   RiDashboardLine,
 } from 'react-icons/ri'
 import AnimatedPage from '../../components/common/AnimatedPage'
@@ -31,9 +26,7 @@ import { useChartConfig } from '../../hooks/useChartConfig'
 import { useChartGesture } from '../../hooks/useChartGesture'
 import styles from './Dashboard.module.css'
 
-// ═══════════════════════════════════════════════════════════════════
 // 类型定义
-// ═══════════════════════════════════════════════════════════════════
 interface StatCardData {
   id: string
   label: string
@@ -62,29 +55,22 @@ interface DeviceData {
   unit: string
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// ECharts 浅色主题配置 - Apple HIG 风格
-// ═══════════════════════════════════════════════════════════════════
-
-// 主色调定义 - Apple 系统色
+// ECharts 主题配置 - Apple HIG 风格
+// 主色调定义
 const colors = {
-  // Apple Blue 主色
   primary: '#007AFF',
   primaryLight: 'rgba(0, 122, 255, 0.12)',
   primaryMedium: 'rgba(0, 122, 255, 0.6)',
-  // 辅助色
   purple: '#5856D6',
   purpleLight: 'rgba(88, 86, 214, 0.12)',
   cyan: '#32ADE6',
   cyanLight: 'rgba(50, 173, 230, 0.12)',
   green: '#34C759',
   orange: '#FF9500',
-  // 文本色
   textPrimary: '#1D1D1F',
   textSecondary: '#6E6E73',
   textTertiary: '#8E8E93',
   textMuted: '#AEAEB2',
-  // 边框和背景
   border: '#E5E5EA',
   borderLight: '#F2F2F7',
   bgElevated: '#FFFFFF',
@@ -150,35 +136,140 @@ const chartTheme = {
   },
 }
 
-// ═══════════════════════════════════════════════════════════════════
 // Dashboard 组件
-// ═══════════════════════════════════════════════════════════════════
+
+type TimeRangeKey = '24h' | '7d' | '30m'
+
+interface DashboardSnapshot {
+  stats: {
+    flow: number
+    pressure: number
+    temperature: number
+    efficiency: number
+  }
+  trends: {
+    flow: string
+    pressure: string
+    temperature: string
+    efficiency: string
+  }
+  flow: Record<TimeRangeKey, { current: number[]; previous: number[] }>
+  pressure: number[]
+  energyActual: number[]
+  deviceValues: number[]
+  deviceStatuses: DeviceData['status'][]
+}
+
+const flowSeriesBase: DashboardSnapshot['flow'] = {
+  '24h': {
+    current: [2050, 2140, 2260, 2410, 2580, 2720, 2840, 2910, 2890, 2870, 2920, 2895, 2847],
+    previous: [1910, 1980, 2070, 2190, 2320, 2440, 2550, 2630, 2660, 2690, 2725, 2660, 2530],
+  },
+  '7d': {
+    current: [2520, 2610, 2750, 2880, 2810, 2950, 2847],
+    previous: [2380, 2460, 2590, 2670, 2710, 2790, 2730],
+  },
+  '30m': {
+    current: [2745, 2760, 2772, 2788, 2805, 2820, 2836, 2844, 2856, 2850, 2847],
+    previous: [2700, 2712, 2720, 2735, 2746, 2760, 2772, 2780, 2790, 2798, 2805],
+  },
+}
+
+const pressureBase = [5.2, 4.8, 4.5, 4.2, 3.9, 3.5]
+const energyBase = [4200, 3800, 4500, 3200, 0, 3600]
+const deviceBase = [2150, 1890, 2340, 2010, 0, 1750]
+
+function createSeededRandom(seed: number) {
+  let value = seed % 2147483647
+  if (value <= 0) {
+    value += 2147483646
+  }
+
+  return () => {
+    value = (value * 16807) % 2147483647
+    return (value - 1) / 2147483646
+  }
+}
+
+function varySeries(base: number[], spread: number, rand: () => number, minValue = 0) {
+  return base.map((value) => Math.max(minValue, Math.round(value + (rand() * 2 - 1) * spread)))
+}
+
+function createDashboardSnapshot(seed: number): DashboardSnapshot {
+  const rand = createSeededRandom(seed)
+  const flow24hCurrent = varySeries(flowSeriesBase['24h'].current, 120, rand, 1800)
+  const flow24hPrevious = varySeries(flowSeriesBase['24h'].previous, 90, rand, 1700)
+  const flow7dCurrent = varySeries(flowSeriesBase['7d'].current, 140, rand, 2200)
+  const flow7dPrevious = varySeries(flowSeriesBase['7d'].previous, 110, rand, 2100)
+  const flow30mCurrent = varySeries(flowSeriesBase['30m'].current, 45, rand, 2500)
+  const flow30mPrevious = varySeries(flowSeriesBase['30m'].previous, 35, rand, 2450)
+  const pressure = pressureBase.map((value) => Number((value + (rand() * 2 - 1) * 0.18).toFixed(2)))
+  const energyActual = energyBase.map((value, index) => {
+    if (index === 4) {
+      return 0
+    }
+    return Math.max(2600, Math.round(value + (rand() * 2 - 1) * 280))
+  })
+  const deviceValues = deviceBase.map((value, index) => {
+    if (index === 4) {
+      return 0
+    }
+    return Math.max(1500, Math.round(value + (rand() * 2 - 1) * 180))
+  })
+  const deviceStatuses = deviceValues.map((value, index) => {
+    if (index === 4) {
+      return 'offline'
+    }
+    if (index === 2 || value > 2280) {
+      return 'warning'
+    }
+    return 'online'
+  })
+
+  return {
+    stats: {
+      flow: flow24hCurrent[flow24hCurrent.length - 1],
+      pressure: Number((4.7 + rand() * 0.4).toFixed(2)),
+      temperature: Number((41.5 + rand() * 2.4).toFixed(1)),
+      efficiency: Number((93.2 + rand() * 2.1).toFixed(1)),
+    },
+    trends: {
+      flow: `+${(8.5 + rand() * 5).toFixed(1)}%`,
+      pressure: `${(rand() * 0.6 - 0.3).toFixed(1)}%`,
+      temperature: `-${(1.2 + rand() * 1.8).toFixed(1)}%`,
+      efficiency: `+${(2 + rand() * 2).toFixed(1)}%`,
+    },
+    flow: {
+      '24h': { current: flow24hCurrent, previous: flow24hPrevious },
+      '7d': { current: flow7dCurrent, previous: flow7dPrevious },
+      '30m': { current: flow30mCurrent, previous: flow30mPrevious },
+    },
+    pressure,
+    energyActual,
+    deviceValues,
+    deviceStatuses,
+  }
+}
 export default function Dashboard() {
-  const [currentTime, setCurrentTime] = useState(new Date())
-  const [activeTimeRange, setActiveTimeRange] = useState('24h')
+  const [activeTimeRange, setActiveTimeRange] = useState<TimeRangeKey>('24h')
+  const dashboardSnapshot = useMemo(() => createDashboardSnapshot(Date.now()), [])
   const flowChart = useChartConfig()
-  const pressureChart = useChartConfig()
+  const pressureChart = useChartConfig({ mobileSvg: false })
   const energyChart = useChartConfig()
 
   useChartGesture(flowChart.containerRef)
   useChartGesture(pressureChart.containerRef)
   useChartGesture(energyChart.containerRef)
 
-  // 实时时钟
-  useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000)
-    return () => clearInterval(timer)
-  }, [])
-
   // 统计卡片数据
   const statsData: StatCardData[] = useMemo(() => [
     {
       id: 'flow',
       label: '实时流量',
-      value: 2847,
-      unit: 'm³/h',
+      value: dashboardSnapshot.stats.flow,
+      unit: 'm3/h',
       trend: 'up',
-      trendValue: '+12.5%',
+      trendValue: dashboardSnapshot.trends.flow,
       description: '较昨日同期',
       icon: <RiDropLine size={20} />,
       colorClass: styles.statIconBlue,
@@ -186,10 +277,10 @@ export default function Dashboard() {
     {
       id: 'pressure',
       label: '管道压力',
-      value: 4.82,
+      value: dashboardSnapshot.stats.pressure,
       unit: 'MPa',
       trend: 'neutral',
-      trendValue: '0.0%',
+      trendValue: dashboardSnapshot.trends.pressure,
       description: '运行正常',
       icon: <RiPulseLine size={20} />,
       colorClass: styles.statIconCyan,
@@ -197,10 +288,10 @@ export default function Dashboard() {
     {
       id: 'temperature',
       label: '平均温度',
-      value: 42.6,
+      value: dashboardSnapshot.stats.temperature,
       unit: '°C',
       trend: 'down',
-      trendValue: '-2.3%',
+      trendValue: dashboardSnapshot.trends.temperature,
       description: '较昨日同期',
       icon: <RiTempColdLine size={20} />,
       colorClass: styles.statIconGreen,
@@ -208,15 +299,15 @@ export default function Dashboard() {
     {
       id: 'efficiency',
       label: '系统效率',
-      value: 94.7,
+      value: dashboardSnapshot.stats.efficiency,
       unit: '%',
       trend: 'up',
-      trendValue: '+3.2%',
+      trendValue: dashboardSnapshot.trends.efficiency,
       description: '优于目标',
       icon: <RiFlashlightLine size={20} />,
       colorClass: styles.statIconAmber,
     },
-  ], [])
+  ], [dashboardSnapshot])
 
   // 预警数据
   const alertsData: AlertData[] = useMemo(() => [
@@ -252,18 +343,49 @@ export default function Dashboard() {
 
   // 设备数据
   const devicesData: DeviceData[] = useMemo(() => [
-    { id: '1', name: '1号泵站', status: 'online', value: 2150, unit: 'kW' },
-    { id: '2', name: '2号泵站', status: 'online', value: 1890, unit: 'kW' },
-    { id: '3', name: '3号泵站', status: 'warning', value: 2340, unit: 'kW' },
-    { id: '4', name: '4号泵站', status: 'online', value: 2010, unit: 'kW' },
-    { id: '5', name: '5号泵站', status: 'offline', value: 0, unit: 'kW' },
-    { id: '6', name: '6号泵站', status: 'online', value: 1750, unit: 'kW' },
-  ], [])
+    { id: '1', name: '1号泵站', status: dashboardSnapshot.deviceStatuses[0], value: dashboardSnapshot.deviceValues[0], unit: 'kW' },
+    { id: '2', name: '2号泵站', status: dashboardSnapshot.deviceStatuses[1], value: dashboardSnapshot.deviceValues[1], unit: 'kW' },
+    { id: '3', name: '3号泵站', status: dashboardSnapshot.deviceStatuses[2], value: dashboardSnapshot.deviceValues[2], unit: 'kW' },
+    { id: '4', name: '4号泵站', status: dashboardSnapshot.deviceStatuses[3], value: dashboardSnapshot.deviceValues[3], unit: 'kW' },
+    { id: '5', name: '5号泵站', status: dashboardSnapshot.deviceStatuses[4], value: dashboardSnapshot.deviceValues[4], unit: 'kW' },
+    { id: '6', name: '6号泵站', status: dashboardSnapshot.deviceStatuses[5], value: dashboardSnapshot.deviceValues[5], unit: 'kW' },
+  ], [dashboardSnapshot])
 
   // 流量趋势图配置
+  const flowRangeConfig = useMemo(() => {
+    switch (activeTimeRange) {
+      case '7d':
+        return {
+          subtitle: '近7天实时流量变化',
+          compareLabel: '上周同期',
+          xAxis: ['周一', '周二', '周三', '周四', '周五', '周六', '周日'],
+          current: dashboardSnapshot.flow['7d'].current,
+          previous: dashboardSnapshot.flow['7d'].previous,
+        }
+      case '30m':
+        return {
+          subtitle: '最近30分钟分钟级流量监控',
+          compareLabel: '上一时段',
+          xAxis: ['00分', '03分', '06分', '09分', '12分', '15分', '18分', '21分', '24分', '27分', '30分'],
+          current: dashboardSnapshot.flow['30m'].current,
+          previous: dashboardSnapshot.flow['30m'].previous,
+        }
+      default:
+        return {
+          subtitle: '24小时实时流量监控',
+          compareLabel: '昨日流量',
+          xAxis: ['00:00', '02:00', '04:00', '06:00', '08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00', '24:00'],
+          current: dashboardSnapshot.flow['24h'].current,
+          previous: dashboardSnapshot.flow['24h'].previous,
+        }
+    }
+  }, [activeTimeRange, dashboardSnapshot])
+
   const flowTrendOption = useMemo<EChartsOption>(() => ({
     ...chartTheme,
-    grid: flowChart.grid,
+    grid: flowChart.isCompact
+      ? flowChart.grid
+      : { ...flowChart.grid, top: 28, right: 18, bottom: 22, left: 20 },
     tooltip: {
       ...chartTheme.tooltip,
       ...flowChart.tooltipConf,
@@ -271,7 +393,7 @@ export default function Dashboard() {
     xAxis: {
       ...chartTheme.xAxis,
       type: 'category' as const,
-      data: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00'],
+      data: flowRangeConfig.xAxis,
       boundaryGap: false,
       axisLabel: {
         ...chartTheme.xAxis.axisLabel,
@@ -281,104 +403,140 @@ export default function Dashboard() {
     yAxis: {
       ...chartTheme.yAxis,
       type: 'value' as const,
-      name: 'm³/h',
-      nameTextStyle: { color: colors.textTertiary, fontSize: 11 },
+      name: 'm3/h',
+      nameTextStyle: { color: colors.textTertiary, fontSize: 12, padding: [0, 0, 8, 0] },
+      splitNumber: 5,
+      min: ({ min }: { min: number }) => Math.floor((min - 160) / 100) * 100,
+      max: ({ max }: { max: number }) => Math.ceil((max + 120) / 100) * 100,
     },
     series: [
       {
         name: '实时流量',
         type: 'line' as const,
-        smooth: true,
-        symbol: 'none',
+        smooth: 0.28,
+        showSymbol: true,
+        symbol: 'circle',
+        symbolSize: flowChart.isCompact ? 5 : 7,
         lineStyle: {
-          width: 3,
+          width: 4,
           color: colors.primary,
           shadowColor: 'rgba(0, 122, 255, 0.25)',
           shadowBlur: 8,
         },
-        areaStyle: { opacity: 0.25 },
-        data: [2100, 2250, 2680, 2890, 2750, 2920, 2847],
+        itemStyle: {
+          color: colors.primary,
+          borderColor: '#FFFFFF',
+          borderWidth: 2,
+        },
+        areaStyle: {
+          opacity: 0.28,
+          color: {
+            type: 'linear',
+            x: 0,
+            y: 0,
+            x2: 0,
+            y2: 1,
+            colorStops: [
+              { offset: 0, color: 'rgba(0, 122, 255, 0.28)' },
+              { offset: 1, color: 'rgba(0, 122, 255, 0.05)' },
+            ],
+          },
+        },
+        data: flowRangeConfig.current,
       },
       {
-        name: '昨日流量',
+        name: flowRangeConfig.compareLabel,
         type: 'line' as const,
-        smooth: true,
+        smooth: 0.24,
         symbol: 'none',
         lineStyle: {
-          width: 2,
+          width: 3,
           color: colors.purple,
           type: 'dashed' as const,
+          opacity: 0.9,
         },
-        data: [1900, 2100, 2400, 2600, 2500, 2700, 2530],
+        data: flowRangeConfig.previous,
       },
     ],
     legend: {
       ...(flowChart.legend !== false
         ? {
-          ...chartTheme.legend,
-          data: ['实时流量', '昨日流量'],
-          ...flowChart.legend,
-        }
+            ...chartTheme.legend,
+            data: ['实时流量', flowRangeConfig.compareLabel],
+            ...flowChart.legend,
+          }
         : { show: false }),
     },
-  }), [flowChart.grid, flowChart.xAxisLabel, flowChart.legend, flowChart.tooltipConf])
+  }), [activeTimeRange, flowChart.grid, flowChart.isCompact, flowChart.xAxisLabel, flowChart.legend, flowChart.tooltipConf, flowRangeConfig])
 
-  // 压力分布图配置
-  const pressureDistOption = useMemo<EChartsOption>(() => ({
-    ...chartTheme,
-    tooltip: {
-      ...chartTheme.tooltip,
-      ...pressureChart.tooltipConf,
-    },
-    radar: {
-      indicator: [
-        { name: '入口压力', max: 6 },
-        { name: '1号站', max: 6 },
-        { name: '2号站', max: 6 },
-        { name: '3号站', max: 6 },
-        { name: '4号站', max: 6 },
-        { name: '出口压力', max: 6 },
-      ],
-      shape: 'polygon' as const,
-      splitNumber: 4,
-      axisName: {
-        color: colors.textSecondary,
-        fontSize: 11,
+  const pressureDistOption = useMemo<EChartsOption>(() => {
+    const radarLayout = pressureChart.isCompact
+      ? { center: ['50%', '58%'], radius: '56%', nameGap: 8, fontSize: 10, splitNumber: 4 }
+      : pressureChart.isMedium
+        ? { center: ['50%', '56%'], radius: '63%', nameGap: 10, fontSize: 12, splitNumber: 4 }
+        : { center: ['50%', '55%'], radius: '70%', nameGap: 12, fontSize: 12, splitNumber: 5 }
+
+    return {
+      ...chartTheme,
+      legend: { show: false },
+      tooltip: {
+        ...chartTheme.tooltip,
+        ...pressureChart.tooltipConf,
       },
-      splitLine: {
-        lineStyle: { color: colors.border },
+      radar: {
+        indicator: [
+          { name: '入口压力', max: 6 },
+          { name: '1号站', max: 6 },
+          { name: '2号站', max: 6 },
+          { name: '3号站', max: 6 },
+          { name: '4号站', max: 6 },
+          { name: '出口压力', max: 6 },
+        ],
+        shape: 'polygon' as const,
+        center: radarLayout.center,
+        radius: radarLayout.radius,
+        splitNumber: radarLayout.splitNumber,
+        nameGap: radarLayout.nameGap,
+        axisName: {
+          color: colors.textSecondary,
+          fontSize: radarLayout.fontSize,
+          lineHeight: radarLayout.fontSize + 6,
+          padding: [2, 4, 0, 4],
+        },
+        splitLine: {
+          lineStyle: { color: colors.border },
+        },
+        splitArea: {
+          areaStyle: { color: [colors.borderLight, 'rgba(0, 122, 255, 0.03)'] },
+        },
+        axisLine: {
+          lineStyle: { color: colors.border },
+        },
       },
-      splitArea: {
-        areaStyle: { color: [colors.borderLight, 'rgba(0, 122, 255, 0.03)'] },
-      },
-      axisLine: {
-        lineStyle: { color: colors.border },
-      },
-    },
-    series: [{
-      type: 'radar' as const,
-      symbol: 'circle',
-      symbolSize: 6,
-      lineStyle: {
-        width: 2,
-        color: colors.cyan,
-      },
-      itemStyle: {
-        color: colors.cyan,
-        borderColor: colors.bgElevated,
-        borderWidth: 2,
-      },
-      areaStyle: {
-        color: 'rgba(50, 173, 230, 0.15)',
-      },
-      data: [{
-        value: [5.2, 4.8, 4.5, 4.2, 3.9, 3.5],
-        name: '当前压力',
+      series: [{
+        type: 'radar' as const,
+        symbol: 'circle',
+        symbolSize: pressureChart.isCompact ? 6 : 8,
+        lineStyle: {
+          width: 3,
+          color: colors.cyan,
+        },
+        itemStyle: {
+          color: colors.cyan,
+          borderColor: colors.bgElevated,
+          borderWidth: 2,
+        },
+        areaStyle: {
+          color: 'rgba(50, 173, 230, 0.22)',
+        },
+        data: [{
+          value: dashboardSnapshot.pressure,
+          name: '当前压力',
+        }],
       }],
-    }],
-  }), [pressureChart.tooltipConf])
+    }
+  }, [dashboardSnapshot.pressure, pressureChart.isCompact, pressureChart.isMedium, pressureChart.tooltipConf])
 
-  // 能耗分析图配置
   const energyOption = useMemo<EChartsOption>(() => ({
     ...chartTheme,
     grid: energyChart.grid,
@@ -410,7 +568,7 @@ export default function Dashboard() {
           borderRadius: [6, 6, 0, 0],
           color: colors.primary,
         },
-        data: [4200, 3800, 4500, 3200, 0, 3600],
+        data: dashboardSnapshot.energyActual,
       },
       {
         name: '计划能耗',
@@ -432,9 +590,9 @@ export default function Dashboard() {
         }
         : { show: false }),
     },
-  }), [energyChart.grid, energyChart.xAxisLabel, energyChart.legend, energyChart.tooltipConf])
+  }), [dashboardSnapshot.energyActual, energyChart.grid, energyChart.xAxisLabel, energyChart.legend, energyChart.tooltipConf])
 
-  // 获取预警图标样式
+  // 鑾峰彇棰勮鍥炬爣鏍峰紡
   const getAlertIconClass = (type: AlertData['type']) => {
     const classMap = {
       critical: styles.alertIconCritical,
@@ -444,7 +602,7 @@ export default function Dashboard() {
     return classMap[type]
   }
 
-  // 获取趋势样式
+  // 鑾峰彇瓒嬪娍鏍峰紡
   const getTrendClass = (trend: StatCardData['trend']) => {
     const classMap = {
       up: styles.statTrendUp,
@@ -457,9 +615,8 @@ export default function Dashboard() {
   return (
     <AnimatedPage className={styles.dashboard}>
       <div className={styles.dashboardContent}>
-        {/* ═══════════════════════════════════════════════════════════
-         * Header 区域
-         * ═══════════════════════════════════════════════════════════ */}
+        {/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?         * Header 鍖哄煙
+         * 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?*/}
         <header className={styles.header}>
           <div className={styles.headerTop}>
             <div className={styles.headerInfo}>
@@ -467,35 +624,14 @@ export default function Dashboard() {
                 <span className={styles.pageTitleAccent}>智能监测</span> 控制中心
               </h1>
               <p className={styles.pageSubtitle}>
-                油气管道实时数据监控与智能分析平台
-              </p>
+                油气管道实时数据监控与智能分析平台</p>
             </div>
 
-            <div className={styles.headerActions}>
-              <div className={styles.liveIndicator}>
-                <span className={styles.liveDot} />
-                <span className={styles.liveText}>实时</span>
-                <span className={styles.liveTime}>
-                  {currentTime.toLocaleTimeString('zh-CN', { hour12: false })}
-                </span>
-              </div>
-
-              <button className={styles.headerButton}>
-                <RiRefreshLine size={16} />
-                刷新数据
-              </button>
-
-              <button className={`${styles.headerButton} ${styles.headerButtonPrimary}`}>
-                <RiSettings3Line size={16} />
-                系统设置
-              </button>
-            </div>
           </div>
         </header>
 
-        {/* ═══════════════════════════════════════════════════════════
-         * 统计卡片区域
-         * ═══════════════════════════════════════════════════════════ */}
+        {/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?         * 缁熻鍗＄墖鍖哄煙
+         * 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?*/}
         <section className={`${styles.statsGrid} grid-auto-stats`}>
           {statsData.map((stat, index) => (
             <motion.div
@@ -535,25 +671,29 @@ export default function Dashboard() {
           ))}
         </section>
 
-        {/* ═══════════════════════════════════════════════════════════
-         * 图表区域
-         * ═══════════════════════════════════════════════════════════ */}
+        {/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?         * 鍥捐〃鍖哄煙
+         * 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?*/}
         <section className={`${styles.chartsSection} grid-auto-charts`}>
-          {/* 流量趋势 */}
+          {/* 娴侀噺瓒嬪娍 */}
           <div className={styles.chartCard}>
             <div className={styles.chartHeader}>
               <div className={styles.chartTitleGroup}>
                 <h3 className={styles.chartTitle}>流量趋势</h3>
-                <p className={styles.chartSubtitle}>24小时实时流量监控</p>
+                <p className={styles.chartSubtitle}>{flowRangeConfig.subtitle}</p>
               </div>
               <div className={styles.chartActions}>
-                {['24h', '7d', '30d'].map((range) => (
+                {([
+                  { key: '24h', label: '24小时' },
+                  { key: '7d', label: '7天' },
+                  { key: '30m', label: '30分钟' },
+                ] as const).map(({ key, label }) => (
                   <button
-                    key={range}
-                    className={`${styles.chartActionBtn} ${activeTimeRange === range ? styles.chartActionBtnActive : ''}`}
-                    onClick={() => setActiveTimeRange(range)}
+                    key={key}
+                    className={`${styles.chartActionBtn} ${activeTimeRange === key ? styles.chartActionBtnActive : ''}`}
+                    onClick={() => setActiveTimeRange(key)}
+                    type="button"
                   >
-                    {range}
+                    {label}
                   </button>
                 ))}
               </div>
@@ -563,7 +703,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* 压力分布 */}
+          {/* 鍘嬪姏鍒嗗竷 */}
           <div className={styles.chartCard}>
             <div className={styles.chartHeader}>
               <div className={styles.chartTitleGroup}>
@@ -576,18 +716,12 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* 能耗分析 - 全宽 */}
+          {/* 鑳借€楀垎鏋?- 鍏ㄥ */}
           <div className={`${styles.chartCard} ${styles.chartCardFull} grid-full-width`}>
             <div className={styles.chartHeader}>
               <div className={styles.chartTitleGroup}>
                 <h3 className={styles.chartTitle}>能耗分析</h3>
                 <p className={styles.chartSubtitle}>各泵站能耗对比与优化建议</p>
-              </div>
-              <div className={styles.chartActions}>
-                <button className={styles.chartActionBtn}>
-                  <RiBarChartBoxLine size={14} />
-                  详细报告
-                </button>
               </div>
             </div>
             <div className={`${styles.chartContainer} ${styles.chartContainerLarge}`} ref={energyChart.containerRef}>
@@ -596,11 +730,9 @@ export default function Dashboard() {
           </div>
         </section>
 
-        {/* ═══════════════════════════════════════════════════════════
-         * 底部区域 - 预警 & 设备状态
-         * ═══════════════════════════════════════════════════════════ */}
+        {/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?         * 搴曢儴鍖哄煙 - 棰勮 & 璁惧鐘舵€?         * 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?*/}
         <section className={`${styles.bottomSection} grid-auto-charts perf-lazy-render`}>
-          {/* 预警列表 */}
+          {/* 棰勮鍒楄〃 */}
           <div className={styles.alertCard}>
             <div className={styles.alertHeader}>
               <h3 className={styles.alertTitle}>
@@ -608,7 +740,6 @@ export default function Dashboard() {
                 实时预警
                 <span className={styles.alertBadge}>{alertsData.filter(a => a.type === 'critical').length}</span>
               </h3>
-              <button className={styles.alertViewAll}>查看全部</button>
             </div>
 
             <AnimatedListContainer className={styles.alertList}>
@@ -638,7 +769,7 @@ export default function Dashboard() {
             </AnimatedListContainer>
           </div>
 
-          {/* 设备状态 */}
+          {/* 璁惧鐘舵€?*/}
           <div className={styles.deviceCard}>
             <div className={styles.deviceHeader}>
               <h3 className={styles.deviceTitle}>设备状态</h3>
@@ -695,3 +826,9 @@ export default function Dashboard() {
     </AnimatedPage>
   )
 }
+
+
+
+
+
+

@@ -1,216 +1,389 @@
-import { useMemo, useState } from 'react';
-import { Button, Card, Input, Space, Table, Typography } from 'antd';
-import ReactECharts from 'echarts-for-react';
-import { DownloadOutlined, FileWordOutlined, FilePdfOutlined } from '@ant-design/icons';
-import { agentApi } from '../../api/agent';
-import type { ReportData, ReportGeneratePayload, ReportSection } from '../../types/agent';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  Button,
+  Card,
+  Empty,
+  Space,
+  Spin,
+  Table,
+  Tag,
+  Typography,
+  message,
+} from 'antd';
+import { ReloadOutlined } from '@ant-design/icons';
+import { projectApi, reportApi } from '../../api';
+import type { AnalysisReport, Project } from '../../types';
 import AnimatedPage from '../../components/common/AnimatedPage';
 
-const { Paragraph, Text, Title } = Typography;
+const { Paragraph } = Typography;
+
+const TEXT = {
+  pageTitle: '报告预览',
+  pageDescription: '从数据库读取项目信息和历史生成报告，支持按勾选项目筛选。',
+  projectTitle: '项目勾选',
+  projectDescription: '以下项目编号、项目名称、负责人、创建时间均直接来自数据库。',
+  historyTitle: '历史生成报告',
+  historyDescription: '下方展示数据库中已生成的历史报告，可按上方勾选项目进行筛选。',
+  reload: '刷新数据',
+  selectAll: '全选',
+  clearAll: '清空',
+  selectedCount: '已勾选',
+  selectedUnit: '项',
+  dbTag: '数据库',
+  allReports: '全部历史报告',
+  filteredReports: '按勾选项目筛选',
+  fieldNumber: '项目编号',
+  fieldName: '项目名称',
+  fieldResponsible: '负责人',
+  fieldCreateTime: '创建时间',
+  reportNo: '报告编号',
+  reportTitle: '报告标题',
+  reportType: '报告类型',
+  reportStatus: '状态',
+  projectEmpty: '数据库中暂无项目数据',
+  reportEmpty: '数据库中暂无历史生成报告',
+  reportFilterEmpty: '当前勾选项目暂无历史生成报告',
+  loadProjectFailed: '读取项目数据失败，请稍后重试',
+  loadReportFailed: '读取历史生成报告失败，请稍后重试',
+  statusCompleted: '已完成',
+  statusGenerating: '生成中',
+  statusFailed: '失败',
+  statusUnknown: '未知',
+  typeUnknown: '未分类',
+} as const;
+
+function formatDateTime(value?: string) {
+  if (!value) {
+    return '-';
+  }
+
+  return value.replace('T', ' ');
+}
+
+function sortProjects(list: Project[]) {
+  return [...list].sort((left, right) => {
+    const leftTime = new Date(left.createTime || left.buildDate || 0).getTime();
+    const rightTime = new Date(right.createTime || right.buildDate || 0).getTime();
+
+    if (leftTime !== rightTime) {
+      return rightTime - leftTime;
+    }
+
+    return left.proId - right.proId;
+  });
+}
+
+function sortReports(list: AnalysisReport[]) {
+  return [...list].sort((left, right) => {
+    const leftTime = new Date(left.createTime || 0).getTime();
+    const rightTime = new Date(right.createTime || 0).getTime();
+
+    if (leftTime !== rightTime) {
+      return rightTime - leftTime;
+    }
+
+    return right.id - left.id;
+  });
+}
+
+function getStatusMeta(status?: number) {
+  if (status === 1) {
+    return { text: TEXT.statusCompleted, color: 'success' as const };
+  }
+
+  if (status === 0) {
+    return { text: TEXT.statusGenerating, color: 'processing' as const };
+  }
+
+  if (status === 2) {
+    return { text: TEXT.statusFailed, color: 'error' as const };
+  }
+
+  return { text: TEXT.statusUnknown, color: 'default' as const };
+}
+
+function getReportTypeText(value?: string) {
+  if (!value) {
+    return TEXT.typeUnknown;
+  }
+
+  const normalized = value.trim().toUpperCase();
+
+  if (normalized === 'DAILY') {
+    return '日报';
+  }
+
+  if (normalized === 'WEEKLY') {
+    return '周报';
+  }
+
+  if (normalized === 'MONTHLY') {
+    return '月报';
+  }
+
+  if (normalized === 'ANNUAL') {
+    return '年报';
+  }
+
+  if (normalized === 'HYDRAULIC') {
+    return '水力分析';
+  }
+
+  if (normalized === 'OPTIMIZATION') {
+    return '泵站优化';
+  }
+
+  if (normalized === 'SENSITIVITY') {
+    return '敏感性分析';
+  }
+
+  return value;
+}
 
 export default function ReportPreview() {
-  const [request, setRequest] = useState('生成长庆管道本月运行分析报告');
-  const [loading, setLoading] = useState(false);
-  const [report, setReport] = useState<ReportData | null>(null);
-  const [javaReportId, setJavaReportId] = useState<number | null>(null);
-  const [javaReportList, setJavaReportList] = useState<Record<string, unknown>[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [reports, setReports] = useState<AnalysisReport[]>([]);
+  const [selectedProjectIds, setSelectedProjectIds] = useState<number[]>([]);
+  const [projectLoading, setProjectLoading] = useState(false);
+  const [reportLoading, setReportLoading] = useState(false);
 
-  const handleGenerate = async () => {
-    const text = request.trim();
-    if (!text) {
-      return;
+  const loadProjects = async () => {
+    setProjectLoading(true);
+    try {
+      const response = await projectApi.list();
+      const nextProjects = sortProjects(Array.isArray(response.data) ? response.data : []);
+      const availableIds = new Set(nextProjects.map((item) => item.proId));
+
+      setProjects(nextProjects);
+      setSelectedProjectIds((current) => current.filter((id) => availableIds.has(id)));
+    } catch {
+      message.error(TEXT.loadProjectFailed);
+    } finally {
+      setProjectLoading(false);
+    }
+  };
+
+  const loadReports = async () => {
+    setReportLoading(true);
+    try {
+      const response = await reportApi.page({ pageNum: 1, pageSize: 200 });
+      const nextReports = sortReports(Array.isArray(response.data?.list) ? response.data.list : []);
+      setReports(nextReports);
+    } catch {
+      message.error(TEXT.loadReportFailed);
+    } finally {
+      setReportLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadProjects();
+    void loadReports();
+  }, []);
+
+  const projectMap = useMemo(() => {
+    return new Map(projects.map((item) => [item.proId, item]));
+  }, [projects]);
+
+  const filteredReports = useMemo(() => {
+    if (selectedProjectIds.length === 0) {
+      return reports;
     }
 
-    setLoading(true);
-    try {
-      const response = (await agentApi.generateReport(text)) as unknown as ReportGeneratePayload;
-      if (response.report) {
-        setReport(response.report);
+    const selectedIdSet = new Set(selectedProjectIds);
+    return reports.filter((item) => item.proId !== undefined && selectedIdSet.has(item.proId));
+  }, [reports, selectedProjectIds]);
+
+  const projectColumns = [
+    {
+      title: TEXT.fieldNumber,
+      dataIndex: 'number',
+      key: 'number',
+      render: (value: string | undefined) => value || '-',
+    },
+    {
+      title: TEXT.fieldName,
+      dataIndex: 'name',
+      key: 'name',
+      render: (value: string | undefined) => value || '-',
+    },
+    {
+      title: TEXT.fieldResponsible,
+      dataIndex: 'responsible',
+      key: 'responsible',
+      render: (value: string | undefined) => value || '-',
+    },
+    {
+      title: TEXT.fieldCreateTime,
+      dataIndex: 'createTime',
+      key: 'createTime',
+      render: (_: unknown, record: Project) => formatDateTime(record.createTime || record.buildDate),
+    },
+  ];
+
+  const reportColumns = [
+    {
+      title: TEXT.fieldNumber,
+      dataIndex: 'proId',
+      key: 'projectNumber',
+      render: (_: unknown, record: AnalysisReport) => projectMap.get(record.proId ?? -1)?.number || '-',
+    },
+    {
+      title: '项目名称',
+      dataIndex: 'projectName',
+      key: 'projectName',
+      render: (_: unknown, record: AnalysisReport) => projectMap.get(record.proId ?? -1)?.name || '-',
+    },
+    {
+      title: TEXT.reportNo,
+      dataIndex: 'reportNo',
+      key: 'reportNo',
+      render: (value: string | undefined) => value || '-',
+    },
+    {
+      title: TEXT.reportTitle,
+      dataIndex: 'reportTitle',
+      key: 'reportTitle',
+      render: (value: string | undefined) => value || '-',
+    },
+    {
+      title: TEXT.reportType,
+      dataIndex: 'reportType',
+      key: 'reportType',
+      render: (value: string | undefined) => getReportTypeText(value),
+    },
+    {
+      title: TEXT.reportStatus,
+      dataIndex: 'status',
+      key: 'status',
+      render: (value: number | undefined) => {
+        const meta = getStatusMeta(value);
+        return <Tag color={meta.color}>{meta.text}</Tag>;
+      },
+    },
+    {
+      title: TEXT.fieldCreateTime,
+      dataIndex: 'createTime',
+      key: 'createTime',
+      render: (value: string | undefined) => formatDateTime(value),
+    },
+  ];
+
+  const toggleProjectSelection = (projectId: number) => {
+    setSelectedProjectIds((current) => {
+      if (current.includes(projectId)) {
+        return current.filter((id) => id !== projectId);
       }
-      setJavaReportId(response.java_report_id ?? null);
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  const handleLoadJavaReports = async () => {
-    setLoading(true);
-    try {
-      const response = await agentApi.listJavaReports(1, 10);
-      const data = response.data as { list?: Record<string, unknown>[] } | undefined;
-      setJavaReportList(Array.isArray(data?.list) ? data.list : []);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const downloadWord = () => {
-    if (!javaReportId) {
-      return;
-    }
-    window.open(agentApi.getJavaReportDownloadUrl(javaReportId, 'docx'), '_blank');
-  };
-
-  const downloadPdf = () => {
-    if (!javaReportId) {
-      return;
-    }
-    window.open(agentApi.getJavaReportDownloadUrl(javaReportId, 'pdf'), '_blank');
+      return [...current, projectId];
+    });
   };
 
   return (
     <AnimatedPage>
-      <Card
-        title="报告预览"
-        extra={
-          <Space>
-            <Button onClick={() => void handleLoadJavaReports()} icon={<DownloadOutlined />}>
-              读取服务端报告
-            </Button>
-            <Button onClick={() => void handleGenerate()} loading={loading} type="primary">
-              生成报告
-            </Button>
-          </Space>
-        }
-      >
-        <Input.TextArea
-          autoSize={{ minRows: 2, maxRows: 4 }}
-          value={request}
-          onChange={(event) => setRequest(event.target.value)}
-          placeholder="请输入报告需求"
-        />
+      <div className="page-header">
+        <h2>{TEXT.pageTitle}</h2>
+        <p>{TEXT.pageDescription}</p>
+      </div>
 
-        {javaReportId ? (
-          <Space style={{ marginTop: 12 }}>
-            <Button icon={<FileWordOutlined />} onClick={downloadWord}>
-              下载可编辑版
-            </Button>
-            <Button icon={<FilePdfOutlined />} onClick={downloadPdf}>
-              下载版式版
-            </Button>
-            <Text type="secondary">服务端报告编号：{javaReportId}</Text>
-          </Space>
-        ) : null}
-
-        {javaReportList.length > 0 ? (
-          <Table
-            style={{ marginTop: 12 }}
-            size="small"
-            rowKey={(record) => String(record.id)}
-            pagination={false}
-            columns={[
-              { title: 'ID', dataIndex: 'id', key: 'id' },
-              { title: '标题', dataIndex: 'reportTitle', key: 'reportTitle' },
-              { title: '类型', dataIndex: 'reportType', key: 'reportType' },
-              {
-                title: '操作',
-                key: 'actions',
-                render: (_, record) => {
-                  const id = Number(record.id);
-                  if (!id) return null;
-                  return (
-                    <Space>
-                      <Button size="small" onClick={() => window.open(agentApi.getJavaReportDownloadUrl(id, 'docx'), '_blank')}>
-                        可编辑版
-                      </Button>
-                      <Button size="small" onClick={() => window.open(agentApi.getJavaReportDownloadUrl(id, 'pdf'), '_blank')}>
-                        版式版
-                      </Button>
-                    </Space>
-                  );
-                },
-              },
-            ]}
-            dataSource={javaReportList}
-          />
-        ) : null}
-
-        {report ? (
-          <div style={{ marginTop: 16 }}>
-            <Title level={4}>{report.title}</Title>
-            <Text type="secondary">生成时间：{report.generate_time}</Text>
-
-            {report.sections.map((section, index) => (
-              <ReportSectionView key={`${section.title}-${index}`} section={section} />
-            ))}
-
-            {report.summary ? <Paragraph>{report.summary}</Paragraph> : null}
-          </div>
-        ) : (
-          <Paragraph type="secondary" style={{ marginTop: 12 }}>
-            生成后将在此渲染图表、表格与报告内容。
+      <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+        <Card
+          className="page-card"
+          title={TEXT.projectTitle}
+          extra={
+            <Space size="small" wrap>
+              <Tag color="blue">
+                {TEXT.selectedCount} {selectedProjectIds.length} {TEXT.selectedUnit}
+              </Tag>
+              <Button size="small" icon={<ReloadOutlined />} onClick={() => void loadProjects()}>
+                {TEXT.reload}
+              </Button>
+              <Button
+                size="small"
+                onClick={() => setSelectedProjectIds(projects.map((item) => item.proId))}
+                disabled={projects.length === 0}
+              >
+                {TEXT.selectAll}
+              </Button>
+              <Button
+                size="small"
+                onClick={() => setSelectedProjectIds([])}
+                disabled={selectedProjectIds.length === 0}
+              >
+                {TEXT.clearAll}
+              </Button>
+            </Space>
+          }
+        >
+          <Paragraph type="secondary" style={{ marginBottom: 16 }}>
+            {TEXT.projectDescription}
           </Paragraph>
-        )}
-      </Card>
+
+          {projectLoading ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '72px 0' }}>
+              <Spin />
+            </div>
+          ) : projects.length === 0 ? (
+            <Empty description={TEXT.projectEmpty} style={{ padding: '48px 0 24px' }} />
+          ) : (
+            <Table
+              size="large"
+              rowKey={(record) => String(record.proId)}
+              pagination={false}
+              columns={projectColumns}
+              dataSource={projects}
+              rowSelection={{
+                selectedRowKeys: selectedProjectIds,
+                onChange: (selectedRowKeys) =>
+                  setSelectedProjectIds(selectedRowKeys.map((item) => Number(item))),
+                columnWidth: 56,
+              }}
+              onRow={(record) => ({
+                onClick: () => toggleProjectSelection(record.proId),
+                style: { cursor: 'pointer' },
+              })}
+            />
+          )}
+        </Card>
+
+        <Card
+          className="page-card"
+          title={TEXT.historyTitle}
+          extra={
+            <Space size="small" wrap>
+              <Tag color={selectedProjectIds.length > 0 ? 'blue' : 'default'}>
+                {selectedProjectIds.length > 0 ? TEXT.filteredReports : TEXT.allReports}
+              </Tag>
+              <Button size="small" icon={<ReloadOutlined />} onClick={() => void loadReports()}>
+                {TEXT.reload}
+              </Button>
+            </Space>
+          }
+        >
+          <Paragraph type="secondary" style={{ marginBottom: 16 }}>
+            {TEXT.historyDescription}
+          </Paragraph>
+
+          <Table
+            size="middle"
+            rowKey={(record) => String(record.id)}
+            loading={reportLoading}
+            pagination={{ pageSize: 10, showSizeChanger: false }}
+            columns={reportColumns}
+            dataSource={filteredReports}
+            locale={{
+              emptyText: (
+                <Empty
+                  description={
+                    selectedProjectIds.length > 0 ? TEXT.reportFilterEmpty : TEXT.reportEmpty
+                  }
+                  style={{ padding: '48px 0 24px' }}
+                />
+              ),
+            }}
+          />
+        </Card>
+      </Space>
     </AnimatedPage>
-  );
-}
-
-function ReportSectionView({ section }: { section: ReportSection }) {
-  const firstChart = section.charts?.[0] as Record<string, unknown> | undefined;
-  const firstTable = section.tables?.[0] as Record<string, unknown> | undefined;
-
-  const tableColumns = useMemo(() => {
-    const headers = Array.isArray(firstTable?.headers) ? (firstTable.headers as string[]) : [];
-    return headers.map((header) => ({ title: header, dataIndex: header, key: header }));
-  }, [firstTable]);
-
-  const tableData = useMemo(() => {
-    const rows = Array.isArray(firstTable?.rows) ? (firstTable.rows as unknown[][]) : [];
-    const headers = Array.isArray(firstTable?.headers) ? (firstTable.headers as string[]) : [];
-    return rows.map((row, rowIndex) => {
-      const record: Record<string, unknown> = { key: rowIndex };
-      headers.forEach((header, colIndex) => {
-        record[header] = row[colIndex];
-      });
-      return record;
-    });
-  }, [firstTable]);
-
-  const chartOption = useMemo(() => {
-    if (!firstChart) {
-      return null;
-    }
-
-    const chartType = (firstChart.type as string) || 'line';
-    const chartData = (firstChart.data as Record<string, unknown>) || {};
-    const xValues = (chartData.x as string[]) || (chartData.dates as string[]) || [];
-    const yValues = (chartData.y as number[]) || (chartData.values as number[]) || [];
-
-    return {
-      tooltip: {},
-      xAxis: { type: 'category', data: xValues },
-      yAxis: { type: 'value' },
-      series: [
-        {
-          data: yValues,
-          type: chartType === 'bar' ? 'bar' : 'line',
-          smooth: chartType !== 'bar',
-        },
-      ],
-    };
-  }, [firstChart]);
-
-  return (
-    <Card size="small" style={{ marginTop: 12 }} title={section.title}>
-      <Paragraph>{section.content}</Paragraph>
-
-      {chartOption ? <ReactECharts style={{ height: 280 }} option={chartOption} /> : null}
-
-      {tableColumns.length > 0 ? (
-        <Table
-          size="small"
-          columns={tableColumns}
-          dataSource={tableData}
-          pagination={false}
-        />
-      ) : null}
-
-      {(section.alerts ?? []).map((alert, idx) => (
-        <Paragraph key={idx} type="warning">
-          {(alert as { message?: string }).message ?? ''}
-        </Paragraph>
-      ))}
-    </Card>
   );
 }

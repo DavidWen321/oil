@@ -1,5 +1,5 @@
 server:
-  port: 8080
+  port: 8180
 
 spring:
   config:
@@ -31,32 +31,27 @@ spring:
             allowCredentials: true
             maxAge: 3600
       routes:
-        # 认证服务 (控制器已有 /auth 前缀，不需要 StripPrefix)
         - id: pipeline-auth
           uri: lb://pipeline-auth
           predicates:
             - Path=/auth/**
-        # 系统服务
         - id: pipeline-system
           uri: lb://pipeline-system
           predicates:
             - Path=/system/**
           filters:
             - StripPrefix=1
-        # 数据服务 (前端发 /data/project/list，需要去掉 /data 前缀)
         - id: pipeline-data
           uri: lb://pipeline-data
           predicates:
             - Path=/data/**
           filters:
             - StripPrefix=1
-        # 计算服务 (控制器已有 /calculation 前缀，不需要 StripPrefix)
         - id: pipeline-calculation
           uri: lb://pipeline-calculation
           predicates:
             - Path=/calculation/**
 
-  # Redis配置
   data:
     redis:
       host: localhost
@@ -72,21 +67,14 @@ spring:
           max-wait: -1ms
 
 sa-token:
-  # token名称 (同时也是cookie名称)
   token-name: satoken
-  # token有效期，单位s 默认30天, -1代表永不过期
   timeout: 2592000
-  # token临时有效期 (指定时间内无操作就视为token过期) 单位: 秒
   activity-timeout: -1
-  # 是否允许同一账号并发登录 (为true时允许一起登录, 为false时新登录挤掉旧登录)
   is-concurrent: true
-  # 在多人登录同一账号时，是否共用一个token (为true时所有登录共用一个token, 为false时每次登录新建一个token)
   is-share: false
-  # token风格
   token-style: uuid
-  # 是否输出操作日志
   is-log: false
 
 logging:
   level:
-    com.pipeline.gateway: debug
+    com.pipeline.gateway: DEBUG

@@ -1,6 +1,5 @@
-﻿import { useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { Client, type IMessage, type StompSubscription } from '@stomp/stompjs';
-import SockJS from 'sockjs-client';
 import { useMonitorStore } from '../stores/monitorStore';
 import type { AlarmMessage, MonitorDataPoint } from '../types';
 
@@ -50,77 +49,106 @@ export function useWebSocket({
     if (!subscribeMonitor && !subscribeAlarms) {
       return undefined;
     }
+
     if (scope === 'pipeline' && pipelineId == null) {
       return undefined;
     }
 
     const sourceId = sourceIdRef.current;
     const subscriptions: StompSubscription[] = [];
-    const client = new Client({
-      reconnectDelay: 5000,
-      heartbeatIncoming: 10000,
-      heartbeatOutgoing: 10000,
-      webSocketFactory: () => new SockJS(WS_URL),
-      debug: () => undefined,
-      onConnect: () => {
-        setConnectionState(sourceId, true);
+    let disposed = false;
+    let client: Client | null = null;
 
-        if (subscribeMonitor) {
-          const monitorTopic = scope === 'all' ? '/topic/monitor/all' : `/topic/monitor/${pipelineId}`;
-          subscriptions.push(
-            client.subscribe(monitorTopic, (message) => {
-              const payload = parseMessage<MonitorDataPoint>(message);
-              if (!payload) {
-                return;
-              }
-              setData(payload);
-              monitorHandlerRef.current?.(payload);
-            }),
-          );
+    const connect = async () => {
+      try {
+        const { default: SockJS } = await import('sockjs-client');
+
+        if (disposed) {
+          return;
         }
 
-        if (subscribeAlarms) {
-          const alarmTopic = scope === 'all' ? '/topic/alarm/all' : `/topic/alarm/${pipelineId}`;
-          subscriptions.push(
-            client.subscribe(alarmTopic, (message) => {
-              const payload = parseMessage<AlarmMessage>(message);
-              if (!payload) {
-                return;
-              }
-              upsertAlarm(payload);
-              alarmHandlerRef.current?.(payload);
-            }),
-          );
+        client = new Client({
+          reconnectDelay: 5000,
+          heartbeatIncoming: 10000,
+          heartbeatOutgoing: 10000,
+          webSocketFactory: () => new SockJS(WS_URL),
+          debug: () => undefined,
+          onConnect: () => {
+            if (!client) {
+              return;
+            }
 
-          subscriptions.push(
-            client.subscribe('/topic/alarm/update', (message) => {
-              const payload = parseMessage<AlarmMessage>(message);
-              if (!payload) {
-                return;
-              }
-              upsertAlarm(payload);
-              alarmUpdateHandlerRef.current?.(payload);
-            }),
-          );
-        }
-      },
-      onStompError: () => {
-        setConnectionState(sourceId, false);
-      },
-      onWebSocketClose: () => {
-        setConnectionState(sourceId, false);
-      },
-      onWebSocketError: () => {
-        setConnectionState(sourceId, false);
-      },
-    });
+            setConnectionState(sourceId, true);
 
-    client.activate();
+            if (subscribeMonitor) {
+              const monitorTopic = scope === 'all' ? '/topic/monitor/all' : `/topic/monitor/${pipelineId}`;
+              subscriptions.push(
+                client.subscribe(monitorTopic, (message) => {
+                  const payload = parseMessage<MonitorDataPoint>(message);
+                  if (!payload) {
+                    return;
+                  }
+
+                  setData(payload);
+                  monitorHandlerRef.current?.(payload);
+                }),
+              );
+            }
+
+            if (subscribeAlarms) {
+              const alarmTopic = scope === 'all' ? '/topic/alarm/all' : `/topic/alarm/${pipelineId}`;
+              subscriptions.push(
+                client.subscribe(alarmTopic, (message) => {
+                  const payload = parseMessage<AlarmMessage>(message);
+                  if (!payload) {
+                    return;
+                  }
+
+                  upsertAlarm(payload);
+                  alarmHandlerRef.current?.(payload);
+                }),
+              );
+
+              subscriptions.push(
+                client.subscribe('/topic/alarm/update', (message) => {
+                  const payload = parseMessage<AlarmMessage>(message);
+                  if (!payload) {
+                    return;
+                  }
+
+                  upsertAlarm(payload);
+                  alarmUpdateHandlerRef.current?.(payload);
+                }),
+              );
+            }
+          },
+          onStompError: () => {
+            setConnectionState(sourceId, false);
+          },
+          onWebSocketClose: () => {
+            setConnectionState(sourceId, false);
+          },
+          onWebSocketError: () => {
+            setConnectionState(sourceId, false);
+          },
+        });
+
+        client.activate();
+      } catch {
+        setConnectionState(sourceId, false);
+      }
+    };
+
+    void connect();
 
     return () => {
+      disposed = true;
       subscriptions.forEach((subscription) => subscription.unsubscribe());
       setConnectionState(sourceId, false);
-      void client.deactivate();
+
+      if (client) {
+        void client.deactivate();
+      }
     };
   }, [pipelineId, scope, setConnectionState, setData, subscribeAlarms, subscribeMonitor, upsertAlarm]);
 

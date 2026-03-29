@@ -1,6 +1,7 @@
 package com.pipeline.calculation.service.impl;
 
 import java.util.List;
+import java.time.LocalDateTime;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -96,10 +97,12 @@ public class CalculationHistoryServiceImpl
                               Long userId, String userName, String inputParams) {
         CalculationHistory history = new CalculationHistory();
         history.setCalcType(calcType);
-        history.setProId(projectId);
+        history.setProId(projectId != null ? projectId : 0L);
+        history.setPipelineId(0L);
         history.setCalcName(projectName);
         history.setCreateBy(String.valueOf(userId));
         history.setInputParams(inputParams);
+        history.setCreateTime(LocalDateTime.now());
 
         this.save(history);
 

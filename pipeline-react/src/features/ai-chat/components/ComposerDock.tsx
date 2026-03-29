@@ -72,7 +72,7 @@ export function ComposerDock({
                 <button
                   type="button"
                   onClick={onStop}
-                  className="inline-flex h-11 items-center gap-2 rounded-full bg-neutral-900 px-4 text-sm font-medium text-white transition hover:bg-neutral-800"
+                  className="inline-flex h-11 items-center gap-2 rounded-full border border-sky-200/80 bg-[linear-gradient(135deg,#eff6ff_0%,#dbeafe_100%)] px-4 text-sm font-medium text-slate-800 transition hover:border-sky-300 hover:bg-[linear-gradient(135deg,#e0f2fe_0%,#dbeafe_100%)]"
                 >
                   <Square className="h-4 w-4 fill-current" />
                   停止生成
@@ -82,7 +82,7 @@ export function ComposerDock({
                   type="button"
                   onClick={onSubmit}
                   disabled={!draft.trim()}
-                  className="inline-flex h-11 items-center gap-2 rounded-full bg-neutral-900 px-4 text-sm font-medium text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-400"
+                  className="inline-flex h-11 items-center gap-2 rounded-full border border-sky-200/80 bg-[linear-gradient(135deg,#eff6ff_0%,#dbeafe_100%)] px-4 text-sm font-medium text-slate-800 transition hover:border-sky-300 hover:bg-[linear-gradient(135deg,#e0f2fe_0%,#dbeafe_100%)] disabled:cursor-not-allowed disabled:border-neutral-200 disabled:bg-neutral-100 disabled:text-neutral-400"
                 >
                   <SendHorizontal className="h-4 w-4" />
                   发送

@@ -25,6 +25,7 @@ import type {
   PumpStation,
 } from '../../types';
 import AnimatedPage from '../../components/common/AnimatedPage';
+import { useCalculationLinkStore } from '../../stores/calculationLinkStore';
 import styles from './HydraulicAnalysis.module.css';
 
 const FORM_ITEM_SPAN = { xs: 24, md: 12, xl: 8 } as const;
@@ -154,10 +155,26 @@ export default function HydraulicAnalysis() {
 
   const handleSubmit = async () => {
     const values = await form.validateFields();
+    const payload = {
+      ...values,
+      projectId: selectedProjectId ?? values.projectId,
+    };
     setLoading(true);
     try {
-      const response = await calculationApi.hydraulicAnalysis(values);
-      setResult(response.data ?? null);
+      const response = await calculationApi.hydraulicAnalysis(payload);
+      const nextResult = response.data ?? null;
+      setResult(nextResult);
+      if (nextResult) {
+        const project = projects.find((item) => item.proId === (payload.projectId ?? null));
+        useCalculationLinkStore.getState().linkCalculation({
+          calcType: 'HYDRAULIC',
+          projectId: payload.projectId ?? null,
+          projectName: project?.name ?? null,
+          input: payload as unknown as Record<string, unknown>,
+          output: nextResult as unknown as Record<string, unknown>,
+          updatedAt: new Date().toISOString(),
+        });
+      }
       message.success('水力分析完成');
     } finally {
       setLoading(false);

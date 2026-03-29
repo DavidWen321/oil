@@ -5,7 +5,7 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import { Spin } from 'antd';
-import MainLayout from './components/layout/MainLayout';
+import MainLayout from './components/layout/MainLayoutFixed';
 import { useUserStore } from './stores/userStore';
 
 const Login = lazy(() => import('./pages/auth/Login'));
@@ -207,7 +207,7 @@ export const router = createBrowserRouter([
         ),
       },
       {
-        path: 'ai/trace',
+        path: 'ai/knowledge',
         element: (
           <Suspense fallback={<Loading />}>
             <KnowledgeBase />

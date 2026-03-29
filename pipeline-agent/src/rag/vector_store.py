@@ -254,6 +254,53 @@ class MilvusVectorStore:
 
         return search_results
 
+    def list_chunks(
+        self,
+        category_filter: Optional[str] = None,
+        doc_id: Optional[str] = None,
+        batch_size: int = 1000
+    ) -> List[Dict[str, Any]]:
+        """List stored chunks for rebuilding non-vector retrieval state."""
+        self.connect()
+        if self._collection is None:
+            return []
+
+        expr_parts = []
+        if category_filter:
+            expr_parts.append(f'category == "{category_filter}"')
+        if doc_id:
+            expr_parts.append(f'doc_id == "{doc_id}"')
+        expr = " and ".join(expr_parts) if expr_parts else 'chunk_id != ""'
+
+        output_fields = [
+            "chunk_id",
+            "content",
+            "full_text",
+            "doc_id",
+            "doc_title",
+            "source",
+            "category",
+            "chunk_index",
+        ]
+
+        chunks: List[Dict[str, Any]] = []
+        offset = 0
+        while True:
+            rows = self._collection.query(
+                expr=expr,
+                output_fields=output_fields,
+                limit=batch_size,
+                offset=offset,
+            )
+            if not rows:
+                break
+            chunks.extend(rows)
+            if len(rows) < batch_size:
+                break
+            offset += batch_size
+
+        return chunks
+
     def delete_by_doc_id(self, doc_id: str) -> int:
         """
         删除指定文档的所有分块

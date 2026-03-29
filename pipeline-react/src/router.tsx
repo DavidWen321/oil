@@ -1,11 +1,11 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import { Spin } from 'antd';
-import MainLayout from './components/layout/MainLayout';
 import { useUserStore } from './stores/userStore';
 
 const Login = lazy(() => import('./pages/auth/Login'));
 const Dashboard = lazy(() => import('./pages/dashboard/Dashboard'));
+const SystemSettings = lazy(() => import('./pages/system/SystemSettings'));
 
 const ProjectList = lazy(() => import('./pages/data/ProjectList'));
 const PipelineList = lazy(() => import('./pages/data/PipelineList'));
@@ -53,7 +53,9 @@ export const router = createBrowserRouter([
     path: '/',
     element: (
       <ProtectedRoute>
-        <MainLayout />
+        <Suspense fallback={<Loading />}>
+          <MainLayout />
+        </Suspense>
       </ProtectedRoute>
     ),
     children: [
@@ -178,7 +180,7 @@ export const router = createBrowserRouter([
         ),
       },
       {
-        path: 'ai/trace',
+        path: 'ai/knowledge',
         element: (
           <Suspense fallback={<Loading />}>
             <KnowledgeBase />

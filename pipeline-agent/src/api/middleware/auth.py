@@ -1,21 +1,26 @@
-"""认证中间件：生产模式下验证请求来自受信任网关或受控调用方。"""
+"""
+认证中间件
+处理请求认证
+"""
 
-from __future__ import annotations
-
-from secrets import compare_digest
 from typing import Optional
 
-from fastapi import HTTPException, Request
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi import Request, HTTPException
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import JSONResponse
 
-from src.config import get_settings
+from src.config import settings
+from src.utils import logger
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
-    """Validate gateway/internal requests in production."""
+    """
+    认证中间件
 
+    验证请求的认证信息
+    """
+
+    # 不需要认证的路径
     PUBLIC_PATHS = {
         "/",
         "/docs",
@@ -23,81 +28,85 @@ class AuthMiddleware(BaseHTTPMiddleware):
         "/openapi.json",
         "/api/v1/health",
         "/api/v1/health/ready",
-        "/api/v1/health/live",
+        "/api/v1/health/live"
     }
 
     async def dispatch(self, request: Request, call_next):
-        settings = get_settings()
+        # 检查是否是公开路径
         path = request.url.path
 
-        if not settings.AUTH_REQUIRED_IN_PRODUCTION:
-            self._inject_user_context(request, trusted=False, allow_identity_headers=False)
-            return await call_next(request)
-
         if path in self.PUBLIC_PATHS or path.startswith("/api/v1/health"):
-            self._inject_user_context(request, trusted=False, allow_identity_headers=False)
             return await call_next(request)
 
-        client_host = request.client.host if request.client else ""
-        trusted_ip = client_host in settings.trusted_gateway_ips
-
-        internal_token = request.headers.get("X-Internal-Token") or request.headers.get("X-Internal-Key")
-        if internal_token and self._verify_internal_token(internal_token, settings):
-            self._inject_user_context(request, trusted=trusted_ip, allow_identity_headers=trusted_ip)
+        # 开发模式下跳过认证
+        if settings.DEBUG:
             return await call_next(request)
 
-        auth_header = request.headers.get("Authorization", "")
-        if auth_header:
-            parsed = self._parse_bearer_token(auth_header)
-            if parsed is None:
-                return JSONResponse(status_code=401, content={"error": "Invalid authorization header"})
-            if self._verify_bearer_token(parsed, settings):
-                self._inject_user_context(request, trusted=trusted_ip, allow_identity_headers=trusted_ip)
+        # 验证Token
+        auth_header = request.headers.get("Authorization")
+
+        if not auth_header:
+            # 检查是否来自Java Gateway（内部调用）
+            internal_key = request.headers.get("X-Internal-Key")
+            if internal_key and self._verify_internal_key(internal_key):
                 return await call_next(request)
 
-        return JSONResponse(
-            status_code=401,
-            content={"error": "未授权：缺少有效的内部服务凭证或 Bearer Token"},
-        )
+            raise HTTPException(
+                status_code=401,
+                detail="Missing authorization header"
+            )
 
-    @staticmethod
-    def _parse_bearer_token(auth_header: str) -> Optional[str]:
+        # 解析Bearer Token
         try:
-            scheme, token = auth_header.split(None, 1)
+            scheme, token = auth_header.split()
+            if scheme.lower() != "bearer":
+                raise HTTPException(
+                    status_code=401,
+                    detail="Invalid authentication scheme"
+                )
+
+            # 验证Token
+            if not self._verify_token(token):
+                raise HTTPException(
+                    status_code=401,
+                    detail="Invalid token"
+                )
+
         except ValueError:
-            return None
-        if scheme.lower() != "bearer":
-            return None
-        token = token.strip()
-        return token or None
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid authorization header"
+            )
 
-    @staticmethod
-    def _verify_internal_token(token: str, settings) -> bool:  # noqa: ANN001
-        expected_values = [
-            str(settings.INTERNAL_SERVICE_TOKEN or "").strip(),
-            str(settings.INTERNAL_API_KEY or "").strip(),
-        ]
-        return any(expected and compare_digest(token, expected) for expected in expected_values)
+        return await call_next(request)
 
-    @staticmethod
-    def _verify_bearer_token(token: str, settings) -> bool:  # noqa: ANN001
-        return any(compare_digest(token, expected) for expected in settings.allowed_bearer_tokens)
+    def _verify_token(self, token: str) -> bool:
+        """
+        验证Token
 
-    @staticmethod
-    def _inject_user_context(request: Request, trusted: bool, allow_identity_headers: bool) -> None:
-        if allow_identity_headers:
-            request.state.user_id = request.headers.get("X-User-Id") or request.headers.get("X-Login-Id") or "anonymous"
-            request.state.user_role = request.headers.get("X-User-Role") or request.headers.get("X-Role-Code") or "user"
-            request.state.tenant_id = request.headers.get("X-Tenant-Id") or request.headers.get("X-Org-Id") or "default"
-        else:
-            request.state.user_id = "anonymous"
-            request.state.user_role = "user"
-            request.state.tenant_id = "default"
-        request.state.is_trusted_gateway = trusted
+        实际应用中应该调用认证服务验证
+        """
+        # 简化实现：检查Token是否存在
+        # TODO: 集成Sa-Token或其他认证服务
+        return bool(token)
+
+    def _verify_internal_key(self, key: str) -> bool:
+        """
+        验证内部调用Key
+        """
+        # 可以配置一个内部通信密钥
+        expected_key = getattr(settings, "INTERNAL_API_KEY", None)
+        if expected_key:
+            return key == expected_key
+        return False
 
 
 class OptionalAuthBearer(HTTPBearer):
-    """Optional bearer auth dependency."""
+    """
+    可选的Bearer认证
+
+    用于某些接口可选认证
+    """
 
     def __init__(self, auto_error: bool = False):
         super().__init__(auto_error=auto_error)
@@ -109,4 +118,5 @@ class OptionalAuthBearer(HTTPBearer):
             return None
 
 
+# 依赖注入用的认证实例
 optional_auth = OptionalAuthBearer()

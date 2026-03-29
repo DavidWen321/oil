@@ -16,7 +16,8 @@ COPY . .
 RUN npm run build
 
 FROM nginx:1.27-alpine
-COPY nginx/default.conf /etc/nginx/conf.d/default.conf
+ENV NGINX_ENVSUBST_FILTER=INTERNAL_SERVICE_TOKEN|INTERNAL_API_KEY
+COPY nginx/default.conf /etc/nginx/templates/default.conf.template
 COPY --from=builder /app/dist /usr/share/nginx/html
 
 EXPOSE 80
