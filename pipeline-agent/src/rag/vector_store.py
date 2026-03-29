@@ -3,6 +3,7 @@
 使用Milvus作为向量数据库
 """
 
+import json
 from typing import List, Optional, Dict, Any
 from dataclasses import asdict
 
@@ -314,12 +315,26 @@ class MilvusVectorStore:
         if self._collection is None:
             return 0
 
-        expr = f'doc_id == "{doc_id}"'
-        self._collection.delete(expr)
+        lookup_expr = f'doc_id == {json.dumps(doc_id, ensure_ascii=False)}'
+        rows = self._collection.query(
+            expr=lookup_expr,
+            output_fields=["chunk_id"],
+        )
+        chunk_ids = [
+            row.get("chunk_id")
+            for row in rows
+            if isinstance(row, dict) and row.get("chunk_id")
+        ]
+        if not chunk_ids:
+            logger.warning(f"Milvus中未找到文档 {doc_id} 对应的分块，跳过删除")
+            return 0
+
+        delete_expr = f'chunk_id in {json.dumps(chunk_ids, ensure_ascii=False)}'
+        self._collection.delete(delete_expr)
         self._collection.flush()
 
         logger.info(f"已删除文档 {doc_id} 的所有分块")
-        return 1
+        return len(chunk_ids)
 
     def get_stats(self) -> Dict[str, Any]:
         """获取集合统计信息"""

@@ -121,9 +121,17 @@ class HybridEmbeddings:
         except ImportError:
             logger.warning("rank_bm25未安装，稀疏检索不可用")
             self.use_sparse = False
+            self.clear_sparse_index()
         except Exception as e:
             logger.error(f"BM25索引构建失败: {e}")
-            self.use_sparse = False
+            self.clear_sparse_index()
+
+    def clear_sparse_index(self):
+        """清空BM25稀疏索引状态。"""
+
+        self._bm25 = None
+        self._corpus = []
+        self._tokenized_corpus = []
 
     def sparse_search(self, query: str, top_k: int = 10) -> List[Tuple[int, float]]:
         """
