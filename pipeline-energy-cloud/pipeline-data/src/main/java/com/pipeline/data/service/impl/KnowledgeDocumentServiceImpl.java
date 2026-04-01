@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -86,7 +87,11 @@ public class KnowledgeDocumentServiceImpl extends ServiceImpl<KnowledgeDocumentM
         document.setStorageBucket(storedObject.bucket());
         document.setStorageObjectKey(storedObject.objectKey());
         document.setStatus(STATUS_UPLOADED);
-        save(document);
+        try {
+            save(document);
+        } catch (DuplicateKeyException ex) {
+            throw new BusinessException("相同文件已经录入，请直接查看或重试现有记录");
+        }
 
         KnowledgeIngestTask task = createTask(document, "UPLOAD", 1);
         dispatchAsyncAfterCommit(document.getId(), task.getId(), snapshot(document));
@@ -137,7 +142,7 @@ public class KnowledgeDocumentServiceImpl extends ServiceImpl<KnowledgeDocumentM
         storageService.delete(document.getStorageType(), document.getStorageBucket(), document.getStorageObjectKey());
         taskMapper.delete(new LambdaQueryWrapper<KnowledgeIngestTask>()
                 .eq(KnowledgeIngestTask::getDocumentId, id));
-        return removeById(id);
+        return baseMapper.hardDeleteById(id) > 0;
     }
 
     private void dispatchAsyncAfterCommit(Long documentId, Long taskId, ExistingIndexState previous) {
@@ -223,12 +228,15 @@ public class KnowledgeDocumentServiceImpl extends ServiceImpl<KnowledgeDocumentM
     }
 
     private void ensureNotDuplicated(String fileHash) {
-        KnowledgeDocument existing = getOne(new LambdaQueryWrapper<KnowledgeDocument>()
-                .eq(KnowledgeDocument::getFileHash, fileHash)
-                .last("limit 1"));
-        if (existing != null) {
-            throw new BusinessException("相同文件已经录入，请直接查看或重试现有记录");
+        KnowledgeDocument existing = baseMapper.selectAnyByFileHash(fileHash);
+        if (existing == null) {
+            return;
         }
+        if (Integer.valueOf(1).equals(existing.getIsDeleted())) {
+            baseMapper.hardDeleteById(existing.getId());
+            return;
+        }
+        throw new BusinessException("相同文件已经录入，请直接查看或重试现有记录");
     }
 
     private String normalizeCategory(String category) {

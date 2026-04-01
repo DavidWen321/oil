@@ -21,8 +21,6 @@ const HydraulicAnalysis = lazy(() => import('./pages/calculation/HydraulicAnalys
 const Optimization = lazy(() => import('./pages/calculation/Optimization'));
 const SensitivityAnalysis = lazy(() => import('./pages/calculation/SensitivityAnalysis'));
 
-// 特色功能
-
 // 报表
 const Report = lazy(() => import('./pages/report/Report'));
 const AIChat = lazy(() => import('./pages/ai/AIChat'));
@@ -145,7 +143,6 @@ export const router = createBrowserRouter([
           </Suspense>
         ),
       },
-      // 特色功能
       // 报表
       {
         path: 'report',

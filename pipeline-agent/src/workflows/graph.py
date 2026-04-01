@@ -64,6 +64,14 @@ REACT_SYSTEM_PROMPT = """你是管道能耗分析系统的 AI 助手。
 # LLM 实例（单例）
 # ═══════════════════════════════════════════════════════════════
 
+REACT_SYSTEM_PROMPT += """
+
+补充规则：
+- 对于已录入文档、FAQ、运维手册中的事实性问答，优先调用 search_knowledge_base。
+- 这类问题包括但不限于项目代号、上线日期、规则阈值、刷新周期、支持方式、口令、环境名称、主题名称。
+- 仅当用户明确要求查询结构化业务数据，或知识库检索未命中时，再调用 query_database。
+"""
+
 _base_llm: Optional[ChatOpenAI] = None
 _llm_tools_cache: Dict[str, Any] = {}
 

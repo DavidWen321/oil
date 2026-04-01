@@ -68,7 +68,8 @@ class KnowledgeAgent:
             # 1. RAG检索
             rag_response = self.rag_pipeline.retrieve(
                 query=question,
-                category_filter=category
+                category_filter=category,
+                skip_self_rag=True,
             )
 
             # 2. 检查检索质量

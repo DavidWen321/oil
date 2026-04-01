@@ -221,16 +221,16 @@ REACT_TOOLS = [
 TOOL_NAME_TO_TOOL = {tool.name: tool for tool in REACT_TOOLS}
 
 # 高频核心工具常驻，避免检索误差导致关键能力不可用。
-ALWAYS_LOADED_TOOL_NAMES = ["query_database"]
+ALWAYS_LOADED_TOOL_NAMES = ["query_database", "search_knowledge_base"]
 
 # Tool Search Tool 使用的元数据注册表（可逐步扩展到 MCP 生态）。
 TOOL_REGISTRY: Dict[str, Dict[str, Any]] = {
     "query_database": {
         "description": "查询数据库中的项目、管道、泵站、油品等结构化数据",
-        "keywords": ["数据库", "SQL", "项目", "管道", "泵站", "油品", "数据", "查询"],
+        "keywords": ["数据库", "SQL", "项目", "管道", "泵站", "油品", "数据", "查询", "字段", "表", "结构化"],
         "category": "data",
         "defer_loading": False,
-        "usage_frequency": 0.90,
+        "usage_frequency": 0.75,
         "input_examples": [
             {"question": "查询项目A的所有管道直径和长度"},
             {"question": "统计各泵站的平均效率"},
@@ -248,14 +248,16 @@ TOOL_REGISTRY: Dict[str, Dict[str, Any]] = {
         ],
     },
     "search_knowledge_base": {
-        "description": "检索管道工程知识库中的标准、规范、原理和公式",
-        "keywords": ["知识库", "标准", "规范", "原理", "公式", "检索", "依据"],
+        "description": "检索管道工程知识库中的FAQ、手册、规则、阈值、代号、上线日期、口令、环境名、标准、规范、原理和公式",
+        "keywords": ["知识库", "FAQ", "手册", "规则", "阈值", "项目代号", "上线日期", "口令", "环境名", "主题名称", "标准", "规范", "原理", "公式", "检索", "依据"],
         "category": "knowledge",
         "defer_loading": True,
-        "usage_frequency": 0.55,
+        "usage_frequency": 0.72,
         "input_examples": [
             {"question": "达西摩阻系数的适用范围是什么"},
             {"question": "输油管道设计压力有哪些规范要求"},
+            {"question": "东岭输油干线能效优化项目的项目代号是什么？"},
+            {"question": "这个项目首次上线日期是什么时候？"},
         ],
     },
     "query_fault_cause": {

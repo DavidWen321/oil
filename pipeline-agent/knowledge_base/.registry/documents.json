@@ -333,6 +333,98 @@
       "status": "indexed",
       "created_at": "2026-03-30T20:45:07",
       "updated_at": "2026-03-30T20:45:07"
+    },
+    "95edbbe94127": {
+      "doc_id": "95edbbe94127",
+      "title": "小故事",
+      "source": "手动录入",
+      "category": "cases",
+      "tags": [
+        "知识库"
+      ],
+      "author": null,
+      "summary": null,
+      "language": "zh-CN",
+      "version": null,
+      "external_id": null,
+      "effective_at": null,
+      "file_name": "向量化测试-20260330204449114309.docx",
+      "relative_path": "cases\\向量化测试-20260330204449114309.docx",
+      "file_type": "docx",
+      "file_size_bytes": 11832,
+      "source_type": "upload",
+      "status": "uploaded",
+      "created_at": "2026-04-01T14:34:33",
+      "updated_at": "2026-04-01T14:34:33"
+    },
+    "11b84a9d19a6": {
+      "doc_id": "11b84a9d19a6",
+      "title": "测试文档",
+      "source": "手册",
+      "category": "faq",
+      "tags": [
+        "测试"
+      ],
+      "author": "江玉龙",
+      "summary": null,
+      "language": "zh-CN",
+      "version": null,
+      "external_id": null,
+      "effective_at": null,
+      "file_name": "knowledge-upload-test-20260329192059107696.md",
+      "relative_path": "faq\\knowledge-upload-test-20260329192059107696.md",
+      "file_type": "md",
+      "file_size_bytes": 1107,
+      "source_type": "upload",
+      "status": "uploaded",
+      "created_at": "2026-04-01T14:34:33",
+      "updated_at": "2026-04-01T14:34:33"
+    },
+    "5cd0b210b0bc": {
+      "doc_id": "5cd0b210b0bc",
+      "title": "知识库录入测试文档",
+      "source": "手动录入",
+      "category": "faq",
+      "tags": [
+        "知识库"
+      ],
+      "author": null,
+      "summary": null,
+      "language": "zh-CN",
+      "version": null,
+      "external_id": null,
+      "effective_at": null,
+      "file_name": "kb_test_document-20260401143502353320.md",
+      "relative_path": "faq\\kb_test_document-20260401143502353320.md",
+      "file_type": "md",
+      "file_size_bytes": 4088,
+      "source_type": "upload",
+      "status": "indexed",
+      "created_at": "2026-04-01T14:35:35",
+      "updated_at": "2026-04-01T14:35:35"
+    },
+    "14303d532cfb": {
+      "doc_id": "14303d532cfb",
+      "title": "4月1日测试2",
+      "source": "手动录入",
+      "category": "faq",
+      "tags": [
+        "知识库"
+      ],
+      "author": null,
+      "summary": null,
+      "language": "zh-CN",
+      "version": null,
+      "external_id": null,
+      "effective_at": null,
+      "file_name": "kb_test_document_oil-20260401183417954204.md",
+      "relative_path": "faq\\kb_test_document_oil-20260401183417954204.md",
+      "file_type": "md",
+      "file_size_bytes": 3844,
+      "source_type": "upload",
+      "status": "indexed",
+      "created_at": "2026-04-01T18:34:47",
+      "updated_at": "2026-04-01T18:34:47"
     }
   }
 }

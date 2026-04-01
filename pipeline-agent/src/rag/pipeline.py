@@ -222,6 +222,17 @@ class RAGPipeline:
         logger.info(f"BM25索引刷新完成，文档数: {len(documents)}，分块数: {len(bm25_corpus)}")
         return len(documents)
 
+    def ensure_retriever_ready(self, knowledge_base_path: str = "knowledge_base") -> int:
+        """
+        Ensure sparse retrieval is ready for an existing knowledge base.
+
+        This is used during service startup when the vector collection already
+        exists but the in-memory BM25 index has not been rebuilt yet.
+        """
+        if getattr(self.retriever, "_sparse_corpus_built", False):
+            return len(getattr(self.retriever, "_index_to_chunk", {}))
+        return self.refresh_sparse_index(knowledge_base_path)
+
     def retrieve(
         self,
         query: str,
