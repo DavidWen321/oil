@@ -61,6 +61,30 @@
   padding: var(--space-3) var(--space-3);
 }
 
+.siderCollapsed :global(.ant-menu) {
+  padding: var(--space-3) 10px;
+}
+
+.siderCollapsed :global(.ant-menu-item),
+.siderCollapsed :global(.ant-menu-submenu-title) {
+  padding: 0 !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  overflow: visible !important;
+}
+
+.siderCollapsed :global(.ant-menu-item .anticon),
+.siderCollapsed :global(.ant-menu-submenu-title .anticon) {
+  margin: 0 !important;
+}
+
+.siderCollapsed :global(.ant-menu-item .ant-menu-title-content),
+.siderCollapsed :global(.ant-menu-submenu-title .ant-menu-title-content),
+.siderCollapsed :global(.ant-menu-submenu-arrow) {
+  display: none !important;
+}
+
 /* ─────────────────────────────────────────────
  * 一级菜单项 & 父级菜单项 - 统一尺寸
  * ───────────────────────────────────────────── */
@@ -229,14 +253,26 @@
   height: var(--header-height);
   display: flex;
   align-items: center;
-  justify-content: flex-start;
-  gap: var(--space-3);
+  justify-content: space-between;
   border-bottom: 1px solid var(--border-subtle);
   padding: 0 var(--space-4);
   background: var(--bg-elevated);
   position: sticky;
   top: 0;
   z-index: 10;
+}
+
+.logoBrand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  flex: 1;
+}
+
+.logoCollapsed {
+  justify-content: center;
+  padding: 0;
 }
 
 .logoIcon {
@@ -270,12 +306,51 @@
   font-size: 16px;
   font-weight: var(--font-bold);
   color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
   letter-spacing: -0.01em;
   background: linear-gradient(135deg, var(--text-primary) 0%, var(--text-secondary) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+}
+
+.logoTrigger {
+  width: 46px !important;
+  height: 46px !important;
+  min-width: 46px;
+  padding: 0 !important;
+  border-radius: var(--radius-lg) !important;
+  color: var(--text-secondary) !important;
+  font-size: 20px !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: visible !important;
+  transition: all var(--duration-fast) var(--ease-default) !important;
+}
+
+.logoTrigger :global(.anticon) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  line-height: 1;
+  overflow: visible;
+}
+
+.logoCollapsed .logoTrigger {
+  width: 52px !important;
+  height: 52px !important;
+  min-width: 52px;
+}
+
+.logoTrigger:hover {
+  background: var(--bg-interactive-hover) !important;
+  color: var(--text-primary) !important;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -315,6 +390,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-4);
+  min-width: 40px;
 }
 
 .trigger {
@@ -397,29 +473,30 @@
   align-items: center;
   gap: var(--space-2-5);
   cursor: pointer;
-  padding: var(--space-1-5) var(--space-3);
-  border-radius: var(--radius-full);
-  border: 1px solid var(--border-subtle);
-  background: var(--bg-elevated);
+  height: 40px;
+  padding: 0 12px 0 6px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  background: transparent;
   transition: all var(--duration-fast) var(--ease-default);
 }
 
 .userInfo:hover {
-  background: var(--bg-interactive);
-  border-color: var(--border-default);
-  box-shadow: var(--shadow-sm);
+  background: var(--bg-interactive-hover);
+  border-color: var(--border-subtle);
 }
 
 .userInfo :global(.ant-avatar) {
   background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%) !important;
   font-size: 12px;
+  flex-shrink: 0;
 }
 
 .userName {
   font-size: var(--text-sm);
-  font-weight: var(--font-medium);
+  font-weight: var(--font-semibold);
   color: var(--text-primary);
-  max-width: 100px;
+  max-width: 110px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -594,6 +671,10 @@
     gap: var(--space-2);
   }
 
+  .logoBrand {
+    gap: var(--space-2);
+  }
+
   .logoIcon {
     width: 32px;
     height: 32px;
@@ -606,6 +687,10 @@
 
   .trigger {
     display: none;
+  }
+
+  .logoTrigger {
+    display: none !important;
   }
 
   .mobileMenuBtn {
@@ -636,10 +721,6 @@
     height: 44px !important;
     line-height: 44px !important;
     padding-left: 52px !important;
-  }
-
-  .userName {
-    display: none;
   }
 
   .userInfo {
@@ -680,6 +761,10 @@
 
   .logo {
     height: 52px;
+    gap: var(--space-2);
+  }
+
+  .logoBrand {
     gap: var(--space-2);
   }
 
