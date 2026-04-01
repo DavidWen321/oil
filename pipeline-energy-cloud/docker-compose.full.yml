@@ -46,6 +46,19 @@ services:
       timeout: 5s
       retries: 30
 
+  pipeline-minio:
+    image: minio/minio
+    container_name: pipeline-minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: password
+    command: server /data --console-address ":9001"
+    volumes:
+      - ./data/minio:/data
+
   pipeline-auth:
     build:
       context: .
@@ -113,12 +126,19 @@ services:
       SPRING_DATASOURCE_URL: jdbc:mysql://pipeline-mysql:3306/pipeline_cloud?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=false&serverTimezone=GMT%2B8
       SPRING_DATASOURCE_USERNAME: root
       SPRING_DATASOURCE_PASSWORD: root
+      PIPELINE_AGENT_BASE_URL: http://pipeline-agent:8100
+      PIPELINE_KB_MINIO_ENDPOINT: http://pipeline-minio:9000
+      PIPELINE_KB_MINIO_ACCESS_KEY: admin
+      PIPELINE_KB_MINIO_SECRET_KEY: password
+      PIPELINE_KB_MINIO_BUCKET: knowledge-base
       JAVA_OPTS: -Xms256m -Xmx512m -Dfile.encoding=UTF-8
     depends_on:
       mysql:
         condition: service_healthy
       nacos:
         condition: service_healthy
+      pipeline-minio:
+        condition: service_started
 
   pipeline-calculation:
     build:
@@ -225,6 +245,16 @@ services:
     depends_on:
       - milvus-etcd
       - milvus-minio
+
+  attu:
+    image: zilliz/attu:v2.3.5
+    container_name: pipeline-attu
+    ports:
+      - "8000:3000"
+    environment:
+      MILVUS_URL: milvus:19530
+    depends_on:
+      - milvus
 
   # ---------- Python AI Agent ----------
   pipeline-agent:

@@ -40,14 +40,11 @@ import type { KnowledgeDocument, KnowledgeIngestTask } from '../../types';
 
 const { Dragger } = Upload;
 const { Paragraph, Text } = Typography;
-const { Search, TextArea } = Input;
+const { Search } = Input;
 
 interface KnowledgeFormValues {
   title?: string;
   category: string;
-  sourceType: string;
-  tags?: string[];
-  remark?: string;
 }
 
 const CATEGORY_OPTIONS = [
@@ -64,12 +61,6 @@ const STATUS_OPTIONS = [
   { label: '处理中', value: 'PROCESSING' },
   { label: '待处理', value: 'UPLOADED' },
   { label: '失败', value: 'FAILED' },
-];
-
-const SOURCE_OPTIONS = [
-  { label: '手工上传', value: 'manual' },
-  { label: '知识沉淀', value: 'summary' },
-  { label: '模板创建', value: 'template' },
 ];
 
 const STATUS_META: Record<string, { label: string; color: string }> = {
@@ -156,7 +147,6 @@ export default function KnowledgeEntry() {
   useEffect(() => {
     form.setFieldsValue({
       category: 'faq',
-      sourceType: 'manual',
     });
     void loadDocuments();
   }, [form, loadDocuments]);
@@ -200,29 +190,30 @@ export default function KnowledgeEntry() {
   };
 
   const handleSubmit = async () => {
-    const values = await form.validateFields();
-    const selectedFile = fileList[0]?.originFileObj;
-    if (!selectedFile) {
-      message.warning('请先选择要录入的知识文档');
-      return;
-    }
-
-    const formData = new FormData();
-    formData.append('file', selectedFile);
-    formData.append('title', values.title?.trim() || selectedFile.name.replace(/\.[^.]+$/, ''));
-    formData.append('category', values.category);
-    formData.append('sourceType', values.sourceType);
-    formData.append('tags', (values.tags ?? []).join(','));
-    formData.append('remark', values.remark?.trim() || '');
-
-    setSubmitting(true);
     try {
+      const values = await form.validateFields();
+      const selectedFile = fileList[0]?.originFileObj;
+      if (!selectedFile) {
+        message.warning('请先选择要录入的知识文档');
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      formData.append('title', values.title?.trim() || selectedFile.name.replace(/\.[^.]+$/, ''));
+      formData.append('category', values.category);
+
+      setSubmitting(true);
       const response = await knowledgeDocumentApi.upload(formData);
       message.success(response.msg || '知识文档已接收，正在后台入库');
       form.resetFields();
-      form.setFieldsValue({ category: 'faq', sourceType: 'manual' });
+      form.setFieldsValue({ category: 'faq' });
       setFileList([]);
       await loadDocuments();
+    } catch (error) {
+      if (typeof error === 'object' && error !== null && 'errorFields' in error) {
+        return;
+      }
     } finally {
       setSubmitting(false);
     }
@@ -286,7 +277,7 @@ export default function KnowledgeEntry() {
               {record.tags
                 .split(',')
                 .filter(Boolean)
-                .map((tag) => (
+                .map((tag: string) => (
                   <Tag key={tag}>{tag}</Tag>
                 ))}
             </Space>
@@ -510,22 +501,9 @@ export default function KnowledgeEntry() {
                   </Col>
                 </Row>
 
-                <Row gutter={16}>
-                  <Col xs={24} md={12}>
-                    <Form.Item name="sourceType" label="来源类型" rules={[{ required: true, message: '请选择来源类型' }]}>
-                      <Select options={SOURCE_OPTIONS} />
-                    </Form.Item>
-                  </Col>
-                  <Col xs={24} md={12}>
-                    <Form.Item name="tags" label="标签">
-                      <Select mode="tags" placeholder="输入标签后回车" />
-                    </Form.Item>
-                  </Col>
-                </Row>
-
-                <Form.Item name="remark" label="录入说明">
-                  <TextArea rows={4} placeholder="补充适用工况、资料来源、版本说明等。" />
-                </Form.Item>
+                <Paragraph type="secondary" style={{ marginBottom: 0 }}>
+                  页面仅保留文档标题和分类两个录入项，其余元数据由系统按默认规则补全。
+                </Paragraph>
               </Form>
             </Space>
           </Card>

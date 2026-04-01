@@ -37,9 +37,9 @@ public class KnowledgeDocumentProperties {
 
         private String endpoint = "http://localhost:9000";
 
-        private String accessKey = "minioadmin";
+        private String accessKey = "admin";
 
-        private String secretKey = "minioadmin";
+        private String secretKey = "password";
 
         private String bucket = "knowledge-base";
     }

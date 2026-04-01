@@ -1,19 +1,23 @@
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
+  CalculatorOutlined,
   DashboardOutlined,
   DatabaseOutlined,
-  CalculatorOutlined,
   RobotOutlined,
-  UserOutlined,
 } from '@ant-design/icons';
 import styles from './MobileTabBar.module.css';
 
 const tabs = [
   { key: 'dashboard', label: '首页', icon: <DashboardOutlined />, path: '/dashboard', matchPrefix: '/dashboard' },
   { key: 'data', label: '数据', icon: <DatabaseOutlined />, path: '/data/project', matchPrefix: '/data' },
-  { key: 'calculation', label: '计算', icon: <CalculatorOutlined />, path: '/calculation/hydraulic', matchPrefix: '/calculation' },
+  {
+    key: 'calculation',
+    label: '计算',
+    icon: <CalculatorOutlined />,
+    path: '/calculation/hydraulic',
+    matchPrefix: '/calculation',
+  },
   { key: 'ai', label: '助手', icon: <RobotOutlined />, path: '/ai/chat', matchPrefix: '/ai' },
-  { key: 'more', label: '更多', icon: <UserOutlined />, path: '/features/monitor', matchPrefix: '/features' },
 ];
 
 export default function MobileTabBar() {
@@ -38,4 +42,3 @@ export default function MobileTabBar() {
     </nav>
   );
 }
-

@@ -7,13 +7,13 @@ spring:
   cloud:
     nacos:
       discovery:
-        server-addr: localhost:8848
-        username: nacos
-        password: 20050607hxr
+        server-addr: ${PIPELINE_NACOS_SERVER_ADDR:localhost:8848}
+        username: ${PIPELINE_NACOS_USERNAME:}
+        password: ${PIPELINE_NACOS_PASSWORD:}
       config:
-        server-addr: localhost:8848
-        username: nacos
-        password: 20050607hxr
+        server-addr: ${PIPELINE_NACOS_SERVER_ADDR:localhost:8848}
+        username: ${PIPELINE_NACOS_USERNAME:}
+        password: ${PIPELINE_NACOS_PASSWORD:}
   data:
     redis:
       host: localhost

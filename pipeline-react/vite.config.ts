@@ -1,36 +1,43 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
+const gatewayTarget = 'http://localhost:8180'
+
 export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
       '/auth': {
-        target: 'http://localhost:8080',
+        target: gatewayTarget,
         changeOrigin: true,
       },
       '/project': {
-        target: 'http://localhost:8080',
+        target: gatewayTarget,
         changeOrigin: true,
         rewrite: (path) => `/data${path}`,
       },
       '/pipeline': {
-        target: 'http://localhost:8080',
+        target: gatewayTarget,
         changeOrigin: true,
         rewrite: (path) => `/data${path}`,
       },
       '/pump-station': {
-        target: 'http://localhost:8080',
+        target: gatewayTarget,
         changeOrigin: true,
         rewrite: (path) => `/data${path}`,
       },
       '/oil-property': {
-        target: 'http://localhost:8080',
+        target: gatewayTarget,
+        changeOrigin: true,
+        rewrite: (path) => `/data${path}`,
+      },
+      '/knowledge-doc': {
+        target: gatewayTarget,
         changeOrigin: true,
         rewrite: (path) => `/data${path}`,
       },
       '/calculation': {
-        target: 'http://localhost:8080',
+        target: gatewayTarget,
         changeOrigin: true,
       },
       '/api/v1': {

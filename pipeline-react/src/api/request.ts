@@ -22,6 +22,11 @@ const request: AxiosInstance = axios.create({
 
 request.interceptors.request.use(
   (config) => {
+    if (typeof FormData !== 'undefined' && config.data instanceof FormData && config.headers) {
+      delete config.headers['Content-Type'];
+      delete config.headers['content-type'];
+    }
+
     const token = useUserStore.getState().token;
     if (token) {
       config.headers.satoken = token;

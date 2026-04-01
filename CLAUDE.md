@@ -1,4 +1,4 @@
-# CLAUDE.md
+﻿# CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -25,13 +25,13 @@ java -jar pipeline-data/target/pipeline-data-1.0.0-SNAPSHOT.jar
 java -jar pipeline-calculation/target/pipeline-calculation-1.0.0-SNAPSHOT.jar
 ```
 
-### Python AI Service (pipeline-ai)
+### Python AI Service (pipeline-agent)
 
 ```bash
-cd pipeline-ai
+cd pipeline-agent
 pip install -r requirements.txt
 python main.py
-# Or with uvicorn: uvicorn main:app --host 0.0.0.0 --port 8000
+# Or with uvicorn: uvicorn src.api.main:app --host 0.0.0.0 --port 8100
 ```
 
 ## Architecture
@@ -48,7 +48,7 @@ python main.py
 
 ### AI Service (Python - FastAPI + LangGraph)
 
-- **Port**: 8000
+- **Port**: 8100
 - **Purpose**: RAG knowledge base Q&A and intelligent agent orchestration
 - **Tools**: SQL queries, knowledge base search, hydraulic analysis API calls
 
@@ -70,7 +70,7 @@ Two core calculation strategies implement hydraulic engineering formulas (ported
 
 2. **OptimizationStrategy**: Iterates 8 pump combinations (ZMI480 × ZMI375) to find optimal configuration minimizing end station pressure while maintaining feasibility (end pressure > 0)
 
-### AI Agent (`pipeline-ai/app/agents/`)
+### AI Agent (`pipeline-agent/src/agents/`)
 
 - **graph.py**: LangGraph workflow with router → general_agent → END
 - **tools.py**: Three tools - SQL_Database, Knowledge_Base, Hydraulic_Analysis (calls Java calculation service)
@@ -90,3 +90,4 @@ Located at `pipeline-energy-cloud/sql/schema.sql`:
 - Java: Follow Alibaba Java Coding Guidelines
 - Python: Follow PEP8
 - Use BigDecimal for all hydraulic calculations (precision matters)
+

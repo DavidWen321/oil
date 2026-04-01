@@ -38,6 +38,7 @@ public class KnowledgeIngestAsyncService {
     private static final String STATUS_PROCESSING = "PROCESSING";
     private static final String STATUS_UPLOADED = "UPLOADED";
     private static final String STORAGE_LEGACY = "LEGACY_AGENT";
+    private static final String DEFAULT_TAG = "知识库";
 
     private final KnowledgeDocumentProperties properties;
     private final KnowledgeDocumentMapper documentMapper;
@@ -79,11 +80,12 @@ public class KnowledgeIngestAsyncService {
                 document = migrateLegacyStorage(document, content);
             }
 
-            Map<String, Object> agentResponse = uploadToAgent(content, document.getCategory(), document.getFileName());
+            Map<String, Object> agentResponse = uploadToAgent(document, content);
             boolean success = Boolean.TRUE.equals(agentResponse.get("success"));
             LocalDateTime finishedAt = LocalDateTime.now();
-            String newAgentDocId = stringValue(agentResponse.get("doc_id"));
-            Integer newChunkCount = intValue(agentResponse.get("chunk_count"));
+            Map<String, Object> documentPayload = mapValue(agentResponse.get("document"));
+            String newAgentDocId = stringValue(documentPayload.get("doc_id"));
+            Integer newChunkCount = resolveChunkCount(documentPayload, previous.chunkCount());
             String message = stringValue(agentResponse.get("message"));
 
             if (!success) {
@@ -181,7 +183,7 @@ public class KnowledgeIngestAsyncService {
         return deleteFromAgent(newAgentDocId);
     }
 
-    private Map<String, Object> uploadToAgent(byte[] content, String category, String originalFilename) {
+    private Map<String, Object> uploadToAgent(KnowledgeDocument document, byte[] content) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.MULTIPART_FORM_DATA);
 
@@ -195,13 +197,16 @@ public class KnowledgeIngestAsyncService {
         org.springframework.core.io.ByteArrayResource resource = new org.springframework.core.io.ByteArrayResource(content) {
             @Override
             public String getFilename() {
-                return StrUtil.blankToDefault(originalFilename, "upload.bin");
+                return StrUtil.blankToDefault(document.getFileName(), "upload.bin");
             }
         };
 
         MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
         body.add("file", resource);
-        body.add("category", category);
+        body.add("title", resolveTitle(document));
+        body.add("source", resolveSource(document));
+        body.add("category", document.getCategory());
+        body.add("tags", resolveTags(document));
 
         String uploadUrl = properties.getAgentBaseUrl() + properties.getUploadPath();
         HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, headers);
@@ -251,6 +256,14 @@ public class KnowledgeIngestAsyncService {
         return new RestTemplate(factory);
     }
 
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> mapValue(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            return (Map<String, Object>) map;
+        }
+        return Map.of();
+    }
+
     private Integer intValue(Object value) {
         if (value instanceof Number number) {
             return number.intValue();
@@ -265,8 +278,38 @@ public class KnowledgeIngestAsyncService {
         }
     }
 
+    private Integer resolveChunkCount(Map<String, Object> documentPayload, int fallback) {
+        int chunkCount = intValue(documentPayload.get("chunk_count"));
+        return chunkCount > 0 ? chunkCount : fallback;
+    }
+
     private String stringValue(Object value) {
         return value == null ? null : String.valueOf(value);
+    }
+
+    private String resolveTitle(KnowledgeDocument document) {
+        return StrUtil.blankToDefault(document.getTitle(), stripExtension(document.getFileName()));
+    }
+
+    private String resolveSource(KnowledgeDocument document) {
+        String normalizedSourceType = StrUtil.blankToDefault(document.getSourceType(), "manual").trim().toLowerCase();
+        return switch (normalizedSourceType) {
+            case "summary" -> "知识沉淀";
+            case "template" -> "模板创建";
+            default -> "手动录入";
+        };
+    }
+
+    private String resolveTags(KnowledgeDocument document) {
+        String tags = StrUtil.trimToEmpty(document.getTags());
+        return StrUtil.isNotBlank(tags) ? tags : DEFAULT_TAG;
+    }
+
+    private String stripExtension(String fileName) {
+        if (StrUtil.isBlank(fileName) || !fileName.contains(".")) {
+            return StrUtil.blankToDefault(fileName, "未命名文档");
+        }
+        return fileName.substring(0, fileName.lastIndexOf('.'));
     }
 
     private int defaultInt(Integer value) {
