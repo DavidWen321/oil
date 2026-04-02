@@ -224,22 +224,26 @@ class DashScopeReranker:
             return self._fallback(results, top_k)
 
         documents = [
-            {"content": r.full_text or r.content}
+            r.full_text or r.content
             for r in results
         ]
 
         try:
             resp = httpx.post(
-                f"{settings.EMBEDDING_API_BASE.rstrip('/').replace('/compatible-mode/v1', '')}/api/v1/services/rerank/text-rerank",
+                f"{settings.EMBEDDING_API_BASE.rstrip('/').replace('/compatible-mode/v1', '')}/api/v1/services/rerank/text-rerank/text-rerank",
                 headers={
                     "Authorization": f"Bearer {settings.EMBEDDING_API_KEY}",
                     "Content-Type": "application/json",
                 },
                 json={
                     "model": self.model_name,
-                    "query": query,
-                    "documents": documents,
-                    "top_n": top_k,
+                    "input": {
+                        "query": query,
+                        "documents": documents,
+                    },
+                    "parameters": {
+                        "top_n": top_k,
+                    },
                 },
                 timeout=30,
             )
