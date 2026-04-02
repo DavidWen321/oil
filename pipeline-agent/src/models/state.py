@@ -107,7 +107,6 @@ class AgentState(TypedDict):
     oil_property_data: Optional[dict]
     calculation_result: Optional[dict]
     optimization_result: Optional[dict]
-    report_result: Optional[dict]
     knowledge_context: Optional[str]
     knowledge_sources: List[KnowledgeSource]
     retrieval_quality: Optional[str]
@@ -163,7 +162,6 @@ def create_initial_state(
         oil_property_data=None,
         calculation_result=None,
         optimization_result=None,
-        report_result=None,
         knowledge_context=None,
         knowledge_sources=[],
         retrieval_quality=None,

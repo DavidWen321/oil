@@ -169,10 +169,10 @@ def fig1() -> Image.Image:
 
     draw_card(draw, 102, 420, 300, 228, "数据管理", ["项目管理", "管道参数", "泵站参数", "油品参数"], GRAY_LIGHT, BLUE)
     draw_card(draw, 500, 420, 300, 228, "计算分析", ["水力分析", "泵站优化", "敏感性分析"], GRAY_LIGHT, GREEN)
-    draw_card(draw, 898, 420, 300, 228, "特色功能", ["故障诊断", "方案对比", "碳排核算", "实时监控"], GRAY_LIGHT, ORANGE)
-    draw_card(draw, 1296, 420, 300, 228, "智能助手", ["智能对话", "知识库录入", "智能报告"], GRAY_LIGHT, PURPLE)
+    draw_card(draw, 898, 420, 300, 228, "系统设置", ["用户管理", "角色权限", "系统配置", "个人中心"], GRAY_LIGHT, ORANGE)
+    draw_card(draw, 1296, 420, 300, 228, "智能助手", ["智能对话", "知识库录入", "知识检索"], GRAY_LIGHT, PURPLE)
 
-    draw_card(draw, 420, 756, 960, 164, "报告与可视化输出", ["图表趋势、告警卡片、分析结论", "正式报告下载（DOCX/PDF）"], CYAN_LIGHT, CYAN)
+    draw_card(draw, 420, 756, 960, 164, "分析与可视化输出", ["图表趋势、告警卡片、分析结论", "计算结果面板"], CYAN_LIGHT, CYAN)
 
     draw_arrow(draw, 900, 346, 252, 420)
     draw_arrow(draw, 900, 346, 650, 420)
@@ -220,16 +220,16 @@ def fig3() -> Image.Image:
     draw_group(draw, 48, 118, 1704, 900, "分层架构与外部依赖")
 
     draw_card(draw, 92, 162, 372, 162, "用户与浏览器", ["业务人员 / 管理员", "PC 浏览器访问"], GRAY_LIGHT, BLUE)
-    draw_card(draw, 566, 162, 720, 184, "前端应用层", ["pipeline-react：登录、数据管理、计算分析", "特色功能、智能助手、报告中心"], BLUE_LIGHT, BLUE)
+    draw_card(draw, 566, 162, 720, 184, "前端应用层", ["pipeline-react：登录、数据管理、计算分析", "智能助手、系统设置"], BLUE_LIGHT, BLUE)
     draw_card(draw, 1400, 162, 256, 162, "智能接口层", ["SSE 流式响应", "REST API"], GRAY_LIGHT, PURPLE)
 
     draw_card(draw, 102, 446, 382, 238, "Java 微服务集群", ["Gateway", "Auth", "System", "Data", "Calculation"], GREEN_LIGHT, GREEN)
-    draw_card(draw, 590, 446, 430, 238, "Python 智能体服务", ["Chat / Trace", "Knowledge / Report", "Graph Workflow / MCP / RAG"], PURPLE_LIGHT, PURPLE)
+    draw_card(draw, 590, 446, 430, 238, "Python 智能体服务", ["Chat / Trace", "Knowledge / Tools", "Graph Workflow / MCP / RAG"], PURPLE_LIGHT, PURPLE)
     draw_card(draw, 1126, 446, 530, 238, "基础设施与平台能力", ["MySQL、Redis、Nacos", "MinIO、Milvus", "日志、配置、服务发现"], ORANGE_LIGHT, ORANGE)
 
-    draw_card(draw, 148, 806, 430, 156, "专业分析结果", ["水力指标、泵站优化结果", "敏感性分析、报告记录"], CYAN_LIGHT, CYAN)
-    draw_card(draw, 680, 806, 430, 156, "知识增强结果", ["知识问答、故障诊断建议", "方案说明、报告摘要"], GRAY_LIGHT, PURPLE)
-    draw_card(draw, 1212, 806, 316, 156, "输出形态", ["页面图表", "报告下载"], GRAY_LIGHT, RED)
+    draw_card(draw, 148, 806, 430, 156, "专业分析结果", ["水力指标、泵站优化结果", "敏感性分析、趋势图表"], CYAN_LIGHT, CYAN)
+    draw_card(draw, 680, 806, 430, 156, "知识增强结果", ["知识问答、知识检索", "建议说明、过程追踪"], GRAY_LIGHT, PURPLE)
+    draw_card(draw, 1212, 806, 316, 156, "输出形态", ["页面图表", "结果面板"], GRAY_LIGHT, RED)
 
     draw_arrow(draw, 464, 240, 566, 240)
     draw_tag(draw, 516, 220, "访问")

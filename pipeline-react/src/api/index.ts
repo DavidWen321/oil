@@ -1,20 +1,12 @@
 import { http } from './request';
 import type {
-  AlarmMessage,
-  AlarmRule,
-  AnalysisReport,
-  CarbonCalculationRequest,
-  CarbonCalculationResult,
-  ComparisonRequest,
-  ComparisonResult,
   CalculationHistory,
-  DiagnosisRequest,
-  DiagnosisResult,
   HydraulicAnalysisParams,
   HydraulicAnalysisResult,
+  KnowledgeDocument,
+  KnowledgeIngestTask,
   LoginParams,
   LoginResult,
-  MonitorDataPoint,
   OilProperty,
   OptimizationParams,
   OptimizationResult,
@@ -63,6 +55,19 @@ export const oilPropertyApi = {
   delete: (ids: number[]) => http.delete<R<boolean>>(`/oil-property/${ids.join(',')}`),
 };
 
+export const knowledgeDocumentApi = {
+  list: () => http.get<R<KnowledgeDocument[]>>('/knowledge-doc/list'),
+  listTasks: (id: number) => http.get<R<KnowledgeIngestTask[]>>(`/knowledge-doc/${id}/tasks`),
+  upload: (formData: FormData) =>
+    http.post<R<KnowledgeDocument>>('/knowledge-doc/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    }),
+  retry: (id: number) => http.post<R<KnowledgeDocument>>(`/knowledge-doc/${id}/retry`),
+  delete: (id: number) => http.delete<R<boolean>>(`/knowledge-doc/${id}`),
+};
+
 export const calculationApi = {
   hydraulicAnalysis: (params: HydraulicAnalysisParams) =>
     http.post<R<HydraulicAnalysisResult>>('/calculation/hydraulic-analysis', params),
@@ -79,76 +84,12 @@ export const calculationApi = {
     http.get<R<SensitivityVariableInfo[]>>('/calculation/sensitivity/variables'),
 };
 
-export const diagnosisApi = {
-  analyze: (params: DiagnosisRequest) =>
-    http.post<R<DiagnosisResult>>('/calculation/diagnosis/analyze', params),
-  quickCheck: (params: DiagnosisRequest) =>
-    http.post<R<number>>('/calculation/diagnosis/quick-check', params),
-  getLatest: (pipelineId: number) =>
-    http.get<R<DiagnosisResult>>(`/calculation/diagnosis/latest/${pipelineId}`),
-};
-
-export const comparisonApi = {
-  compare: (params: ComparisonRequest) =>
-    http.post<R<ComparisonResult>>('/calculation/comparison/analyze', params),
-  getDimensions: () => http.get<R<string[]>>('/calculation/comparison/dimensions'),
-};
-
-export const carbonApi = {
-  calculate: (params: CarbonCalculationRequest) =>
-    http.post<R<CarbonCalculationResult>>('/calculation/carbon/calculate', params),
-  getEmissionFactors: () =>
-    http.get<R<Record<string, number>>>('/calculation/carbon/emission-factors'),
-  getIndustryAverage: () => http.get<R<number>>('/calculation/carbon/industry-average'),
-};
-
-export const monitorApi = {
-  getCurrentData: (pipelineId: number) =>
-    http.get<R<MonitorDataPoint>>(`/calculation/monitor/current/${pipelineId}`),
-  getAllCurrentData: () => http.get<R<MonitorDataPoint[]>>('/calculation/monitor/current/all'),
-  receiveData: (data: MonitorDataPoint) => http.post<R<void>>('/calculation/monitor/data', data),
-  getActiveAlarms: (pipelineId?: number) =>
-    http.get<R<AlarmMessage[]>>('/calculation/monitor/alarms', { params: { pipelineId } }),
-  acknowledgeAlarm: (alarmId: string, userId: string) =>
-    http.post<R<void>>(`/calculation/monitor/alarms/${alarmId}/acknowledge`, { userId }),
-  resolveAlarm: (alarmId: string) =>
-    http.post<R<void>>(`/calculation/monitor/alarms/${alarmId}/resolve`),
-  getAlarmRules: () => http.get<R<AlarmRule[]>>('/calculation/monitor/rules'),
-  updateAlarmRule: (rule: AlarmRule) => http.post<R<void>>('/calculation/monitor/rules', rule),
-  simulateData: (pipelineId: number, scenario: string) =>
-    http.get<R<MonitorDataPoint>>(`/calculation/monitor/simulate/${pipelineId}`, {
-      params: { scenario },
-    }),
-  startSimulation: (pipelineId: number, interval = 3000) =>
-    http.post<R<void>>(`/calculation/monitor/simulate/${pipelineId}/start`, null, {
-      params: { interval },
-    }),
-  stopSimulation: (pipelineId: number) =>
-    http.post<R<void>>(`/calculation/monitor/simulate/${pipelineId}/stop`),
-};
-
 export const statisticsApi = {
   getOverview: () => http.get<R<unknown>>('/calculation/statistics/overview'),
   getDailyTrend: (startDate: string, endDate: string) =>
     http.get<R<unknown>>('/calculation/statistics/trend/daily', {
       params: { startDate, endDate },
     }),
-};
-
-export const reportApi = {
-  page: (params?: {
-    reportType?: string;
-    projectId?: number;
-    userId?: number;
-    pageNum?: number;
-    pageSize?: number;
-  }) => http.get<R<PageResult<AnalysisReport>>>('/calculation/report/page', { params }),
-  recent: (limit = 10, userId?: number) =>
-    http.get<R<AnalysisReport[]>>('/calculation/report/recent', {
-      params: { limit, userId },
-    }),
-  detail: (id: number) => http.get<R<AnalysisReport>>(`/calculation/report/${id}`),
-  delete: (id: number) => http.delete<R<void>>(`/calculation/report/${id}`),
 };
 
 export const calculationHistoryApi = {
@@ -173,4 +114,6 @@ export const calculationHistoryApi = {
       params,
     }),
   detail: (id: number) => http.get<R<CalculationHistory>>(`/calculation/history/${id}`),
+  delete: (id: number) => http.delete<R<void>>(`/calculation/history/${id}`),
+  batchDelete: (ids: number[]) => http.post<R<number>>('/calculation/history/batch-delete', ids),
 };

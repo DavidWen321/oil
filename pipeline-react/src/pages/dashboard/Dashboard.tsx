@@ -3,27 +3,37 @@
  *  璁捐鐞嗗康: Apple + Linear + Vercel 鏋佺畝涓讳箟椋庢牸
  * 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺? */
 
-import { useState, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'motion/react'
 import type { EChartsOption } from 'echarts'
 import {
   RiDropLine,
   RiTempColdLine,
-  RiAlertLine,
-  RiArrowRightSLine,
-  RiTimeLine,
-  RiMapPinLine,
   RiArrowUpLine,
   RiArrowDownLine,
   RiFlashlightLine,
   RiPulseLine,
-  RiDashboardLine,
 } from 'react-icons/ri'
+import {
+  calculationHistoryApi,
+  oilPropertyApi,
+  pipelineApi,
+  projectApi,
+  pumpStationApi,
+} from '../../api'
 import AnimatedPage from '../../components/common/AnimatedPage'
-import { AnimatedListContainer, AnimatedListItem } from '../../components/common/AnimatedList'
 import Chart from '../../components/common/Chart'
 import { useChartConfig } from '../../hooks/useChartConfig'
 import { useChartGesture } from '../../hooks/useChartGesture'
+import type {
+  CalculationHistory,
+  OilProperty,
+  PageResult,
+  Pipeline,
+  Project,
+  PumpStation,
+  R,
+} from '../../types'
 import styles from './Dashboard.module.css'
 
 // 类型定义
@@ -34,25 +44,164 @@ interface StatCardData {
   unit: string
   trend: 'up' | 'down' | 'neutral'
   trendValue: string
-  description: string
   icon: React.ReactNode
   colorClass: string
+  accentClass: string
 }
 
-interface AlertData {
-  id: string
-  type: 'critical' | 'warning' | 'info'
-  message: string
-  time: string
-  location: string
+type ProjectDataProfile = {
+  projectId: number
+  projectName: string
+  projectNumber: string
+  pipelineCount: number
+  historyCount: number
+  totalRecordCount: number
 }
 
-interface DeviceData {
-  id: string
+type PumpStationMetricKey = 'zmi480Lift' | 'zmi375Lift' | 'displacement'
+
+type PumpStationLineProfile = {
+  id: number
   name: string
-  status: 'online' | 'offline' | 'warning'
-  value: number
+  metrics: Record<PumpStationMetricKey, number | null>
+}
+
+type OilMetricKey = 'density' | 'viscosity'
+
+type PipelineScatterPoint = {
+  pipelineId: number
+  pipelineName: string
+  projectId: number
+  projectName: string
+  projectNumber: string
+  diameter: number
+  length: number
+  throughput: number | null
+  thickness: number | null
+  roughness: number | null
+  startAltitude: number | null
+  endAltitude: number | null
+  altitudeSpan: number | null
+}
+
+const PUMP_STATION_LINE_OPTIONS: Array<{
+  key: PumpStationMetricKey
+  label: string
   unit: string
+  color: string
+  yAxisIndex: number
+}> = [
+  { key: 'zmi480Lift', label: 'ZMI480扬程', unit: 'm', color: '#2563EB', yAxisIndex: 0 },
+  { key: 'zmi375Lift', label: 'ZMI375扬程', unit: 'm', color: '#7C3AED', yAxisIndex: 0 },
+  { key: 'displacement', label: '排量', unit: 'm3/h', color: '#14B8A6', yAxisIndex: 1 },
+]
+
+const OIL_HEATMAP_OPTIONS: Array<{
+  key: OilMetricKey
+  label: string
+  unit: string
+}> = [
+  { key: 'density', label: '密度', unit: 'kg/m3' },
+  { key: 'viscosity', label: '运动粘度', unit: 'm2/s' },
+]
+
+function toFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+
+  return null
+}
+
+function hexToRgba(hexColor: string, alpha: number) {
+  const normalized = hexColor.replace('#', '')
+  const safeColor = normalized.length === 3
+    ? normalized
+        .split('')
+        .map((char) => `${char}${char}`)
+        .join('')
+    : normalized
+
+  const red = Number.parseInt(safeColor.slice(0, 2), 16)
+  const green = Number.parseInt(safeColor.slice(2, 4), 16)
+  const blue = Number.parseInt(safeColor.slice(4, 6), 16)
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`
+}
+
+function formatMetricValue(value: number) {
+  return new Intl.NumberFormat('zh-CN', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(value)
+}
+
+function formatPreciseMetricValue(value: number) {
+  return new Intl.NumberFormat('zh-CN', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: Math.abs(value) < 1 ? 6 : 3,
+  }).format(value)
+}
+
+function keepTooltipInChart(
+  point: unknown,
+  size: { contentSize: number[]; viewSize: number[] },
+) {
+  const defaultOffset = 12
+  const [cursorX, cursorY] =
+    Array.isArray(point) && point.length >= 2
+      ? [Number(point[0]) || 0, Number(point[1]) || 0]
+      : [0, 0]
+  const [contentWidth = 0, contentHeight = 0] = Array.isArray(size.contentSize)
+    ? size.contentSize
+    : [0, 0]
+  const [viewWidth = 0, viewHeight = 0] = Array.isArray(size.viewSize) ? size.viewSize : [0, 0]
+
+  const nextX =
+    cursorX + defaultOffset + contentWidth > viewWidth
+      ? Math.max(defaultOffset, cursorX - contentWidth - defaultOffset)
+      : cursorX + defaultOffset
+  const nextY =
+    cursorY + defaultOffset + contentHeight > viewHeight
+      ? Math.max(defaultOffset, cursorY - contentHeight - defaultOffset)
+      : cursorY + defaultOffset
+
+  return [nextX, nextY]
+}
+
+async function fetchAllPagedList<T>(
+  requestPage: (pageNum: number, pageSize: number) => Promise<R<PageResult<T>>>,
+  pageSize = 200,
+  maxPages = 20,
+) {
+  const records: T[] = []
+  let pageNum = 1
+  let total = Number.POSITIVE_INFINITY
+
+  while (pageNum <= maxPages && records.length < total) {
+    const response = await requestPage(pageNum, pageSize)
+    const pageData = response.data
+    const list = Array.isArray(pageData?.list) ? pageData.list : []
+    const currentTotal =
+      typeof pageData?.total === 'number' && Number.isFinite(pageData.total)
+        ? pageData.total
+        : list.length
+
+    records.push(...list)
+    total = currentTotal
+
+    if (list.length < pageSize || records.length >= total) {
+      break
+    }
+
+    pageNum += 1
+  }
+
+  return records
 }
 
 // ECharts 主题配置 - Apple HIG 风格
@@ -75,6 +224,17 @@ const colors = {
   borderLight: '#F2F2F7',
   bgElevated: '#FFFFFF',
 }
+
+const pipelineScatterPalette = [
+  colors.primary,
+  colors.orange,
+  colors.green,
+  colors.purple,
+  colors.cyan,
+  '#EF4444',
+  '#0EA5E9',
+  '#F97316',
+]
 
 const chartTheme = {
   backgroundColor: 'transparent',
@@ -136,471 +296,1038 @@ const chartTheme = {
   },
 }
 
-// Dashboard 组件
-
-type TimeRangeKey = '24h' | '7d' | '30m'
-
-interface DashboardSnapshot {
-  stats: {
-    flow: number
-    pressure: number
-    temperature: number
-    efficiency: number
-  }
-  trends: {
-    flow: string
-    pressure: string
-    temperature: string
-    efficiency: string
-  }
-  flow: Record<TimeRangeKey, { current: number[]; previous: number[] }>
-  pressure: number[]
-  energyActual: number[]
-  deviceValues: number[]
-  deviceStatuses: DeviceData['status'][]
-}
-
-const flowSeriesBase: DashboardSnapshot['flow'] = {
-  '24h': {
-    current: [2050, 2140, 2260, 2410, 2580, 2720, 2840, 2910, 2890, 2870, 2920, 2895, 2847],
-    previous: [1910, 1980, 2070, 2190, 2320, 2440, 2550, 2630, 2660, 2690, 2725, 2660, 2530],
-  },
-  '7d': {
-    current: [2520, 2610, 2750, 2880, 2810, 2950, 2847],
-    previous: [2380, 2460, 2590, 2670, 2710, 2790, 2730],
-  },
-  '30m': {
-    current: [2745, 2760, 2772, 2788, 2805, 2820, 2836, 2844, 2856, 2850, 2847],
-    previous: [2700, 2712, 2720, 2735, 2746, 2760, 2772, 2780, 2790, 2798, 2805],
-  },
-}
-
-const pressureBase = [5.2, 4.8, 4.5, 4.2, 3.9, 3.5]
-const energyBase = [4200, 3800, 4500, 3200, 0, 3600]
-const deviceBase = [2150, 1890, 2340, 2010, 0, 1750]
-
-function createSeededRandom(seed: number) {
-  let value = seed % 2147483647
-  if (value <= 0) {
-    value += 2147483646
-  }
-
-  return () => {
-    value = (value * 16807) % 2147483647
-    return (value - 1) / 2147483646
-  }
-}
-
-function varySeries(base: number[], spread: number, rand: () => number, minValue = 0) {
-  return base.map((value) => Math.max(minValue, Math.round(value + (rand() * 2 - 1) * spread)))
-}
-
-function createDashboardSnapshot(seed: number): DashboardSnapshot {
-  const rand = createSeededRandom(seed)
-  const flow24hCurrent = varySeries(flowSeriesBase['24h'].current, 120, rand, 1800)
-  const flow24hPrevious = varySeries(flowSeriesBase['24h'].previous, 90, rand, 1700)
-  const flow7dCurrent = varySeries(flowSeriesBase['7d'].current, 140, rand, 2200)
-  const flow7dPrevious = varySeries(flowSeriesBase['7d'].previous, 110, rand, 2100)
-  const flow30mCurrent = varySeries(flowSeriesBase['30m'].current, 45, rand, 2500)
-  const flow30mPrevious = varySeries(flowSeriesBase['30m'].previous, 35, rand, 2450)
-  const pressure = pressureBase.map((value) => Number((value + (rand() * 2 - 1) * 0.18).toFixed(2)))
-  const energyActual = energyBase.map((value, index) => {
-    if (index === 4) {
-      return 0
-    }
-    return Math.max(2600, Math.round(value + (rand() * 2 - 1) * 280))
-  })
-  const deviceValues = deviceBase.map((value, index) => {
-    if (index === 4) {
-      return 0
-    }
-    return Math.max(1500, Math.round(value + (rand() * 2 - 1) * 180))
-  })
-  const deviceStatuses = deviceValues.map((value, index) => {
-    if (index === 4) {
-      return 'offline'
-    }
-    if (index === 2 || value > 2280) {
-      return 'warning'
-    }
-    return 'online'
-  })
-
-  return {
-    stats: {
-      flow: flow24hCurrent[flow24hCurrent.length - 1],
-      pressure: Number((4.7 + rand() * 0.4).toFixed(2)),
-      temperature: Number((41.5 + rand() * 2.4).toFixed(1)),
-      efficiency: Number((93.2 + rand() * 2.1).toFixed(1)),
-    },
-    trends: {
-      flow: `+${(8.5 + rand() * 5).toFixed(1)}%`,
-      pressure: `${(rand() * 0.6 - 0.3).toFixed(1)}%`,
-      temperature: `-${(1.2 + rand() * 1.8).toFixed(1)}%`,
-      efficiency: `+${(2 + rand() * 2).toFixed(1)}%`,
-    },
-    flow: {
-      '24h': { current: flow24hCurrent, previous: flow24hPrevious },
-      '7d': { current: flow7dCurrent, previous: flow7dPrevious },
-      '30m': { current: flow30mCurrent, previous: flow30mPrevious },
-    },
-    pressure,
-    energyActual,
-    deviceValues,
-    deviceStatuses,
-  }
-}
 export default function Dashboard() {
-  const [activeTimeRange, setActiveTimeRange] = useState<TimeRangeKey>('24h')
-  const dashboardSnapshot = useMemo(() => createDashboardSnapshot(Date.now()), [])
+  const [trendLoading, setTrendLoading] = useState(true)
+  const [trendHistories, setTrendHistories] = useState<CalculationHistory[]>([])
+  const [projects, setProjects] = useState<Project[]>([])
+  const [pumpStations, setPumpStations] = useState<PumpStation[]>([])
+  const [oilProperties, setOilProperties] = useState<OilProperty[]>([])
+  const [allPipelines, setAllPipelines] = useState<Pipeline[]>([])
+  const [pipelineCount, setPipelineCount] = useState(0)
+  const [pumpStationCount, setPumpStationCount] = useState(0)
+  const [oilPropertyCount, setOilPropertyCount] = useState(0)
+  const [masterDataLoading, setMasterDataLoading] = useState(true)
+  const [masterDataWarning, setMasterDataWarning] = useState<string | null>(null)
+  const [pipelineDataWarning, setPipelineDataWarning] = useState<string | null>(null)
   const flowChart = useChartConfig()
   const pressureChart = useChartConfig({ mobileSvg: false })
   const energyChart = useChartConfig()
+  const heatmapChart = useChartConfig({ mobileSvg: false })
 
   useChartGesture(flowChart.containerRef)
   useChartGesture(pressureChart.containerRef)
   useChartGesture(energyChart.containerRef)
+  useChartGesture(heatmapChart.containerRef)
+
+  useEffect(() => {
+    let active = true
+    let inflight = false
+
+    const loadTrendData = async ({ withLoading = false }: { withLoading?: boolean } = {}) => {
+      if (inflight) {
+        return
+      }
+
+      inflight = true
+
+      if (withLoading) {
+        setTrendLoading(true)
+        setMasterDataLoading(true)
+      }
+
+      setMasterDataWarning(null)
+      setPipelineDataWarning(null)
+
+      const [historyResult, projectResult, pumpStationResult, oilPropertyResult] =
+        await Promise.allSettled([
+        fetchAllPagedList<CalculationHistory>((pageNum, pageSize) =>
+          calculationHistoryApi.page({ pageNum, pageSize }),
+        ),
+        projectApi.list(),
+        pumpStationApi.list(),
+        oilPropertyApi.list(),
+      ])
+
+      if (!active) {
+        inflight = false
+        return
+      }
+
+      if (historyResult.status === 'fulfilled') {
+        setTrendHistories(historyResult.value)
+      } else if (withLoading) {
+        setTrendHistories([])
+      }
+
+      if (projectResult.status === 'fulfilled') {
+        setProjects(projectResult.value.data ?? [])
+      } else if (withLoading) {
+        setProjects([])
+      }
+
+      if (pumpStationResult.status === 'fulfilled') {
+        const nextPumpStations = pumpStationResult.value.data ?? []
+        setPumpStations(nextPumpStations)
+        setPumpStationCount(nextPumpStations.length)
+      } else if (withLoading) {
+        setPumpStations([])
+        setPumpStationCount(0)
+      }
+
+      if (oilPropertyResult.status === 'fulfilled') {
+        const nextOilProperties = oilPropertyResult.value.data ?? []
+        setOilProperties(nextOilProperties)
+        setOilPropertyCount(nextOilProperties.length)
+      } else if (withLoading) {
+        setOilProperties([])
+        setOilPropertyCount(0)
+      }
+
+      let nextPipelineCount = 0
+      let pipelineLoadFailed = false
+      let loadedPipelines: Pipeline[] = []
+      let canReplacePipelineState = false
+
+      if (projectResult.status === 'fulfilled') {
+        const loadedProjects = projectResult.value.data ?? []
+        canReplacePipelineState = true
+
+        if (loadedProjects.length > 0) {
+          const pipelineResults = await Promise.allSettled(
+            loadedProjects.map((project) => pipelineApi.listByProject(project.proId)),
+          )
+
+          if (!active) {
+            inflight = false
+            return
+          }
+
+          loadedPipelines = pipelineResults.flatMap((result) =>
+            result.status === 'fulfilled' ? (result.value.data ?? []) : [],
+          )
+
+          nextPipelineCount = pipelineResults.reduce((total, result) => {
+            if (result.status !== 'fulfilled') {
+              pipelineLoadFailed = true
+              return total
+            }
+
+            return total + (result.value.data?.length ?? 0)
+          }, 0)
+        }
+      } else {
+        pipelineLoadFailed = true
+      }
+
+      if (canReplacePipelineState) {
+        setAllPipelines(loadedPipelines)
+        setPipelineCount(nextPipelineCount)
+      } else if (withLoading) {
+        setAllPipelines([])
+        setPipelineCount(0)
+      }
+      setPipelineDataWarning(
+        projectResult.status !== 'fulfilled'
+          ? '项目主数据加载失败，无法生成管道参数散点图。'
+          : pipelineLoadFailed
+            ? '管道参数加载不完整，已停止渲染散点图。'
+            : null,
+      )
+
+      const failedSections: string[] = []
+      if (projectResult.status !== 'fulfilled') {
+        failedSections.push('项目')
+      }
+      if (pipelineLoadFailed) {
+        failedSections.push('管道')
+      }
+      if (pumpStationResult.status !== 'fulfilled') {
+        failedSections.push('泵站')
+      }
+      if (oilPropertyResult.status !== 'fulfilled') {
+        failedSections.push('油品')
+      }
+
+      setMasterDataWarning(
+        failedSections.length > 0
+          ? `部分主数据加载失败：${failedSections.join('、')}`
+          : null,
+      )
+      setTrendLoading(false)
+      setMasterDataLoading(false)
+      inflight = false
+    }
+
+    const refreshData = () => {
+      void loadTrendData()
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refreshData()
+      }
+    }
+
+    void loadTrendData({ withLoading: true })
+    const intervalId = window.setInterval(refreshData, 30000)
+    window.addEventListener('focus', refreshData)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      active = false
+      window.clearInterval(intervalId)
+      window.removeEventListener('focus', refreshData)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [])
+
+  const projectMetaById = useMemo(
+    () => new Map(projects.map((project) => [project.proId, project] as const)),
+    [projects],
+  )
 
   // 统计卡片数据
-  const statsData: StatCardData[] = useMemo(() => [
-    {
-      id: 'flow',
-      label: '实时流量',
-      value: dashboardSnapshot.stats.flow,
-      unit: 'm3/h',
-      trend: 'up',
-      trendValue: dashboardSnapshot.trends.flow,
-      description: '较昨日同期',
-      icon: <RiDropLine size={20} />,
-      colorClass: styles.statIconBlue,
-    },
-    {
-      id: 'pressure',
-      label: '管道压力',
-      value: dashboardSnapshot.stats.pressure,
-      unit: 'MPa',
-      trend: 'neutral',
-      trendValue: dashboardSnapshot.trends.pressure,
-      description: '运行正常',
-      icon: <RiPulseLine size={20} />,
-      colorClass: styles.statIconCyan,
-    },
-    {
-      id: 'temperature',
-      label: '平均温度',
-      value: dashboardSnapshot.stats.temperature,
-      unit: '°C',
-      trend: 'down',
-      trendValue: dashboardSnapshot.trends.temperature,
-      description: '较昨日同期',
-      icon: <RiTempColdLine size={20} />,
-      colorClass: styles.statIconGreen,
-    },
-    {
-      id: 'efficiency',
-      label: '系统效率',
-      value: dashboardSnapshot.stats.efficiency,
-      unit: '%',
-      trend: 'up',
-      trendValue: dashboardSnapshot.trends.efficiency,
-      description: '优于目标',
-      icon: <RiFlashlightLine size={20} />,
-      colorClass: styles.statIconAmber,
-    },
-  ], [dashboardSnapshot])
+  const statsData: StatCardData[] = useMemo(() => {
+    const trendValue = masterDataLoading
+      ? '加载中'
+      : masterDataWarning
+        ? '部分失败'
+        : '实时统计'
 
-  // 预警数据
-  const alertsData: AlertData[] = useMemo(() => [
-    {
-      id: '1',
-      type: 'critical',
-      message: '3号泵站压力异常，超过预警阈值',
-      time: '2分钟前',
-      location: 'K128+500',
-    },
-    {
-      id: '2',
-      type: 'warning',
-      message: '输油温度接近上限，建议调整',
-      time: '15分钟前',
-      location: 'K256+200',
-    },
-    {
-      id: '3',
-      type: 'info',
-      message: '设备例行维护提醒：5号阀门',
-      time: '1小时前',
-      location: 'K89+100',
-    },
-    {
-      id: '4',
-      type: 'warning',
-      message: '流量传感器数据波动，请关注',
-      time: '2小时前',
-      location: 'K312+800',
-    },
-  ], [])
-
-  // 设备数据
-  const devicesData: DeviceData[] = useMemo(() => [
-    { id: '1', name: '1号泵站', status: dashboardSnapshot.deviceStatuses[0], value: dashboardSnapshot.deviceValues[0], unit: 'kW' },
-    { id: '2', name: '2号泵站', status: dashboardSnapshot.deviceStatuses[1], value: dashboardSnapshot.deviceValues[1], unit: 'kW' },
-    { id: '3', name: '3号泵站', status: dashboardSnapshot.deviceStatuses[2], value: dashboardSnapshot.deviceValues[2], unit: 'kW' },
-    { id: '4', name: '4号泵站', status: dashboardSnapshot.deviceStatuses[3], value: dashboardSnapshot.deviceValues[3], unit: 'kW' },
-    { id: '5', name: '5号泵站', status: dashboardSnapshot.deviceStatuses[4], value: dashboardSnapshot.deviceValues[4], unit: 'kW' },
-    { id: '6', name: '6号泵站', status: dashboardSnapshot.deviceStatuses[5], value: dashboardSnapshot.deviceValues[5], unit: 'kW' },
-  ], [dashboardSnapshot])
-
-  // 流量趋势图配置
-  const flowRangeConfig = useMemo(() => {
-    switch (activeTimeRange) {
-      case '7d':
-        return {
-          subtitle: '近7天实时流量变化',
-          compareLabel: '上周同期',
-          xAxis: ['周一', '周二', '周三', '周四', '周五', '周六', '周日'],
-          current: dashboardSnapshot.flow['7d'].current,
-          previous: dashboardSnapshot.flow['7d'].previous,
-        }
-      case '30m':
-        return {
-          subtitle: '最近30分钟分钟级流量监控',
-          compareLabel: '上一时段',
-          xAxis: ['00分', '03分', '06分', '09分', '12分', '15分', '18分', '21分', '24分', '27分', '30分'],
-          current: dashboardSnapshot.flow['30m'].current,
-          previous: dashboardSnapshot.flow['30m'].previous,
-        }
-      default:
-        return {
-          subtitle: '24小时实时流量监控',
-          compareLabel: '昨日流量',
-          xAxis: ['00:00', '02:00', '04:00', '06:00', '08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00', '24:00'],
-          current: dashboardSnapshot.flow['24h'].current,
-          previous: dashboardSnapshot.flow['24h'].previous,
-        }
-    }
-  }, [activeTimeRange, dashboardSnapshot])
-
-  const flowTrendOption = useMemo<EChartsOption>(() => ({
-    ...chartTheme,
-    grid: flowChart.isCompact
-      ? flowChart.grid
-      : { ...flowChart.grid, top: 28, right: 18, bottom: 22, left: 20 },
-    tooltip: {
-      ...chartTheme.tooltip,
-      ...flowChart.tooltipConf,
-    },
-    xAxis: {
-      ...chartTheme.xAxis,
-      type: 'category' as const,
-      data: flowRangeConfig.xAxis,
-      boundaryGap: false,
-      axisLabel: {
-        ...chartTheme.xAxis.axisLabel,
-        ...flowChart.xAxisLabel,
-      },
-    },
-    yAxis: {
-      ...chartTheme.yAxis,
-      type: 'value' as const,
-      name: 'm3/h',
-      nameTextStyle: { color: colors.textTertiary, fontSize: 12, padding: [0, 0, 8, 0] },
-      splitNumber: 5,
-      min: ({ min }: { min: number }) => Math.floor((min - 160) / 100) * 100,
-      max: ({ max }: { max: number }) => Math.ceil((max + 120) / 100) * 100,
-    },
-    series: [
+    return [
       {
-        name: '实时流量',
-        type: 'line' as const,
-        smooth: 0.28,
-        showSymbol: true,
-        symbol: 'circle',
-        symbolSize: flowChart.isCompact ? 5 : 7,
-        lineStyle: {
-          width: 4,
-          color: colors.primary,
-          shadowColor: 'rgba(0, 122, 255, 0.25)',
-          shadowBlur: 8,
-        },
-        itemStyle: {
-          color: colors.primary,
-          borderColor: '#FFFFFF',
-          borderWidth: 2,
-        },
-        areaStyle: {
-          opacity: 0.28,
-          color: {
-            type: 'linear',
-            x: 0,
-            y: 0,
-            x2: 0,
-            y2: 1,
-            colorStops: [
-              { offset: 0, color: 'rgba(0, 122, 255, 0.28)' },
-              { offset: 1, color: 'rgba(0, 122, 255, 0.05)' },
-            ],
-          },
-        },
-        data: flowRangeConfig.current,
+        id: 'projectCount',
+        label: '项目个数',
+        value: projects.length,
+        unit: '个',
+        trend: 'neutral',
+        trendValue,
+        icon: <RiDropLine size={20} />,
+        colorClass: styles.statIconBlue,
+        accentClass: styles.statCardToneBlue,
       },
       {
-        name: flowRangeConfig.compareLabel,
-        type: 'line' as const,
-        smooth: 0.24,
-        symbol: 'none',
-        lineStyle: {
-          width: 3,
-          color: colors.purple,
-          type: 'dashed' as const,
-          opacity: 0.9,
-        },
-        data: flowRangeConfig.previous,
+        id: 'pipelineCount',
+        label: '管道个数',
+        value: pipelineCount,
+        unit: '个',
+        trend: 'neutral',
+        trendValue,
+        icon: <RiPulseLine size={20} />,
+        colorClass: styles.statIconCyan,
+        accentClass: styles.statCardToneCyan,
       },
-    ],
-    legend: {
-      ...(flowChart.legend !== false
-        ? {
-            ...chartTheme.legend,
-            data: ['实时流量', flowRangeConfig.compareLabel],
-            ...flowChart.legend,
+      {
+        id: 'pumpStationCount',
+        label: '泵站个数',
+        value: pumpStationCount,
+        unit: '个',
+        trend: 'neutral',
+        trendValue,
+        icon: <RiTempColdLine size={20} />,
+        colorClass: styles.statIconGreen,
+        accentClass: styles.statCardToneGreen,
+      },
+      {
+        id: 'oilPropertyCount',
+        label: '油品个数',
+        value: oilPropertyCount,
+        unit: '个',
+        trend: 'neutral',
+        trendValue,
+        icon: <RiFlashlightLine size={20} />,
+        colorClass: styles.statIconAmber,
+        accentClass: styles.statCardToneAmber,
+      },
+    ]
+  }, [masterDataLoading, masterDataWarning, oilPropertyCount, pipelineCount, projects.length, pumpStationCount])
+
+  const projectDataProfiles = useMemo<ProjectDataProfile[]>(
+    () =>
+      projects
+        .map((project) => {
+          const projectPipelines = allPipelines.filter((pipeline) => pipeline.proId === project.proId)
+          const projectHistories = trendHistories.filter((history) => history.projectId === project.proId)
+
+          const pipelineCountForProject = projectPipelines.length
+          const historyCount = projectHistories.length
+
+          return {
+            projectId: project.proId,
+            projectName: project.name || `项目 ${project.proId}`,
+            projectNumber: project.number || '',
+            pipelineCount: pipelineCountForProject,
+            historyCount,
+            totalRecordCount: pipelineCountForProject + historyCount,
           }
-        : { show: false }),
-    },
-  }), [activeTimeRange, flowChart.grid, flowChart.isCompact, flowChart.xAxisLabel, flowChart.legend, flowChart.tooltipConf, flowRangeConfig])
+        })
+        .sort((left, right) => {
+          if (right.totalRecordCount !== left.totalRecordCount) {
+            return right.totalRecordCount - left.totalRecordCount
+          }
 
-  const pressureDistOption = useMemo<EChartsOption>(() => {
-    const radarLayout = pressureChart.isCompact
-      ? { center: ['50%', '58%'], radius: '56%', nameGap: 8, fontSize: 10, splitNumber: 4 }
-      : pressureChart.isMedium
-        ? { center: ['50%', '56%'], radius: '63%', nameGap: 10, fontSize: 12, splitNumber: 4 }
-        : { center: ['50%', '55%'], radius: '70%', nameGap: 12, fontSize: 12, splitNumber: 5 }
+          if (right.pipelineCount !== left.pipelineCount) {
+            return right.pipelineCount - left.pipelineCount
+          }
+
+          return left.projectId - right.projectId
+        }),
+    [allPipelines, projects, trendHistories],
+  )
+
+  const projectDataSubtitle = useMemo(() => {
+    if (trendLoading || masterDataLoading) {
+      return '正在读取项目、管道、泵站与记录统计'
+    }
+
+    if (masterDataWarning) {
+      return `${masterDataWarning}；图表仅展示已成功加载的真实数据`
+    }
+
+    if (projectDataProfiles.length === 0) {
+      return '数据库中暂无项目主数据'
+    }
+
+    return `共 ${projectDataProfiles.length} 个项目；横轴为项目名称/项目编号，纵轴为数量。项目数据记录总数 = 管道 + 计算记录；泵站和油品改为共享资源单独统计`
+  }, [
+    masterDataLoading,
+    masterDataWarning,
+    projectDataProfiles.length,
+    trendLoading,
+  ])
+
+  const projectDataOption = useMemo<EChartsOption>(() => {
+    const seriesColors = {
+      pipeline: '#2563EB',
+      total: '#F59E0B',
+    }
+    const barMaxWidth = flowChart.isCompact ? 10 : 16
 
     return {
       ...chartTheme,
-      legend: { show: false },
+      color: [seriesColors.pipeline, seriesColors.total],
+      grid: flowChart.isCompact
+        ? { ...flowChart.grid, top: 52, right: 12, bottom: 56, left: 44 }
+        : { ...flowChart.grid, top: 58, right: 22, bottom: 76, left: 52 },
+      tooltip: {
+        ...chartTheme.tooltip,
+        ...flowChart.tooltipConf,
+        trigger: 'axis',
+        confine: true,
+        position: (point: unknown, _params: unknown, _dom: unknown, _rect: unknown, size: unknown) =>
+          keepTooltipInChart(
+            point,
+            typeof size === 'object' && size !== null
+              ? (size as { contentSize: number[]; viewSize: number[] })
+              : { contentSize: [], viewSize: [] },
+          ),
+        axisPointer: {
+          type: 'shadow',
+          shadowStyle: {
+            color: hexToRgba(colors.primary, 0.06),
+          },
+        },
+        formatter: (params: unknown) => {
+          const items = (Array.isArray(params) ? params : [params]).map((item) =>
+            typeof item === 'object' && item !== null ? (item as Record<string, unknown>) : {},
+          )
+          const firstItem = items[0] ?? {}
+          const dataIndex = typeof firstItem.dataIndex === 'number' ? firstItem.dataIndex : -1
+          const profile = dataIndex >= 0 ? projectDataProfiles[dataIndex] : null
+          const title = profile
+            ? `${profile.projectName}${profile.projectNumber ? `（${profile.projectNumber}）` : ''}`
+            : '项目数据'
+          const body = profile
+            ? [
+                `<div>管道数量：${formatMetricValue(profile.pipelineCount)}</div>`,
+                `<div>数据库记录数：${formatMetricValue(profile.totalRecordCount)}</div>`,
+              ].join('')
+            : items
+                .map((item) => {
+                  const rawValue = Array.isArray(item.value) ? item.value[0] : item.value
+                  const numericValue = typeof rawValue === 'number' ? rawValue : Number(rawValue ?? 0)
+                  return `<div>${String(item.marker ?? '')}${String(item.seriesName ?? '-')}：${formatMetricValue(
+                    Number.isFinite(numericValue) ? numericValue : 0,
+                  )}</div>`
+                })
+                .join('')
+
+          return `<div style="font-weight:600;margin-bottom:6px;">${title}</div>${body}`
+        },
+      },
+      legend: {
+        ...(flowChart.legend !== false
+          ? {
+              ...chartTheme.legend,
+              top: 0,
+              data: ['管道数量', '数据记录总数'],
+            }
+          : { show: false }),
+      },
+      xAxis: {
+        ...chartTheme.xAxis,
+        type: 'category',
+        data: projectDataProfiles.map((_, index) => index),
+        axisLabel: {
+          ...chartTheme.xAxis.axisLabel,
+          ...flowChart.xAxisLabel,
+          interval: 0,
+          lineHeight: flowChart.isCompact ? 14 : 16,
+          formatter: (_value: string | number, index: number) => {
+            const profile = projectDataProfiles[index]
+            if (!profile) {
+              return ''
+            }
+
+            const maxLength = flowChart.isCompact ? 4 : 8
+            const projectName =
+              profile.projectName.length > maxLength
+                ? `${profile.projectName.slice(0, maxLength)}…`
+                : profile.projectName
+
+            return profile.projectNumber
+              ? `${profile.projectNumber}\n${projectName}`
+              : projectName
+          },
+        },
+      },
+      yAxis: {
+        ...chartTheme.yAxis,
+        type: 'value',
+        name: '数量',
+        minInterval: 1,
+        nameTextStyle: {
+          color: colors.textTertiary,
+          fontSize: 11,
+          padding: [0, 0, 0, 8],
+        },
+      },
+      series: [
+        {
+          name: '管道数量',
+          type: 'bar',
+          barMaxWidth,
+          itemStyle: {
+            borderRadius: [8, 8, 0, 0],
+            color: seriesColors.pipeline,
+          },
+          data: projectDataProfiles.map((profile) => profile.pipelineCount),
+        },
+        {
+          name: '数据记录总数',
+          type: 'bar',
+          barMaxWidth,
+          itemStyle: {
+            borderRadius: [8, 8, 0, 0],
+            color: seriesColors.total,
+          },
+          data: projectDataProfiles.map((profile) => profile.totalRecordCount),
+        },
+      ],
+    }
+  }, [
+    flowChart.grid,
+    flowChart.isCompact,
+    flowChart.legend,
+    flowChart.tooltipConf,
+    flowChart.xAxisLabel,
+    projectDataProfiles,
+  ])
+
+  const pipelineScatterPoints = useMemo<PipelineScatterPoint[]>(
+    () =>
+      allPipelines.flatMap((pipeline) => {
+        const diameter = toFiniteNumber(pipeline.diameter)
+        const length = toFiniteNumber(pipeline.length)
+
+        if (diameter === null || length === null) {
+          return []
+        }
+
+        const throughput = toFiniteNumber(pipeline.throughput)
+        const startAltitude = toFiniteNumber(pipeline.startAltitude)
+        const endAltitude = toFiniteNumber(pipeline.endAltitude)
+        const project = projectMetaById.get(pipeline.proId)
+
+        return [{
+          pipelineId: pipeline.id,
+          pipelineName: pipeline.name,
+          projectId: pipeline.proId,
+          projectName: project?.name ?? `项目 ${pipeline.proId}`,
+          projectNumber: project?.number ?? '-',
+          diameter,
+          length,
+          throughput,
+          thickness: toFiniteNumber(pipeline.thickness),
+          roughness: toFiniteNumber(pipeline.roughness),
+          startAltitude,
+          endAltitude,
+          altitudeSpan:
+            startAltitude !== null && endAltitude !== null
+              ? Math.abs(endAltitude - startAltitude)
+              : null,
+        }]
+      }),
+    [allPipelines, projectMetaById],
+  )
+
+  const pipelineScatterSubtitle = useMemo(() => {
+    if (masterDataLoading) {
+      return '正在读取项目与管道参数'
+    }
+
+    if (pipelineDataWarning) {
+      return pipelineDataWarning
+    }
+
+    if (projects.length === 0) {
+      return '数据库中暂无项目主数据'
+    }
+
+    if (pipelineScatterPoints.length === 0) {
+      return '数据库中暂无管道参数数据'
+    }
+
+    const projectCount = new Set(pipelineScatterPoints.map((point) => point.projectId)).size
+    return `共 ${projectCount} 个项目、${pipelineScatterPoints.length} 条有效管道；横轴为管径，纵轴为长度，气泡大小映射设计输量，数据每 30 秒自动刷新`
+  }, [masterDataLoading, pipelineDataWarning, pipelineScatterPoints, projects.length])
+
+  const pipelineScatterOption = useMemo<EChartsOption>(() => {
+    const throughputValues = pipelineScatterPoints
+      .map((point) => point.throughput)
+      .filter((value): value is number => value !== null)
+    const minThroughput = throughputValues.length > 0 ? Math.min(...throughputValues) : 0
+    const maxThroughput = throughputValues.length > 0 ? Math.max(...throughputValues) : 0
+    const throughputRange = maxThroughput - minThroughput
+
+    const getSymbolSize = (throughput: number | null) => {
+      const minSize = pressureChart.isCompact ? 10 : 14
+      const maxSize = pressureChart.isCompact ? 22 : 34
+
+      if (throughput === null || throughputValues.length === 0) {
+        return minSize + 2
+      }
+
+      if (throughputRange <= 0) {
+        return (minSize + maxSize) / 2
+      }
+
+      const normalized = (throughput - minThroughput) / throughputRange
+      return Number((minSize + normalized * (maxSize - minSize)).toFixed(2))
+    }
+
+    const groupedPoints = pipelineScatterPoints.reduce<
+      Map<number, { projectName: string; color: string; data: Array<Record<string, unknown>> }>
+    >((map, point) => {
+      const groupIndex = map.size
+      const existing = map.get(point.projectId)
+
+      if (existing) {
+        existing.data.push({
+          value: [point.diameter, point.length],
+          symbolSize: getSymbolSize(point.throughput),
+          pipelineId: point.pipelineId,
+          pipelineName: point.pipelineName,
+          projectName: point.projectName,
+          projectNumber: point.projectNumber,
+          diameter: point.diameter,
+          length: point.length,
+          throughput: point.throughput,
+          thickness: point.thickness,
+          roughness: point.roughness,
+          startAltitude: point.startAltitude,
+          endAltitude: point.endAltitude,
+          altitudeSpan: point.altitudeSpan,
+        })
+        return map
+      }
+
+      const color = pipelineScatterPalette[groupIndex % pipelineScatterPalette.length]
+      map.set(point.projectId, {
+        projectName: point.projectName,
+        color,
+        data: [{
+          value: [point.diameter, point.length],
+          symbolSize: getSymbolSize(point.throughput),
+          pipelineId: point.pipelineId,
+          pipelineName: point.pipelineName,
+          projectName: point.projectName,
+          projectNumber: point.projectNumber,
+          diameter: point.diameter,
+          length: point.length,
+          throughput: point.throughput,
+          thickness: point.thickness,
+          roughness: point.roughness,
+          startAltitude: point.startAltitude,
+          endAltitude: point.endAltitude,
+          altitudeSpan: point.altitudeSpan,
+        }],
+      })
+      return map
+    }, new Map())
+
+    const series = Array.from(groupedPoints.values()).map((group) => ({
+      name: group.projectName,
+      type: 'scatter' as const,
+      data: group.data,
+      itemStyle: {
+        color: hexToRgba(group.color, 0.84),
+        borderColor: group.color,
+        borderWidth: 1.5,
+      },
+      emphasis: {
+        focus: 'series' as const,
+        scale: true,
+        itemStyle: {
+          shadowBlur: 16,
+          shadowColor: hexToRgba(group.color, 0.3),
+          borderWidth: 2,
+        },
+      },
+    }))
+
+    const scatterLegend =
+      pressureChart.legend === false
+        ? { show: false }
+        : {
+            ...chartTheme.legend,
+            data: series.map((item) => item.name),
+            orient: 'horizontal' as const,
+            left: pressureChart.isCompact ? 8 : 12,
+            right: pressureChart.isCompact ? 8 : 12,
+            top: pressureChart.isCompact ? 4 : 8,
+            itemGap: pressureChart.isCompact ? 10 : 14,
+            itemWidth: pressureChart.isCompact ? 12 : 14,
+            itemHeight: 4,
+            textStyle: {
+              ...chartTheme.legend.textStyle,
+              color: colors.textSecondary,
+              fontSize: pressureChart.isCompact ? 10 : 11,
+            },
+          }
+
+    return {
+      ...chartTheme,
+      grid: pressureChart.isCompact
+        ? { ...pressureChart.grid, top: 42, right: 16, bottom: 42, left: 56 }
+        : {
+            ...pressureChart.grid,
+            top: pressureChart.legend === false ? 24 : 54,
+            right: 18,
+            bottom: 46,
+            left: 76,
+          },
       tooltip: {
         ...chartTheme.tooltip,
         ...pressureChart.tooltipConf,
-      },
-      radar: {
-        indicator: [
-          { name: '入口压力', max: 6 },
-          { name: '1号站', max: 6 },
-          { name: '2号站', max: 6 },
-          { name: '3号站', max: 6 },
-          { name: '4号站', max: 6 },
-          { name: '出口压力', max: 6 },
-        ],
-        shape: 'polygon' as const,
-        center: radarLayout.center,
-        radius: radarLayout.radius,
-        splitNumber: radarLayout.splitNumber,
-        nameGap: radarLayout.nameGap,
-        axisName: {
-          color: colors.textSecondary,
-          fontSize: radarLayout.fontSize,
-          lineHeight: radarLayout.fontSize + 6,
-          padding: [2, 4, 0, 4],
-        },
-        splitLine: {
-          lineStyle: { color: colors.border },
-        },
-        splitArea: {
-          areaStyle: { color: [colors.borderLight, 'rgba(0, 122, 255, 0.03)'] },
-        },
-        axisLine: {
-          lineStyle: { color: colors.border },
-        },
-      },
-      series: [{
-        type: 'radar' as const,
-        symbol: 'circle',
-        symbolSize: pressureChart.isCompact ? 6 : 8,
-        lineStyle: {
-          width: 3,
-          color: colors.cyan,
-        },
-        itemStyle: {
-          color: colors.cyan,
-          borderColor: colors.bgElevated,
-          borderWidth: 2,
-        },
-        areaStyle: {
-          color: 'rgba(50, 173, 230, 0.22)',
-        },
-        data: [{
-          value: dashboardSnapshot.pressure,
-          name: '当前压力',
-        }],
-      }],
-    }
-  }, [dashboardSnapshot.pressure, pressureChart.isCompact, pressureChart.isMedium, pressureChart.tooltipConf])
+        trigger: 'item',
+        formatter: (params: unknown) => {
+          const record =
+            typeof params === 'object' && params !== null ? (params as Record<string, unknown>) : {}
+          const data =
+            typeof record.data === 'object' && record.data !== null
+              ? (record.data as Record<string, unknown>)
+              : {}
+          const throughput = typeof data.throughput === 'number' ? data.throughput : null
+          const thickness = typeof data.thickness === 'number' ? data.thickness : null
+          const roughness = typeof data.roughness === 'number' ? data.roughness : null
+          const altitudeSpan = typeof data.altitudeSpan === 'number' ? data.altitudeSpan : null
 
-  const energyOption = useMemo<EChartsOption>(() => ({
+          return [
+            `<div style="font-weight:600;margin-bottom:6px;">${String(data.pipelineName ?? '-')}</div>`,
+            `<div>项目编号：${String(data.projectNumber ?? '-')}</div>`,
+            `<div>所属项目：${String(data.projectName ?? '-')}</div>`,
+            `<div>管径：${typeof data.diameter === 'number' ? `${formatMetricValue(data.diameter)} mm` : '暂无数据'}</div>`,
+            `<div>长度：${typeof data.length === 'number' ? `${formatMetricValue(data.length)} km` : '暂无数据'}</div>`,
+            `<div>设计输量：${throughput === null ? '暂无数据' : `${formatMetricValue(throughput)}`}</div>`,
+            `<div>壁厚：${thickness === null ? '暂无数据' : `${formatMetricValue(thickness)} mm`}</div>`,
+            `<div>粗糙度：${roughness === null ? '暂无数据' : `${formatMetricValue(roughness)} m`}</div>`,
+            `<div>高程差：${altitudeSpan === null ? '暂无数据' : `${formatMetricValue(altitudeSpan)} m`}</div>`,
+          ].join('')
+        },
+      },
+      xAxis: {
+        ...chartTheme.xAxis,
+        type: 'value',
+        name: '管径 (mm)',
+        nameLocation: 'middle',
+        nameGap: pressureChart.isCompact ? 28 : 34,
+        splitLine: {
+          show: true,
+          lineStyle: {
+            color: colors.borderLight,
+            type: 'dashed' as const,
+          },
+        },
+        axisLabel: {
+          ...chartTheme.xAxis.axisLabel,
+          ...pressureChart.xAxisLabel,
+          rotate: 0,
+        },
+      },
+      yAxis: {
+        ...chartTheme.yAxis,
+        type: 'value',
+        name: '长度 (km)',
+        nameTextStyle: {
+          color: colors.textTertiary,
+          fontSize: pressureChart.isCompact ? 10 : 11,
+        },
+        axisLabel: {
+          color: colors.textSecondary,
+          fontSize: pressureChart.isCompact ? 11 : 12,
+        },
+      },
+      legend: pressureChart.legend === false
+        ? { show: false }
+        : scatterLegend,
+      series,
+    }
+  }, [
+    pipelineScatterPoints,
+    pressureChart.grid,
+    pressureChart.isCompact,
+    pressureChart.legend,
+    pressureChart.tooltipConf,
+    pressureChart.xAxisLabel,
+  ])
+
+  const pumpStationLineProfiles = useMemo<PumpStationLineProfile[]>(
+    () =>
+      pumpStations.map((pumpStation) => ({
+        id: pumpStation.id,
+        name: pumpStation.name || `泵站 ${pumpStation.id}`,
+        metrics: {
+          zmi480Lift: toFiniteNumber(pumpStation.zmi480Lift),
+          zmi375Lift: toFiniteNumber(pumpStation.zmi375Lift),
+          displacement: toFiniteNumber(pumpStation.displacement),
+        },
+      })),
+    [pumpStations],
+  )
+
+  const pumpStationLineProfilesWithData = useMemo(
+    () =>
+      pumpStationLineProfiles.filter((profile) =>
+        Object.values(profile.metrics).some((value) => value !== null),
+      ),
+    [pumpStationLineProfiles],
+  )
+
+  const pumpStationLineSubtitle = useMemo(() => {
+    if (masterDataLoading) {
+      return '正在读取泵站参数主数据'
+    }
+
+    if (pumpStations.length === 0) {
+      return '数据库中暂无泵站参数主数据'
+    }
+
+    if (pumpStationLineProfilesWithData.length === 0) {
+      return '当前泵站记录缺少扬程或排量参数，无法生成折线图'
+    }
+
+    return `当前数据库暂无泵站时间序列运行日志，改为按泵站编号/名称对比共享泵站主数据中的 ZMI480扬程、ZMI375扬程与排量；共 ${pumpStationLineProfilesWithData.length} 座泵站`
+  }, [
+    masterDataLoading,
+    pumpStationLineProfilesWithData.length,
+    pumpStations.length,
+  ])
+
+  const pumpStationLineOption = useMemo<EChartsOption>(() => ({
     ...chartTheme,
-    grid: energyChart.grid,
+    color: PUMP_STATION_LINE_OPTIONS.map((item) => item.color),
+    grid: energyChart.isCompact
+      ? { ...energyChart.grid, top: 52, right: 14, bottom: 60, left: 48 }
+      : { ...energyChart.grid, top: 56, right: 18, bottom: 74, left: 58 },
     tooltip: {
       ...chartTheme.tooltip,
       ...energyChart.tooltipConf,
+      trigger: 'axis',
+      axisPointer: {
+        type: 'line',
+        lineStyle: {
+          color: hexToRgba(colors.primary, 0.22),
+          width: 1.5,
+        },
+      },
+      formatter: (params: unknown) => {
+        const items = (Array.isArray(params) ? params : [params]).map((item) =>
+          typeof item === 'object' && item !== null ? (item as Record<string, unknown>) : {},
+        )
+        const firstItem = items[0] ?? {}
+        const dataIndex = typeof firstItem.dataIndex === 'number' ? firstItem.dataIndex : -1
+        const profile =
+          dataIndex >= 0 ? pumpStationLineProfilesWithData[dataIndex] : null
+        const title = profile ? `${profile.name}（#${profile.id}）` : '泵站参数'
+        const body = items
+          .map((item) => {
+            const rawValue = Array.isArray(item.value) ? item.value[1] : item.value
+            const numericValue = typeof rawValue === 'number' ? rawValue : Number(rawValue ?? 0)
+            const seriesName = String(item.seriesName ?? '-')
+            const unit = PUMP_STATION_LINE_OPTIONS.find((option) => option.label === seriesName)?.unit ?? ''
+            return `<div>${String(item.marker ?? '')}${seriesName}：${
+              Number.isFinite(numericValue) ? formatMetricValue(numericValue) : '-'
+            } ${unit}</div>`
+          })
+          .join('')
+        return `<div style="font-weight:600;margin-bottom:6px;">${title}</div>${body}`
+      },
     },
+    legend: energyChart.legend === false
+      ? { show: false }
+      : {
+          ...chartTheme.legend,
+          data: PUMP_STATION_LINE_OPTIONS.map((item) => item.label),
+          ...energyChart.legend,
+        },
     xAxis: {
       ...chartTheme.xAxis,
-      type: 'category' as const,
-      data: ['1号站', '2号站', '3号站', '4号站', '5号站', '6号站'],
+      type: 'category',
+      data: pumpStationLineProfilesWithData.map((profile) => profile.id),
       axisLabel: {
         ...chartTheme.xAxis.axisLabel,
         ...energyChart.xAxisLabel,
+        interval: 0,
+        lineHeight: energyChart.isCompact ? 14 : 16,
+        formatter: (_value: string | number, index: number) => {
+          const profile = pumpStationLineProfilesWithData[index]
+          if (!profile) {
+            return ''
+          }
+
+          const maxLength = energyChart.isCompact ? 4 : 8
+          const stationName =
+            profile.name.length > maxLength
+              ? `${profile.name.slice(0, maxLength)}…`
+              : profile.name
+
+          return `#${profile.id}\n${stationName}`
+        },
       },
     },
-    yAxis: {
-      ...chartTheme.yAxis,
-      type: 'value' as const,
-      name: 'kWh',
-      nameTextStyle: { color: colors.textTertiary, fontSize: 11 },
-    },
-    series: [
+    yAxis: [
       {
-        name: '实际能耗',
-        type: 'bar' as const,
-        barWidth: 20,
-        itemStyle: {
-          borderRadius: [6, 6, 0, 0],
-          color: colors.primary,
+        ...chartTheme.yAxis,
+        type: 'value',
+        name: '扬程 (m)',
+        minInterval: 1,
+        nameTextStyle: {
+          color: colors.textTertiary,
+          fontSize: 11,
+          padding: [0, 0, 0, 8],
         },
-        data: dashboardSnapshot.energyActual,
       },
       {
-        name: '计划能耗',
-        type: 'bar' as const,
-        barWidth: 20,
-        itemStyle: {
-          borderRadius: [6, 6, 0, 0],
-          color: colors.borderLight,
+        ...chartTheme.yAxis,
+        type: 'value',
+        name: '排量 (m3/h)',
+        minInterval: 1,
+        nameTextStyle: {
+          color: colors.textTertiary,
+          fontSize: 11,
+          padding: [0, 8, 0, 0],
         },
-        data: [4000, 4000, 4000, 4000, 4000, 4000],
       },
     ],
-    legend: {
-      ...(energyChart.legend !== false
-        ? {
-          ...chartTheme.legend,
-          data: ['实际能耗', '计划能耗'],
-          ...energyChart.legend,
-        }
-        : { show: false }),
-    },
-  }), [dashboardSnapshot.energyActual, energyChart.grid, energyChart.xAxisLabel, energyChart.legend, energyChart.tooltipConf])
+    series: PUMP_STATION_LINE_OPTIONS.map((metric) => ({
+      name: metric.label,
+      type: 'line' as const,
+      smooth: true,
+      yAxisIndex: metric.yAxisIndex,
+      showSymbol: pumpStationLineProfilesWithData.length <= 10,
+      symbolSize: energyChart.isCompact ? 6 : 8,
+      connectNulls: false,
+      lineStyle: {
+        width: 2.5,
+        color: metric.color,
+      },
+      itemStyle: {
+        color: metric.color,
+      },
+      emphasis: {
+        focus: 'series' as const,
+      },
+      data: pumpStationLineProfilesWithData.map((profile) => profile.metrics[metric.key]),
+    })),
+  }), [
+    energyChart.grid,
+    energyChart.isCompact,
+    energyChart.legend,
+    energyChart.tooltipConf,
+    energyChart.xAxisLabel,
+    pumpStationLineProfilesWithData,
+  ])
 
-  // 鑾峰彇棰勮鍥炬爣鏍峰紡
-  const getAlertIconClass = (type: AlertData['type']) => {
-    const classMap = {
-      critical: styles.alertIconCritical,
-      warning: styles.alertIconWarning,
-      info: styles.alertIconInfo,
+  const oilHeatmapSubtitle = useMemo(() => {
+    if (masterDataLoading) {
+      return '正在读取油品参数主数据'
     }
-    return classMap[type]
-  }
+
+    if (oilProperties.length === 0) {
+      return '数据库中暂无油品参数主数据'
+    }
+
+    return `当前数据库已入库的油品维度为密度与运动粘度；横轴为参数维度，纵轴为油品名称/编号，颜色为真实数据标准化结果；共 ${oilProperties.length} 种油品`
+  }, [masterDataLoading, oilProperties.length])
+
+  const oilHeatmapOption = useMemo<EChartsOption>(() => {
+    const xLabels = OIL_HEATMAP_OPTIONS.map((item) => item.label)
+    const yLabels = oilProperties.map((oil) => `#${oil.id} ${oil.name}`)
+
+    const heatmapData = OIL_HEATMAP_OPTIONS.flatMap((metric, xIndex) => {
+      const validValues = oilProperties
+        .map((oil) => toFiniteNumber(oil[metric.key]))
+        .filter((value): value is number => value !== null)
+      const minValue = validValues.length > 0 ? Math.min(...validValues) : 0
+      const maxValue = validValues.length > 0 ? Math.max(...validValues) : 0
+      const range = maxValue - minValue
+
+      return oilProperties.map((oil, yIndex) => {
+        const rawValue = toFiniteNumber(oil[metric.key])
+        const normalizedValue =
+          rawValue === null
+            ? -1
+            : range === 0
+              ? 0.5
+              : Number(((rawValue - minValue) / range).toFixed(4))
+
+        return {
+          value: [xIndex, yIndex, normalizedValue],
+          oilId: oil.id,
+          oilName: oil.name,
+          parameterLabel: metric.label,
+          unit: metric.unit,
+          rawValue,
+        }
+      })
+    })
+
+    return {
+      ...chartTheme,
+      legend: {
+        show: false,
+      },
+      grid: heatmapChart.isCompact
+        ? { ...heatmapChart.grid, top: 12, right: 38, bottom: 34, left: 24 }
+        : { ...heatmapChart.grid, top: 12, right: 56, bottom: 38, left: 36 },
+      tooltip: {
+        ...chartTheme.tooltip,
+        ...heatmapChart.tooltipConf,
+        trigger: 'item',
+        formatter: (params: unknown) => {
+          const record =
+            typeof params === 'object' && params !== null ? (params as Record<string, unknown>) : {}
+          const data =
+            typeof record.data === 'object' && record.data !== null
+              ? (record.data as Record<string, unknown>)
+              : {}
+          const rawValue = typeof data.rawValue === 'number' ? data.rawValue : null
+          const normalizedValue =
+            Array.isArray(data.value) && typeof data.value[2] === 'number' && data.value[2] >= 0
+              ? `${Math.round(data.value[2] * 100)}%`
+              : '无数据'
+
+          return [
+            `<div style="font-weight:600;margin-bottom:6px;">${String(data.oilName ?? '-')}</div>`,
+            `<div>油品编号：${String(data.oilId ?? '-')}</div>`,
+            `<div>参数项：${String(data.parameterLabel ?? '-')}</div>`,
+            `<div>原始值：${rawValue === null ? '暂无数据' : `${formatPreciseMetricValue(rawValue)} ${String(data.unit ?? '')}`}</div>`,
+            `<div>标准化：${normalizedValue}</div>`,
+          ].join('')
+        },
+      },
+      xAxis: {
+        ...chartTheme.xAxis,
+        type: 'category',
+        data: xLabels,
+        axisLabel: {
+          ...chartTheme.xAxis.axisLabel,
+          ...heatmapChart.xAxisLabel,
+          interval: 0,
+          margin: heatmapChart.isCompact ? 12 : 16,
+        },
+      },
+      yAxis: {
+        ...chartTheme.yAxis,
+        type: 'category',
+        data: yLabels,
+        axisLabel: {
+          color: colors.textSecondary,
+          fontSize: heatmapChart.isCompact ? 10 : 12,
+          width: heatmapChart.isCompact ? 92 : 120,
+          overflow: 'truncate',
+          align: 'right',
+          margin: heatmapChart.isCompact ? 10 : 12,
+          formatter: (value: string) => (value.length > 12 ? `${value.slice(0, 12)}…` : value),
+        },
+      },
+      visualMap: {
+        min: 0,
+        max: 1,
+        show: true,
+        calculable: false,
+        orient: 'vertical',
+        right: heatmapChart.isCompact ? 4 : 8,
+        top: 'middle',
+        itemWidth: heatmapChart.isCompact ? 10 : 12,
+        itemHeight: heatmapChart.isCompact ? 108 : 132,
+        text: ['高', '低'],
+        textGap: 10,
+        textStyle: {
+          color: colors.textSecondary,
+          fontSize: heatmapChart.isCompact ? 10 : 12,
+          fontWeight: 600,
+        },
+        inRange: {
+          color: ['#EFF6FF', '#BFDBFE', '#60A5FA', '#2563EB'],
+        },
+        outOfRange: {
+          color: ['#F3F4F6'],
+        },
+      },
+      series: [
+        {
+          name: '油品参数',
+          type: 'heatmap',
+          data: heatmapData,
+          progressive: 0,
+          itemStyle: {
+            borderColor: 'rgba(255, 255, 255, 0.78)',
+            borderWidth: 2,
+          },
+          label: {
+            show: !heatmapChart.isCompact,
+            color: colors.textPrimary,
+            fontSize: heatmapChart.isCompact ? 9 : 10,
+            formatter: (params: unknown) => {
+              const record =
+                typeof params === 'object' && params !== null ? (params as Record<string, unknown>) : {}
+              const data =
+                typeof record.data === 'object' && record.data !== null
+                  ? (record.data as Record<string, unknown>)
+                  : {}
+              return typeof data.rawValue === 'number' ? formatPreciseMetricValue(data.rawValue) : '-'
+            },
+          },
+          emphasis: {
+            itemStyle: {
+              borderColor: '#FFFFFF',
+              borderWidth: 1,
+              shadowBlur: 12,
+              shadowColor: 'rgba(15, 23, 42, 0.18)',
+            },
+          },
+        },
+      ],
+    }
+  }, [
+    heatmapChart.grid,
+    heatmapChart.isCompact,
+    heatmapChart.tooltipConf,
+    heatmapChart.xAxisLabel,
+    oilProperties,
+  ])
 
   // 鑾峰彇瓒嬪娍鏍峰紡
   const getTrendClass = (trend: StatCardData['trend']) => {
@@ -636,7 +1363,7 @@ export default function Dashboard() {
           {statsData.map((stat, index) => (
             <motion.div
               key={stat.id}
-              className={styles.statCard}
+              className={`${styles.statCard} ${stat.accentClass}`}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{
@@ -654,9 +1381,19 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <div className={styles.statValue}>
-                {stat.value.toLocaleString()}
-                <span className={styles.statUnit}>{stat.unit}</span>
+              <div className={styles.statMetricPanel}>
+                <div className={styles.statValueRow}>
+                  <div className={styles.statValue}>
+                    {formatMetricValue(stat.value)}
+                    <span className={styles.statUnit}>{stat.unit}</span>
+                  </div>
+                  <div className={styles.statGlyph} aria-hidden="true">
+                    <span className={styles.statGlyphBar} />
+                    <span className={styles.statGlyphBar} />
+                    <span className={styles.statGlyphBar} />
+                    <span className={styles.statGlyphBar} />
+                  </div>
+                </div>
               </div>
 
               <div className={styles.statFooter}>
@@ -665,7 +1402,11 @@ export default function Dashboard() {
                   {stat.trend === 'down' && <RiArrowDownLine size={12} />}
                   {stat.trendValue}
                 </span>
-                <span className={styles.statDescription}>{stat.description}</span>
+                <div className={styles.statFooterAccent} aria-hidden="true">
+                  <span className={styles.statFooterAccentBar} />
+                  <span className={styles.statFooterAccentBar} />
+                  <span className={styles.statFooterAccentBar} />
+                </div>
               </div>
             </motion.div>
           ))}
@@ -674,154 +1415,235 @@ export default function Dashboard() {
         {/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?         * 鍥捐〃鍖哄煙
          * 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?*/}
         <section className={`${styles.chartsSection} grid-auto-charts`}>
-          {/* 娴侀噺瓒嬪娍 */}
+          {/* 项目数据统计柱状图 */}
           <div className={styles.chartCard}>
             <div className={styles.chartHeader}>
               <div className={styles.chartTitleGroup}>
-                <h3 className={styles.chartTitle}>流量趋势</h3>
-                <p className={styles.chartSubtitle}>{flowRangeConfig.subtitle}</p>
-              </div>
-              <div className={styles.chartActions}>
-                {([
-                  { key: '24h', label: '24小时' },
-                  { key: '7d', label: '7天' },
-                  { key: '30m', label: '30分钟' },
-                ] as const).map(({ key, label }) => (
-                  <button
-                    key={key}
-                    className={`${styles.chartActionBtn} ${activeTimeRange === key ? styles.chartActionBtnActive : ''}`}
-                    onClick={() => setActiveTimeRange(key)}
-                    type="button"
-                  >
-                    {label}
-                  </button>
-                ))}
+                <h3 className={styles.chartTitle}>项目数据统计柱状图</h3>
+                <p className={styles.chartSubtitle}>{projectDataSubtitle}</p>
               </div>
             </div>
             <div className={styles.chartContainer} ref={flowChart.containerRef}>
-              <Chart option={flowTrendOption} renderer={flowChart.renderer} />
+              {trendLoading || masterDataLoading ? (
+                <div
+                  style={{
+                    height: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: colors.textSecondary,
+                    fontSize: 14,
+                  }}
+                >
+                  正在加载项目统计数据...
+                </div>
+              ) : null}
+              {!trendLoading && !masterDataLoading && projects.length === 0 ? (
+                <div
+                  style={{
+                    height: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: colors.textSecondary,
+                    fontSize: 14,
+                    textAlign: 'center',
+                    padding: '0 24px',
+                  }}
+                >
+                  暂无项目主数据，无法生成项目统计柱状图。
+                </div>
+              ) : null}
+              {!trendLoading && !masterDataLoading && projects.length > 0 ? (
+                <Chart option={projectDataOption} renderer={flowChart.renderer} />
+              ) : null}
             </div>
           </div>
 
-          {/* 鍘嬪姏鍒嗗竷 */}
+          {/* 管道参数关系散点图 */}
           <div className={styles.chartCard}>
             <div className={styles.chartHeader}>
               <div className={styles.chartTitleGroup}>
-                <h3 className={styles.chartTitle}>压力分布</h3>
-                <p className={styles.chartSubtitle}>各站点压力雷达图</p>
+                <h3 className={styles.chartTitle}>管道参数关系散点图</h3>
+                <p className={styles.chartSubtitle}>{pipelineScatterSubtitle}</p>
               </div>
             </div>
             <div className={styles.chartContainer} ref={pressureChart.containerRef}>
-              <Chart option={pressureDistOption} renderer={pressureChart.renderer} />
+              {masterDataLoading ? (
+                <div
+                  style={{
+                    height: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: colors.textSecondary,
+                    fontSize: 14,
+                  }}
+                >
+                  正在加载项目与管道参数...
+                </div>
+              ) : null}
+              {!masterDataLoading && pipelineDataWarning ? (
+                <div
+                  style={{
+                    height: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#D92D20',
+                    fontSize: 14,
+                    textAlign: 'center',
+                    padding: '0 24px',
+                  }}
+                >
+                  {pipelineDataWarning}
+                </div>
+              ) : null}
+              {!masterDataLoading && !pipelineDataWarning && projects.length === 0 ? (
+                <div
+                  style={{
+                    height: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: colors.textSecondary,
+                    fontSize: 14,
+                    textAlign: 'center',
+                    padding: '0 24px',
+                  }}
+                >
+                  暂无项目主数据，无法生成管道参数散点图。
+                </div>
+              ) : null}
+              {!masterDataLoading && !pipelineDataWarning && projects.length > 0 && pipelineScatterPoints.length === 0 ? (
+                <div
+                  style={{
+                    height: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: colors.textSecondary,
+                    fontSize: 14,
+                    textAlign: 'center',
+                    padding: '0 24px',
+                  }}
+                >
+                  暂无包含有效管径与长度的管道数据，无法生成散点图。
+                </div>
+              ) : null}
+              {!masterDataLoading && !pipelineDataWarning && projects.length > 0 && pipelineScatterPoints.length > 0 ? (
+                <Chart option={pipelineScatterOption} renderer={pressureChart.renderer} />
+              ) : null}
             </div>
           </div>
 
-          {/* 鑳借€楀垎鏋?- 鍏ㄥ */}
-          <div className={`${styles.chartCard} ${styles.chartCardFull} grid-full-width`}>
+          {/* 泵站参数折线图 */}
+          <div className={styles.chartCard}>
             <div className={styles.chartHeader}>
               <div className={styles.chartTitleGroup}>
-                <h3 className={styles.chartTitle}>能耗分析</h3>
-                <p className={styles.chartSubtitle}>各泵站能耗对比与优化建议</p>
+                <h3 className={styles.chartTitle}>泵站参数折线图</h3>
+                <p className={styles.chartSubtitle}>{pumpStationLineSubtitle}</p>
               </div>
             </div>
             <div className={`${styles.chartContainer} ${styles.chartContainerLarge}`} ref={energyChart.containerRef}>
-              <Chart option={energyOption} renderer={energyChart.renderer} />
+              {masterDataLoading ? (
+                <div
+                  style={{
+                    height: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: colors.textSecondary,
+                    fontSize: 14,
+                  }}
+                >
+                  正在加载泵站参数...
+                </div>
+              ) : null}
+              {!masterDataLoading && pumpStations.length === 0 ? (
+                <div
+                  style={{
+                    height: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: colors.textSecondary,
+                    fontSize: 14,
+                    textAlign: 'center',
+                    padding: '0 24px',
+                  }}
+                >
+                  暂无泵站参数主数据，无法生成折线图。
+                </div>
+              ) : null}
+              {!masterDataLoading && pumpStations.length > 0 && pumpStationLineProfilesWithData.length === 0 ? (
+                <div
+                  style={{
+                    height: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: colors.textSecondary,
+                    fontSize: 14,
+                    textAlign: 'center',
+                    padding: '0 24px',
+                  }}
+                >
+                  当前泵站记录缺少可用于折线图的真实扬程或排量参数。
+                </div>
+              ) : null}
+              {!masterDataLoading && pumpStationLineProfilesWithData.length > 0 ? (
+                <Chart option={pumpStationLineOption} renderer={energyChart.renderer} />
+              ) : null}
             </div>
           </div>
-        </section>
 
-        {/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?         * 搴曢儴鍖哄煙 - 棰勮 & 璁惧鐘舵€?         * 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?*/}
-        <section className={`${styles.bottomSection} grid-auto-charts perf-lazy-render`}>
-          {/* 棰勮鍒楄〃 */}
-          <div className={styles.alertCard}>
-            <div className={styles.alertHeader}>
-              <h3 className={styles.alertTitle}>
-                <RiAlertLine size={20} />
-                实时预警
-                <span className={styles.alertBadge}>{alertsData.filter(a => a.type === 'critical').length}</span>
-              </h3>
-            </div>
-
-            <AnimatedListContainer className={styles.alertList}>
-              {alertsData.map((alert) => (
-                <AnimatedListItem key={alert.id}>
-                  <div className={styles.alertItem}>
-                    <div className={`${styles.alertIcon} ${getAlertIconClass(alert.type)}`}>
-                      <RiAlertLine size={18} />
-                    </div>
-                    <div className={styles.alertContent}>
-                      <p className={styles.alertMessage}>{alert.message}</p>
-                      <div className={styles.alertMeta}>
-                        <span className={styles.alertTime}>
-                          <RiTimeLine size={12} />
-                          {alert.time}
-                        </span>
-                        <span className={styles.alertLocation}>
-                          <RiMapPinLine size={12} />
-                          {alert.location}
-                        </span>
-                      </div>
-                    </div>
-                    <RiArrowRightSLine size={20} className={styles.alertArrow} />
-                  </div>
-                </AnimatedListItem>
-              ))}
-            </AnimatedListContainer>
-          </div>
-
-          {/* 璁惧鐘舵€?*/}
-          <div className={styles.deviceCard}>
-            <div className={styles.deviceHeader}>
-              <h3 className={styles.deviceTitle}>设备状态</h3>
-              <div className={styles.deviceSummary}>
-                <div className={styles.deviceStat}>
-                  <span className={`${styles.deviceStatDot} ${styles.deviceStatDotOnline}`} />
-                  <span className={styles.deviceStatLabel}>在线</span>
-                  <span className={styles.deviceStatValue}>
-                    {devicesData.filter(d => d.status === 'online').length}
-                  </span>
-                </div>
-                <div className={styles.deviceStat}>
-                  <span className={`${styles.deviceStatDot} ${styles.deviceStatDotWarning}`} />
-                  <span className={styles.deviceStatLabel}>告警</span>
-                  <span className={styles.deviceStatValue}>
-                    {devicesData.filter(d => d.status === 'warning').length}
-                  </span>
-                </div>
-                <div className={styles.deviceStat}>
-                  <span className={`${styles.deviceStatDot} ${styles.deviceStatDotOffline}`} />
-                  <span className={styles.deviceStatLabel}>离线</span>
-                  <span className={styles.deviceStatValue}>
-                    {devicesData.filter(d => d.status === 'offline').length}
-                  </span>
-                </div>
+          {/* 油品参数热力图 */}
+          <div className={styles.chartCard}>
+            <div className={styles.chartHeader}>
+              <div className={styles.chartTitleGroup}>
+                <h3 className={styles.chartTitle}>油品参数热力图</h3>
+                <p className={styles.chartSubtitle}>{oilHeatmapSubtitle}</p>
               </div>
             </div>
-
-            <div className={`${styles.deviceGrid} grid-auto-devices`}>
-              {devicesData.map((device) => (
-                <div key={device.id} className={styles.deviceItem}>
-                  <div className={styles.deviceItemIcon}>
-                    <RiDashboardLine size={20} />
-                  </div>
-                  <div className={styles.deviceItemInfo}>
-                    <p className={styles.deviceItemName}>{device.name}</p>
-                    <div className={styles.deviceItemStatus}>
-                      <span className={`${styles.deviceItemStatusDot} ${
-                        device.status === 'online' ? styles.deviceItemStatusDotOnline : styles.deviceItemStatusDotOffline
-                      }`} />
-                      {device.status === 'online' ? '运行中' : device.status === 'warning' ? '告警' : '离线'}
-                    </div>
-                  </div>
-                  <div>
-                    <span className={styles.deviceItemValue}>{device.value.toLocaleString()}</span>
-                    <span className={styles.deviceItemUnit}>{device.unit}</span>
-                  </div>
+            <div className={`${styles.chartContainer} ${styles.chartContainerLarge}`} ref={heatmapChart.containerRef}>
+              {masterDataLoading ? (
+                <div
+                  style={{
+                    height: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: colors.textSecondary,
+                    fontSize: 14,
+                  }}
+                >
+                  正在加载油品参数...
                 </div>
-              ))}
+              ) : null}
+              {!masterDataLoading && oilProperties.length === 0 ? (
+                <div
+                  style={{
+                    height: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: colors.textSecondary,
+                    fontSize: 14,
+                    textAlign: 'center',
+                    padding: '0 24px',
+                  }}
+                >
+                  暂无油品参数主数据，无法生成热力图。
+                </div>
+              ) : null}
+              {!masterDataLoading && oilProperties.length > 0 ? (
+                <Chart option={oilHeatmapOption} renderer={heatmapChart.renderer} />
+              ) : null}
             </div>
           </div>
         </section>
+
       </div>
     </AnimatedPage>
   )

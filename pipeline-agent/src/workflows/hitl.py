@@ -19,7 +19,6 @@ class HITLType(str, Enum):
     SCHEME_SELECTION = "scheme_selection"
     PARAMETER_CONFIRM = "parameter_confirm"
     RISK_WARNING = "risk_warning"
-    REPORT_OUTLINE = "report_outline"
 
 
 @dataclass

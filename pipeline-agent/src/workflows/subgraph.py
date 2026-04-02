@@ -1,11 +1,6 @@
 """
 Plan-and-Execute 子图。
 仅在 plan_complex_task 工具被调用时进入。
-
-HITL 处理策略（重构后）：
-当子图触发 interrupt()（泵站方案选择），
-中断会通过 SSE 传递到前端，由用户真实选择方案。
-不再自动选择。
 """
 
 from __future__ import annotations
@@ -33,14 +28,14 @@ from .nodes import (
     knowledge_agent_node,
     planner_node,
     reflexion_node,
-    report_agent_node,
     step_evaluator_node,
     synthesizer_node,
 )
 
 
 def _create_plan_execute_subgraph():
-    """构建 Plan-and-Execute 子图。带 MemorySaver 以支持 interrupt/resume。"""
+    """构建 Plan-and-Execute 子图。"""
+
     graph = StateGraph(AgentState)
 
     graph.add_node("planner", planner_node)
@@ -49,7 +44,6 @@ def _create_plan_execute_subgraph():
     graph.add_node("calc_agent", calc_agent_node)
     graph.add_node("knowledge_agent", knowledge_agent_node)
     graph.add_node("graph_agent", graph_agent_node)
-    graph.add_node("report_agent", report_agent_node)
     graph.add_node("step_evaluator", step_evaluator_node)
     graph.add_node("reflexion", reflexion_node)
     graph.add_node("hitl_check", hitl_check_node)
@@ -59,19 +53,18 @@ def _create_plan_execute_subgraph():
     graph.add_edge("planner", "executor")
 
     graph.add_conditional_edges(
-        "executor",
-        route_to_agent,
-        {
-            "data_agent": "data_agent",
-            "calc_agent": "calc_agent",
-            "knowledge_agent": "knowledge_agent",
-            "graph_agent": "graph_agent",
-            "report_agent": "report_agent",
-            "synthesizer": "synthesizer",
-        },
+      "executor",
+      route_to_agent,
+      {
+        "data_agent": "data_agent",
+        "calc_agent": "calc_agent",
+        "knowledge_agent": "knowledge_agent",
+        "graph_agent": "graph_agent",
+        "synthesizer": "synthesizer",
+      },
     )
 
-    for node in ["data_agent", "calc_agent", "knowledge_agent", "graph_agent", "report_agent"]:
+    for node in ["data_agent", "calc_agent", "knowledge_agent", "graph_agent"]:
         graph.add_edge(node, "step_evaluator")
 
     graph.add_conditional_edges(
@@ -97,8 +90,6 @@ def _create_plan_execute_subgraph():
 
 
 _subgraph_app = None
-
-# request_id -> {"app": app, "config": config, "updated_at": ts}
 _pending_subgraph_runs: Dict[str, Dict[str, Any]] = {}
 _pending_lock = Lock()
 _PENDING_TTL_SECONDS = 1800
@@ -144,16 +135,8 @@ def _take_pending_run(request_id: str) -> Optional[Dict[str, Any]]:
 
 
 def run_plan_execute(task_description: str) -> str:
-    """
-    Plan-and-Execute 子图入口。被 plan_complex_task 工具调用。
+    """Plan-and-Execute 子图入口。"""
 
-    重构后的行为：
-    - 不再自动选择泵方案（删除了 _auto_select_scheme）
-    - 如果子图触发 HITL interrupt，返回提示信息，
-      告知前端需要用户选择方案
-    - 前端通过 /chat/confirm 接口提交选择后，
-      由 AgentWorkflow.resume_from_hitl() 恢复执行
-    """
     session_id = generate_session_id()
     trace_id = generate_trace_id()
     create_tracer(trace_id)
@@ -172,7 +155,6 @@ def run_plan_execute(task_description: str) -> str:
     try:
         result = app.invoke(initial_state, config=config)
 
-        # 检查是否因 HITL interrupt 暂停
         state_snapshot = app.get_state(config)
         if state_snapshot and state_snapshot.next:
             hitl_data = _extract_interrupt_value(app, config)
@@ -187,23 +169,14 @@ def run_plan_execute(task_description: str) -> str:
             return final_response
         return "复杂任务执行完成，但未生成最终回复。"
 
-    except Exception as e:
-        logger.error(f"Plan-Execute subgraph failed: {e}")
-        return f"复杂任务执行失败: {str(e)}"
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Plan-Execute subgraph failed: %s", exc)
+        return f"复杂任务执行失败: {exc}"
 
 
 def resume_plan_execute(request_id: str, user_choice: dict) -> Dict[str, Any]:
-    """
-    根据 request_id 恢复被中断的 Plan-and-Execute 子图。
+    """根据 request_id 恢复被中断的 Plan-and-Execute 子图。"""
 
-    Returns:
-      {
-        "status": "completed" | "hitl_waiting" | "not_found" | "error",
-        "response": "...",          # completed 时存在
-        "hitl_data": {...},          # hitl_waiting 时存在
-        "error": "...",             # error 时存在
-      }
-    """
     pending = _take_pending_run(request_id)
     if not pending:
         return {
@@ -217,7 +190,6 @@ def resume_plan_execute(request_id: str, user_choice: dict) -> Dict[str, Any]:
     try:
         result = app.invoke(Command(resume=user_choice), config=config)
 
-        # 恢复后如果再次中断，继续返回新的 hitl_data 并缓存
         state_snapshot = app.get_state(config)
         if state_snapshot and state_snapshot.next:
             hitl_data = _extract_interrupt_value(app, config)
@@ -232,13 +204,14 @@ def resume_plan_execute(request_id: str, user_choice: dict) -> Dict[str, Any]:
             final_response = "复杂任务执行完成，但未生成最终回复。"
         return {"status": "completed", "response": final_response}
 
-    except Exception as e:
-        logger.error(f"Plan-Execute resume failed: {e}")
-        return {"status": "error", "error": str(e)}
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Plan-Execute resume failed: %s", exc)
+        return {"status": "error", "error": str(exc)}
 
 
 def _extract_interrupt_value(app, config: dict):
     """从子图状态快照中提取 interrupt() 传入的 HITL 请求数据。"""
+
     try:
         state_snapshot = app.get_state(config)
         if not state_snapshot or not state_snapshot.next:
@@ -248,6 +221,6 @@ def _extract_interrupt_value(app, config: dict):
                 value = getattr(intr, "value", None)
                 if value is not None:
                     return value
-    except Exception as e:
-        logger.debug(f"Failed to extract interrupt value: {e}")
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Failed to extract interrupt value: %s", exc)
     return None

@@ -1,7 +1,20 @@
-﻿import type { HITLResponse } from '../types/agent';
+import { useUserStore } from '../stores/userStore';
+import type {
+  HITLResponse,
+  KnowledgeDeleteResponse,
+  KnowledgeDocumentListPayload,
+  KnowledgeGraphQueryPayload,
+  KnowledgeReindexResponse,
+  KnowledgeSearchDebugPayload,
+  KnowledgeSearchDebugRequest,
+  KnowledgeStageBaseline,
+  KnowledgeStatsPayload,
+  KnowledgeUploadPayload,
+  KnowledgeUploadResponse,
+} from '../types/agent';
 
 const AGENT_API_BASE =
-  import.meta.env.VITE_AGENT_API_BASE_URL || 'http://localhost:8100/api/v1';
+  import.meta.env.VITE_AGENT_API_BASE_URL || 'http://127.0.0.1:8000/api/v1';
 
 async function parseJson<T>(response: Response): Promise<T> {
   const text = await response.text();
@@ -11,106 +24,156 @@ async function parseJson<T>(response: Response): Promise<T> {
   return JSON.parse(text) as T;
 }
 
+function buildHeaders(headers?: HeadersInit) {
+  const token = useUserStore.getState().token;
+  const normalized =
+    headers instanceof Headers
+      ? (() => {
+          const entries: Record<string, string> = {};
+          headers.forEach((value, key) => {
+            entries[key] = value;
+          });
+          return entries;
+        })()
+      : Array.isArray(headers)
+        ? Object.fromEntries(headers)
+        : { ...(headers ?? {}) };
+
+  if (!token) {
+    return normalized;
+  }
+
+  return {
+    ...normalized,
+    satoken: token,
+    Authorization: `Bearer ${token}`,
+  };
+}
+
+async function requestAgent<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${AGENT_API_BASE}${path}`, {
+    ...init,
+    headers: buildHeaders(init?.headers),
+  });
+
+  if (!response.ok) {
+    let errorMessage = `request failed: ${response.status}`;
+    try {
+      const errorPayload = await parseJson<Record<string, unknown>>(response);
+      if (typeof errorPayload.detail === 'string') {
+        errorMessage = errorPayload.detail;
+      } else if (typeof errorPayload.message === 'string') {
+        errorMessage = errorPayload.message;
+      }
+    } catch {
+      // Ignore JSON parse failures and fall back to the status code.
+    }
+    throw new Error(errorMessage);
+  }
+
+  return parseJson<T>(response);
+}
+
 export const agentApi = {
   baseUrl: AGENT_API_BASE,
 
   async chat(message: string, sessionId: string) {
-    const response = await fetch(`${AGENT_API_BASE}/chat`, {
+    return requestAgent<Record<string, unknown>>('/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message, session_id: sessionId }),
     });
-
-    if (!response.ok) {
-      throw new Error(`chat request failed: ${response.status}`);
-    }
-
-    return parseJson<Record<string, unknown>>(response);
   },
 
   async confirm(sessionId: string, responsePayload: HITLResponse) {
-    const response = await fetch(`${AGENT_API_BASE}/chat/confirm`, {
+    return requestAgent<Record<string, unknown>>('/chat/confirm', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ session_id: sessionId, response: responsePayload }),
     });
-
-    if (!response.ok) {
-      throw new Error(`confirm request failed: ${response.status}`);
-    }
-
-    return parseJson<Record<string, unknown>>(response);
   },
 
   async getTrace(traceId: string) {
-    const response = await fetch(`${AGENT_API_BASE}/trace/${traceId}`);
-    if (!response.ok) {
-      throw new Error(`trace request failed: ${response.status}`);
-    }
-    return parseJson<Record<string, unknown>>(response);
-  },
-
-  async generateReport(
-    userRequest: string,
-    sessionId?: string,
-    reportContext?: Record<string, unknown>,
-  ) {
-    const response = await fetch(`${AGENT_API_BASE}/report/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        user_request: userRequest,
-        session_id: sessionId,
-        report_context: reportContext,
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`report request failed: ${response.status}`);
-    }
-    return parseJson<Record<string, unknown>>(response);
-  },
-
-  async getReportDetail(reportId: number) {
-    const response = await fetch(`${AGENT_API_BASE}/report/${reportId}`);
-    if (!response.ok) {
-      throw new Error(`report detail request failed: ${response.status}`);
-    }
-    return parseJson<Record<string, unknown>>(response);
-  },
-
-  async deleteReport(reportId: number) {
-    const response = await fetch(`${AGENT_API_BASE}/report/${reportId}`, {
-      method: 'DELETE',
-    });
-    if (!response.ok) {
-      throw new Error(`report delete request failed: ${response.status}`);
-    }
-    return parseJson<Record<string, unknown>>(response);
-  },
-
-  async listJavaReports(pageNum = 1, pageSize = 10) {
-    const params = new URLSearchParams({
-      page_num: String(pageNum),
-      page_size: String(pageSize),
-    });
-    const response = await fetch(`${AGENT_API_BASE}/report/java/reports?${params.toString()}`);
-    if (!response.ok) {
-      throw new Error(`list java reports failed: ${response.status}`);
-    }
-    return parseJson<Record<string, unknown>>(response);
-  },
-
-  getJavaReportDownloadUrl(reportId: number, format: 'docx' | 'pdf' = 'docx') {
-    return `${AGENT_API_BASE}/report/download/${reportId}?format=${format}`;
+    return requestAgent<Record<string, unknown>>(`/trace/${traceId}`);
   },
 
   async queryGraph(query: string) {
     const params = new URLSearchParams({ query });
-    const response = await fetch(`${AGENT_API_BASE}/graph/query?${params.toString()}`);
-    if (!response.ok) {
-      throw new Error(`graph request failed: ${response.status}`);
+    return requestAgent<KnowledgeGraphQueryPayload>(`/graph/query?${params.toString()}`);
+  },
+
+  async getKnowledgeBaseline() {
+    return requestAgent<KnowledgeStageBaseline>('/knowledge/baseline');
+  },
+
+  async listKnowledgeDocuments(params?: { category?: string; status?: string }) {
+    const query = new URLSearchParams();
+    if (params?.category) {
+      query.set('category', params.category);
     }
-    return parseJson<Record<string, unknown>>(response);
+    if (params?.status) {
+      query.set('status', params.status);
+    }
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+    return requestAgent<KnowledgeDocumentListPayload>(`/knowledge/documents${suffix}`);
+  },
+
+  async getKnowledgeStats() {
+    return requestAgent<KnowledgeStatsPayload>('/knowledge/stats');
+  },
+
+  async uploadKnowledgeDocument(payload: KnowledgeUploadPayload) {
+    const formData = new FormData();
+    formData.append('file', payload.file);
+    formData.append('title', payload.title);
+    formData.append('source', payload.source);
+    formData.append('category', payload.category);
+    formData.append('tags', payload.tags.join(','));
+
+    if (payload.author) {
+      formData.append('author', payload.author);
+    }
+    if (payload.summary) {
+      formData.append('summary', payload.summary);
+    }
+    if (payload.language) {
+      formData.append('language', payload.language);
+    }
+    if (payload.version) {
+      formData.append('version', payload.version);
+    }
+    if (payload.external_id) {
+      formData.append('external_id', payload.external_id);
+    }
+    if (payload.effective_at) {
+      formData.append('effective_at', payload.effective_at);
+    }
+
+    return requestAgent<KnowledgeUploadResponse>('/knowledge/documents/upload', {
+      method: 'POST',
+      body: formData,
+    });
+  },
+
+  async deleteKnowledgeDocument(docId: string) {
+    return requestAgent<KnowledgeDeleteResponse>(`/knowledge/documents/${encodeURIComponent(docId)}`, {
+      method: 'DELETE',
+    });
+  },
+
+  async reindexKnowledge(recreate = true) {
+    return requestAgent<KnowledgeReindexResponse>('/knowledge/reindex', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ recreate }),
+    });
+  },
+
+  async debugKnowledgeSearch(payload: KnowledgeSearchDebugRequest) {
+    return requestAgent<KnowledgeSearchDebugPayload>('/knowledge/search/debug', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
   },
 };
