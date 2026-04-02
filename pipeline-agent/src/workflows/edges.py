@@ -1,4 +1,4 @@
-﻿"""Conditional edges for plan-and-execute workflow."""
+"""Conditional edges for plan-and-execute workflow."""
 
 from __future__ import annotations
 
@@ -14,7 +14,6 @@ def route_to_agent(
     "calc_agent",
     "knowledge_agent",
     "graph_agent",
-    "report_agent",
     "synthesizer",
 ]:
     """Route executor to target agent for current step."""
@@ -36,8 +35,6 @@ def route_to_agent(
         return "knowledge_agent"
     if agent == "graph_agent":
         return "graph_agent"
-    if agent == "report_agent":
-        return "report_agent"
 
     return "synthesizer"
 
@@ -70,7 +67,6 @@ def route_after_reflexion(state: AgentState) -> Literal["executor", "planner", "
     if index >= len(plan):
         return "synthesizer"
 
-    # Steps remaining to execute
     return "executor"
 
 

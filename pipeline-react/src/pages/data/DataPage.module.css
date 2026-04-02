@@ -13,19 +13,14 @@
   margin: 0 auto;
 }
 
-.hero {
-  position: relative;
-  overflow: hidden;
-  margin-bottom: var(--space-6);
-  padding: clamp(24px, 4vw, 36px);
-  border: 1px solid var(--hero-outline, rgba(59, 130, 246, 0.16));
-  border-radius: 30px;
-  background: linear-gradient(
-    135deg,
-    var(--hero-bg-start, #eff6ff) 0%,
-    var(--hero-bg-end, #ffffff) 100%
-  );
-  box-shadow: 0 24px 70px -34px rgba(15, 23, 42, 0.42);
+:global([data-sider-collapsed='true']) .pageContent {
+  max-width: none;
+}
+
+/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺? * 2. 椤甸潰澶撮儴
+ * 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?*/
+.header {
+  margin-bottom: var(--space-8);
 }
 
 .hero::before {

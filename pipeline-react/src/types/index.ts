@@ -16,26 +16,6 @@ export interface PageResult<T> {
   pageSize: number;
 }
 
-export interface AnalysisReport {
-  id: number;
-  proId?: number;
-  pipelineId?: number;
-  reportNo?: string;
-  reportType?: string;
-  reportTitle?: string;
-  reportSummary?: string;
-  fileName?: string;
-  filePath?: string;
-  fileFormat?: string;
-  fileSize?: number;
-  historyIds?: string;
-  status?: number;
-  errorMsg?: string;
-  createBy?: string;
-  createTime?: string;
-  updateTime?: string;
-}
-
 export interface CalculationHistory {
   id: number;
   calcType?: string;
@@ -120,6 +100,47 @@ export interface OilProperty {
   name: string;
   density: number;
   viscosity: number;
+  createTime?: string;
+  updateTime?: string;
+}
+
+export interface KnowledgeDocument {
+  id: number;
+  title: string;
+  category?: string;
+  sourceType?: string;
+  tags?: string;
+  remark?: string;
+  fileName: string;
+  fileExtension?: string;
+  fileSize?: number;
+  fileHash?: string;
+  storageType?: string;
+  storageBucket?: string;
+  storageObjectKey?: string;
+  agentDocId?: string;
+  chunkCount?: number;
+  retryCount?: number;
+  status: string;
+  failureReason?: string;
+  lastIngestTime?: string;
+  createBy?: string;
+  createTime?: string;
+  updateTime?: string;
+}
+
+export interface KnowledgeIngestTask {
+  id: number;
+  documentId: number;
+  taskType: string;
+  attemptNo?: number;
+  status: string;
+  agentDocId?: string;
+  chunkCount?: number;
+  failureReason?: string;
+  createBy?: string;
+  startedAt?: string;
+  finishedAt?: string;
   createTime?: string;
   updateTime?: string;
 }
@@ -249,47 +270,6 @@ export interface SensitivityRanking {
   variableName: string;
   sensitivityCoefficient: number;
   description: string;
-}
-
-export interface KnowledgeDocument {
-  id: number;
-  title: string;
-  category: string;
-  sourceType?: string;
-  tags?: string;
-  remark?: string;
-  fileName: string;
-  fileExtension?: string;
-  fileSize?: number;
-  fileHash?: string;
-  storageType?: string;
-  storageBucket?: string;
-  storageObjectKey?: string;
-  agentDocId?: string;
-  chunkCount?: number;
-  retryCount?: number;
-  status: string;
-  failureReason?: string;
-  lastIngestTime?: string;
-  createBy?: string;
-  createTime?: string;
-  updateTime?: string;
-}
-
-export interface KnowledgeIngestTask {
-  id: number;
-  documentId: number;
-  taskType: string;
-  attemptNo?: number;
-  status: string;
-  agentDocId?: string;
-  chunkCount?: number;
-  failureReason?: string;
-  createBy?: string;
-  startedAt?: string;
-  finishedAt?: string;
-  createTime?: string;
-  updateTime?: string;
 }
 
 export * from './agent';

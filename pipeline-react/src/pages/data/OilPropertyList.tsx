@@ -1,50 +1,47 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+/**
+ * OilPropertyList - 油品特性管理页面
+ */
+
+import { useEffect, useMemo, useState } from 'react';
 import {
-  BgColorsOutlined,
-  DashboardOutlined,
+  Button,
+  Card,
+  Col,
+  Form,
+  Input,
+  InputNumber,
+  Modal,
+  Popconfirm,
+  Row,
+  Space,
+  Tooltip,
+  message,
+} from 'antd';
+import {
   DeleteOutlined,
   EditOutlined,
-  ExperimentOutlined,
   PlusOutlined,
   ReloadOutlined,
   SearchOutlined,
 } from '@ant-design/icons';
-import { Button, Card, Col, Form, Input, InputNumber, Modal, Popconfirm, Row, Tooltip, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import type { OilProperty } from '../../types';
 import { oilPropertyApi } from '../../api';
+import type { OilProperty } from '../../types';
 import AnimatedPage from '../../components/common/AnimatedPage';
 import ResponsiveTable from '../../components/common/ResponsiveTable';
 import styles from './DataPage.module.css';
-
-const heroStyle = {
-  '--hero-bg-start': '#fff7ed',
-  '--hero-bg-end': '#f8fafc',
-  '--hero-outline': 'rgba(217, 119, 6, 0.18)',
-  '--hero-glow': 'rgba(217, 119, 6, 0.22)',
-  '--hero-accent': '#b45309',
-  '--hero-icon-bg': 'rgba(217, 119, 6, 0.12)',
-} as CSSProperties;
-
-function formatNumber(value?: number | null, digits = 0) {
-  if (value == null || Number.isNaN(value)) {
-    return '--';
-  }
-  return value.toFixed(digits);
-}
 
 function nowrapTitle(text: string) {
   return <span style={{ whiteSpace: 'nowrap' }}>{text}</span>;
 }
 
-function getDensityMeta(density: number) {
-  if (density < 850) {
-    return { label: '轻质', color: 'var(--semantic-success)', background: 'var(--semantic-success-bg)' };
+function formatViscosity(value: number) {
+  if (!Number.isFinite(value)) {
+    return '-';
   }
-  if (density < 900) {
-    return { label: '中质', color: 'var(--accent-primary-active)', background: 'var(--accent-primary-light)' };
-  }
-  return { label: '重质', color: 'var(--semantic-warning-text)', background: 'var(--semantic-warning-bg)' };
+
+  const normalized = value.toFixed(6).replace(/0+$/, '').replace(/\.$/, '');
+  return normalized || '0';
 }
 
 export default function OilPropertyList() {
@@ -62,8 +59,8 @@ export default function OilPropertyList() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const res = await oilPropertyApi.list();
-      setData(res.data || []);
+      const response = await oilPropertyApi.list();
+      setData(Array.isArray(response.data) ? response.data : []);
     } catch {
       setData([]);
       message.error('加载油品数据失败');
@@ -87,10 +84,10 @@ export default function OilPropertyList() {
   const handleDelete = async (id: number) => {
     try {
       await oilPropertyApi.delete([id]);
-      message.success('油品已删除');
+      message.success('删除成功');
       await fetchData();
     } catch {
-      message.error('删除失败，请稍后重试');
+      message.error('删除失败');
     }
   };
 
@@ -99,15 +96,15 @@ export default function OilPropertyList() {
       const values = await form.validateFields();
       if (editingItem) {
         await oilPropertyApi.update({ ...editingItem, ...values });
-        message.success('油品已更新');
+        message.success('修改成功');
       } else {
         await oilPropertyApi.create(values);
-        message.success('油品已添加');
+        message.success('新增成功');
       }
       setModalVisible(false);
       await fetchData();
     } catch {
-      message.error('保存失败，请检查表单内容');
+      message.error('操作失败');
     }
   };
 
@@ -117,63 +114,60 @@ export default function OilPropertyList() {
       return data;
     }
 
-    return data.filter((item) =>
-      [item.name, item.density, item.viscosity]
-        .some((value) => String(value ?? '').toLowerCase().includes(keyword)),
-    );
+    return data.filter((item) => String(item.name ?? '').toLowerCase().includes(keyword));
   }, [data, searchText]);
 
-  const averageDensity = useMemo(() => {
-    if (!data.length) {
-      return 0;
-    }
-    return data.reduce((sum, item) => sum + (item.density || 0), 0) / data.length;
-  }, [data]);
-
-  const maxViscosity = useMemo(
-    () => data.reduce((max, item) => Math.max(max, item.viscosity || 0), 0),
-    [data],
-  );
-
-  const lightOilCount = useMemo(
-    () => data.filter((item) => item.density < 850).length,
-    [data],
-  );
+  const getDensityClass = (density: number) => {
+    if (density < 850) return { label: '轻质', color: 'var(--semantic-success)' };
+    if (density < 900) return { label: '中质', color: 'var(--accent-primary)' };
+    return { label: '重质', color: 'var(--semantic-warning)' };
+  };
 
   const columns: ColumnsType<OilProperty> = [
     {
-      title: nowrapTitle('ID'),
+      title: nowrapTitle('编号'),
       dataIndex: 'id',
-      width: 90,
+      width: 88,
       align: 'center',
     },
     {
       title: nowrapTitle('油品名称'),
       dataIndex: 'name',
-      width: 220,
+      width: 340,
       align: 'center',
-      render: (text: string) => <span className={styles.valueAccent}>{text}</span>,
+      render: (text: string) => (
+        <span
+          style={{
+            fontWeight: 600,
+            color: 'var(--text-primary)',
+            whiteSpace: 'nowrap',
+            letterSpacing: '0.01em',
+          }}
+        >
+          {text}
+        </span>
+      ),
     },
     {
-      title: nowrapTitle('密度 (kg/m3)'),
+      title: nowrapTitle('密度(kg/m3)'),
       dataIndex: 'density',
-      width: 220,
+      width: 300,
       align: 'center',
-      render: (value: number) => {
-        const meta = getDensityMeta(value);
+      render: (val: number) => {
+        const cls = getDensityClass(val);
         return (
           <span style={{ whiteSpace: 'nowrap' }}>
-            <span style={{ color: meta.color, fontWeight: 600 }}>{formatNumber(value, 0)}</span>
+            <span style={{ color: cls.color, fontWeight: 600 }}>{val}</span>
             <span
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
-                marginLeft: 8,
+                marginLeft: 10,
                 padding: '4px 10px',
-                borderRadius: 999,
-                background: meta.background,
-                color: meta.color,
-                fontSize: 12,
+                fontSize: 'var(--text-xs)',
+                borderRadius: '999px',
+                background: `color-mix(in srgb, ${cls.color} 12%, white)`,
+                color: cls.color,
                 fontWeight: 600,
               }}
             >
@@ -184,19 +178,29 @@ export default function OilPropertyList() {
       },
     },
     {
-      title: nowrapTitle('运动黏度 (mm2/s)'),
+      title: nowrapTitle('运动粘度(mm2/s)'),
       dataIndex: 'viscosity',
-      width: 180,
+      width: 260,
       align: 'center',
-      render: (value?: number) => <span>{formatNumber(value, 2)}</span>,
+      render: (val: number) => (
+        <span
+          style={{
+            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+            fontVariantNumeric: 'tabular-nums',
+            color: 'var(--text-primary)',
+          }}
+        >
+          {formatViscosity(val)}
+        </span>
+      ),
     },
     {
       title: nowrapTitle('操作'),
       key: 'action',
-      width: 200,
+      width: 180,
       align: 'center',
       render: (_, record) => (
-        <div className={styles.actionGroup}>
+        <Space size="small">
           <Button
             type="text"
             size="small"
@@ -207,10 +211,10 @@ export default function OilPropertyList() {
             编辑
           </Button>
           <Popconfirm
-            title="确认删除这个油品吗？"
-            description="删除后将无法恢复。"
+            title="确定删除吗？"
+            description="此操作不可恢复"
             onConfirm={() => void handleDelete(record.id)}
-            okText="删除"
+            okText="确定"
             cancelText="取消"
             okButtonProps={{ danger: true }}
           >
@@ -219,12 +223,12 @@ export default function OilPropertyList() {
               size="small"
               danger
               icon={<DeleteOutlined />}
-              className={`${styles.actionBtn} ${styles.actionBtnDanger}`}
+              className={styles.actionBtn}
             >
               删除
             </Button>
           </Popconfirm>
-        </div>
+        </Space>
       ),
     },
   ];
@@ -232,99 +236,35 @@ export default function OilPropertyList() {
   return (
     <AnimatedPage className={styles.page}>
       <div className={styles.pageContent}>
-        <section className={styles.hero} style={heroStyle}>
-          <div className={styles.heroGrid}>
+        <header className={styles.header}>
+          <div className={styles.headerTop}>
             <div className={styles.headerInfo}>
-              <span className={styles.eyebrow}>Data Entry / Oil Profiles</span>
-              <h1 className={styles.title}>油品物性录入</h1>
-              <p className={styles.subtitle}>
-                集中维护油品密度与黏度，让分析计算、监测诊断和知识解释都能共用统一物性基线。
-              </p>
-              <div className={styles.heroChips}>
-                <span className={styles.heroChip}>密度分级会自动高亮，录入时更容易发现异常</span>
-                <span className={styles.heroChip}>弹窗字段更聚焦，不再像默认后台表单</span>
-                <span className={styles.heroChip}>搜索支持名称、密度和黏度，排查更快</span>
-              </div>
+              <h1 className={styles.title}>油品特性</h1>
+              <p className={styles.subtitle}>管理油品物性参数，突出名称、密度与运动粘度等核心指标。</p>
             </div>
             <div className={styles.headerActions}>
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={handleAdd}
-                className={styles.primaryButton}
-              >
+              <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd} size="middle">
                 新增油品
               </Button>
             </div>
           </div>
-
-          <div className={styles.heroStats}>
-            <div className={styles.statCard}>
-              <div className={styles.statTop}>
-                <span className={styles.statLabel}>油品总数</span>
-                <span className={styles.statIcon}>
-                  <ExperimentOutlined />
-                </span>
-              </div>
-              <div className={styles.statValue}>{data.length}</div>
-              <div className={styles.statHint}>同一套物性数据会被多个分析模块重复使用。</div>
-            </div>
-
-            <div className={styles.statCard}>
-              <div className={styles.statTop}>
-                <span className={styles.statLabel}>平均密度</span>
-                <span className={styles.statIcon}>
-                  <DashboardOutlined />
-                </span>
-              </div>
-              <div className={styles.statValue}>{formatNumber(averageDensity, 0)}</div>
-              <div className={styles.statHint}>当前已录入轻质油品 {lightOilCount} 个。</div>
-            </div>
-
-            <div className={styles.statCard}>
-              <div className={styles.statTop}>
-                <span className={styles.statLabel}>最高黏度</span>
-                <span className={styles.statIcon}>
-                  <BgColorsOutlined />
-                </span>
-              </div>
-              <div className={styles.statValue}>{formatNumber(maxViscosity, 2)}</div>
-              <div className={styles.statHint}>用于快速观察目前录入油品的黏度跨度。</div>
-            </div>
-          </div>
-        </section>
+        </header>
 
         <Card className={styles.tableCard} bordered={false}>
-          <div className={styles.tableHeader}>
-            <div className={styles.tableTitleGroup}>
-              <div className={styles.tableEyebrow}>油品物性表</div>
-              <h2 className={styles.tableTitle}>基础物性总览</h2>
-              <p className={styles.tableMeta}>如果不同季节或批次差异较大，建议按油品档案拆分录入。</p>
-            </div>
-            <span className={styles.summaryPill}>
-              已显示 {filteredData.length} / {data.length} 个油品
-            </span>
-          </div>
-
           <div className={styles.toolbar}>
             <div className={styles.toolbarLeft}>
               <Input
-                placeholder="搜索油品名称、密度或黏度"
+                placeholder="搜索油品名称..."
                 prefix={<SearchOutlined style={{ color: 'var(--text-muted)' }} />}
                 value={searchText}
-                onChange={(event) => setSearchText(event.target.value)}
+                onChange={(e) => setSearchText(e.target.value)}
                 className={styles.searchInput}
                 allowClear
               />
             </div>
             <div className={styles.toolbarRight}>
-              <Tooltip title="刷新油品数据">
-                <Button
-                  icon={<ReloadOutlined />}
-                  onClick={() => void fetchData()}
-                  loading={loading}
-                  className={styles.toolbarButton}
-                />
+              <Tooltip title="刷新数据">
+                <Button icon={<ReloadOutlined />} onClick={() => void fetchData()} loading={loading} />
               </Tooltip>
             </div>
           </div>
@@ -334,69 +274,76 @@ export default function OilPropertyList() {
             dataSource={filteredData}
             rowKey="id"
             loading={loading}
-            scroll={{ x: 920 }}
+            scroll={{ x: 1168 }}
             pagination={{
               pageSize: 10,
               showSizeChanger: true,
               showQuickJumper: true,
               showTotal: (total) => `共 ${total} 条记录`,
+              className: styles.paginationElegant,
             }}
             cardRender={(record) => {
-              const meta = getDensityMeta(record.density);
+              const cls = getDensityClass(record.density);
+
               return (
-                <div className={styles.mobileCard}>
-                  <div className={styles.mobileCardTop}>
-                    <div>
-                      <div className={styles.mobileCardTitle}>{record.name}</div>
-                      <div className={styles.mobileCardMeta}>用于计算与监测的基础物性档案</div>
-                    </div>
-                    <span
-                      className={styles.mobileCardBadge}
-                      style={{ background: meta.background, color: meta.color }}
-                    >
-                      {meta.label}
-                    </span>
+                <div
+                  style={{
+                    padding: 'var(--space-4)',
+                    background: 'var(--bg-elevated)',
+                    border: '1px solid var(--border-subtle)',
+                    borderRadius: 'var(--radius-lg)',
+                  }}
+                >
+                  <div
+                    style={{
+                      fontWeight: 600,
+                      color: 'var(--text-primary)',
+                      fontSize: 15,
+                      marginBottom: 12,
+                    }}
+                  >
+                    {record.name}
                   </div>
-
-                  <div className={styles.mobileCardGrid}>
-                    <div className={styles.mobileField}>
-                      <div className={styles.mobileLabel}>密度</div>
-                      <div className={styles.mobileValue}>{formatNumber(record.density, 0)} kg/m3</div>
-                    </div>
-                    <div className={styles.mobileField}>
-                      <div className={styles.mobileLabel}>运动黏度</div>
-                      <div className={styles.mobileValue}>{formatNumber(record.viscosity, 2)} mm2/s</div>
-                    </div>
-                  </div>
-
-                  <div className={styles.mobileActions}>
-                    <Button
-                      type="text"
-                      size="small"
-                      icon={<EditOutlined />}
-                      onClick={() => handleEdit(record)}
-                      className={styles.actionBtn}
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                      gap: 10,
+                    }}
+                  >
+                    <div
+                      style={{
+                        padding: '10px 12px',
+                        background: 'var(--bg-base)',
+                        border: '1px solid var(--border-subtle)',
+                        borderRadius: 'var(--radius-md)',
+                      }}
                     >
-                      编辑
-                    </Button>
-                    <Popconfirm
-                      title="确认删除这个油品吗？"
-                      description="删除后将无法恢复。"
-                      onConfirm={() => void handleDelete(record.id)}
-                      okText="删除"
-                      cancelText="取消"
-                      okButtonProps={{ danger: true }}
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>密度</div>
+                      <div style={{ color: cls.color, fontWeight: 600 }}>
+                        {record.density} <span style={{ fontWeight: 500 }}>{cls.label}</span>
+                      </div>
+                    </div>
+                    <div
+                      style={{
+                        padding: '10px 12px',
+                        background: 'var(--bg-base)',
+                        border: '1px solid var(--border-subtle)',
+                        borderRadius: 'var(--radius-md)',
+                      }}
                     >
-                      <Button
-                        type="text"
-                        size="small"
-                        danger
-                        icon={<DeleteOutlined />}
-                        className={`${styles.actionBtn} ${styles.actionBtnDanger}`}
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>运动粘度</div>
+                      <div
+                        style={{
+                          color: 'var(--text-primary)',
+                          fontWeight: 600,
+                          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                          fontVariantNumeric: 'tabular-nums',
+                        }}
                       >
-                        删除
-                      </Button>
-                    </Popconfirm>
+                        {formatViscosity(record.viscosity)}
+                      </div>
+                    </div>
                   </div>
                 </div>
               );
@@ -405,14 +352,7 @@ export default function OilPropertyList() {
         </Card>
 
         <Modal
-          title={
-            <div className={styles.modalTitleBlock}>
-              <span className={styles.modalTitle}>{editingItem ? '编辑油品物性' : '新增油品'}</span>
-              <span className={styles.modalSubtitle}>
-                密度和黏度是分析链路里最常被复用的两个基础字段，建议录入时统一单位口径。
-              </span>
-            </div>
-          }
+          title={editingItem ? '编辑油品' : '新增油品'}
           open={modalVisible}
           onOk={() => void handleSubmit()}
           onCancel={() => setModalVisible(false)}
@@ -420,26 +360,22 @@ export default function OilPropertyList() {
           className={styles.modal}
           okText="保存"
           cancelText="取消"
-          width={560}
+          width={520}
         >
-          <div className={styles.formIntro}>
-            如果同一种油品在不同温度区间物性差异明显，建议拆分成多个档案，避免后续计算混用。
-          </div>
-
           <Form form={form} layout="vertical">
             <Form.Item
               name="name"
               label="油品名称"
               rules={[{ required: true, message: '请输入油品名称' }]}
             >
-              <Input placeholder="例如：大庆原油" />
+              <Input placeholder="请输入油品名称" />
             </Form.Item>
 
             <Row gutter={16}>
               <Col span={12}>
                 <Form.Item
                   name="density"
-                  label="密度 (kg/m3)"
+                  label="密度(kg/m3)"
                   rules={[{ required: true, message: '请输入密度' }]}
                 >
                   <InputNumber min={0} style={{ width: '100%' }} placeholder="0" />
@@ -448,10 +384,10 @@ export default function OilPropertyList() {
               <Col span={12}>
                 <Form.Item
                   name="viscosity"
-                  label="运动黏度 (mm2/s)"
-                  rules={[{ required: true, message: '请输入运动黏度' }]}
+                  label="运动粘度(mm2/s)"
+                  rules={[{ required: true, message: '请输入粘度' }]}
                 >
-                  <InputNumber min={0} precision={2} style={{ width: '100%' }} placeholder="0.00" />
+                  <InputNumber min={0} precision={6} style={{ width: '100%' }} placeholder="0.000000" />
                 </Form.Item>
               </Col>
             </Row>

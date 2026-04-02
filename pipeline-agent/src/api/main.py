@@ -12,13 +12,11 @@ from src.utils import logger
 
 from .middleware.auth import AuthMiddleware
 from .middleware.logging import LoggingMiddleware
-from .routes import chat, chat_v2, graph_query, health, knowledge, mcp_v2, report, trace
+from .routes import health, chat, chat_v2, mcp_v2, knowledge, trace, graph_query
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Manage application startup and shutdown lifecycle."""
-
     logger.info("Starting %s v%s", settings.APP_NAME, settings.APP_VERSION)
     logger.info("Debug mode: %s", settings.DEBUG)
 
@@ -85,11 +83,7 @@ async def lifespan(app: FastAPI):
             total_tools += len(tool_defs)
             logger.info("MCP server ready: %s, tools=%s", server_name, len(tool_defs))
 
-        logger.info(
-            "MCP hub initialized: servers=%s, total_tools=%s",
-            mcp_hub.server_names(),
-            total_tools,
-        )
+        logger.info("MCP hub initialized: servers=%s, total_tools=%s", mcp_hub.server_names(), total_tools)
     except Exception as exc:  # noqa: BLE001
         logger.warning("MCP hub initialization failed (non-fatal): %s", exc)
 
@@ -106,7 +100,7 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
-    """Create and configure the FastAPI app."""
+    """Create configured FastAPI application."""
 
     app = FastAPI(
         title=settings.APP_NAME,
@@ -134,7 +128,6 @@ def create_app() -> FastAPI:
     app.include_router(chat.router, prefix="/api/v1")
     app.include_router(knowledge.router, prefix="/api/v1")
     app.include_router(trace.router, prefix="/api/v1")
-    app.include_router(report.router, prefix="/api/v1")
     app.include_router(graph_query.router, prefix="/api/v1")
     app.include_router(chat_v2.router, prefix="/api/v2")
     app.include_router(mcp_v2.router, prefix="/api/v2")

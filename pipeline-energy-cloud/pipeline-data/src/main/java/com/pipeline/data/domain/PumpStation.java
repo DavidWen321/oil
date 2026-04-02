@@ -1,6 +1,10 @@
 package com.pipeline.data.domain;
 
-import com.baomidou.mybatisplus.annotation.*;
+import com.baomidou.mybatisplus.annotation.FieldFill;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -32,7 +36,7 @@ public class PumpStation implements Serializable {
     private BigDecimal pumpEfficiency;
 
     /**
-     * 电机效率(%)
+     * 电效率(%)
      */
     private BigDecimal electricEfficiency;
 
@@ -42,7 +46,7 @@ public class PumpStation implements Serializable {
     private BigDecimal displacement;
 
     /**
-     * 进站压力/功率
+     * 来压/进站压力
      */
     private BigDecimal comePower;
 

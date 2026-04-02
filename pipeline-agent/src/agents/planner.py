@@ -165,7 +165,6 @@ class PlannerAgent:
             "calc_agent",
             "knowledge_agent",
             "graph_agent",
-            "report_agent",
         }
         if value in valid:
             return value
@@ -175,8 +174,6 @@ class PlannerAgent:
             return "calc_agent"
         if "graph" in value:
             return "graph_agent"
-        if "report" in value:
-            return "report_agent"
         return "knowledge_agent"
 
     @staticmethod
@@ -226,7 +223,6 @@ class PlannerAgent:
 
         need_data = any(k in text for k in ["项目", "管道", "泵站", "参数", "数据"])
         need_calc = any(k in text for k in ["计算", "优化", "压力", "流量", "雷诺", "摩阻"])
-        need_report = any(k in text for k in ["报告", "汇总", "导出"])
         need_graph = any(k in text for k in ["因果", "知识图谱", "关系"])
 
         step_num = 1
@@ -277,17 +273,6 @@ class PlannerAgent:
                 }
             )
             step_num += 1
-
-        if need_report:
-            plan.append(
-                {
-                    "step_number": step_num,
-                    "description": "生成报告结构并输出结论",
-                    "agent": "report_agent",
-                    "expected_output": "结构化报告摘要",
-                    "depends_on": [step_num - 1] if step_num > 1 else [],
-                }
-            )
 
         action = "replan" if replan else "plan"
         return {
