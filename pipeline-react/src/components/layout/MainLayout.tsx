@@ -1,8 +1,3 @@
-/**
- * Main Layout Component
- * Design: Apple HIG + Linear + Stripe Light Theme
- */
-
 import { useCallback, useEffect, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Avatar, Button, Dropdown, Layout, Menu } from 'antd';
@@ -65,18 +60,13 @@ const menuItems: MenuProps['items'] = [
     ],
   },
   {
-    key: '/report',
-    icon: <BarChartOutlined />,
-    label: '报告中心',
-  },
-  {
     key: 'ai',
     icon: <RobotOutlined />,
     label: '智能助手',
     children: [
       { key: '/ai/chat', icon: <DeploymentUnitOutlined />, label: '智能对话' },
-      { key: '/ai/trace', icon: <BookOutlined />, label: '知识库录入' },
       { key: '/ai/report', icon: <BarChartOutlined />, label: '智能报告' },
+      { key: '/ai/trace', icon: <BookOutlined />, label: '知识库录入' },
     ],
   },
 ];
@@ -223,7 +213,10 @@ export default function MainLayout() {
   ];
 
   return (
-    <Layout className={styles.layout}>
+    <Layout
+      className={styles.layout}
+      data-sider-collapsed={!isMobile && siderCollapsed ? 'true' : 'false'}
+    >
       {isMobile && (
         <div
           className={`${styles.overlay} ${mobileMenuOpen ? styles.visible : ''}`}

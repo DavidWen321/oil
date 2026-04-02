@@ -16,7 +16,6 @@ from src.agents import (
     get_knowledge_agent,
     get_planner,
     get_reflexion_agent,
-    get_report_agent,
     get_supervisor,
 )
 from src.models.state import AgentState, PlanStep, ReflexionMemory
@@ -187,41 +186,6 @@ def graph_agent_node(state: AgentState) -> Dict[str, Any]:
         state=state,
         agent_name="graph_agent",
         execute=lambda desc, _state: get_graph_agent().execute(desc),
-    )
-
-
-def report_agent_node(state: AgentState) -> Dict[str, Any]:
-    """Execute current step using report agent."""
-
-    def _execute(desc: str, current_state: AgentState) -> dict:
-        report_agent = get_report_agent()
-        outline = report_agent.generate_outline(
-            user_request=desc,
-            available_data={
-                "pipeline_data": current_state.get("pipeline_data"),
-                "calc": current_state.get("calculation_result"),
-                "knowledge": current_state.get("knowledge_context"),
-            },
-        )
-
-        sections = []
-        for section in outline.get("sections", []):
-            title = section.get("title", "章节")
-            sections.append(
-                report_agent.generate_section(
-                    section_title=title,
-                    data=current_state.get("pipeline_data") or {},
-                    calc_results=current_state.get("calculation_result") or {},
-                    standards=str(current_state.get("knowledge_context") or ""),
-                )
-            )
-
-        return report_agent.generate_full_report(outline=outline, section_results=sections)
-
-    return _run_step_with_agent(
-        state=state,
-        agent_name="report_agent",
-        execute=_execute,
     )
 
 
@@ -601,8 +565,6 @@ def _run_step_with_agent(
             update["calculation_result"] = _to_result_data(result)
         elif agent_name == "knowledge_agent":
             update["knowledge_context"] = _to_result_text(result)
-        elif agent_name == "report_agent":
-            update["report_result"] = _to_result_data(result)
 
         return update
 

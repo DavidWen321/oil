@@ -1,7 +1,3 @@
-/**
- * Enhanced Router with Prefetch
- */
-
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import { Spin } from 'antd';
@@ -21,8 +17,6 @@ const HydraulicAnalysis = lazy(() => import('./pages/calculation/HydraulicAnalys
 const Optimization = lazy(() => import('./pages/calculation/Optimization'));
 const SensitivityAnalysis = lazy(() => import('./pages/calculation/SensitivityAnalysis'));
 
-
-const Report = lazy(() => import('./pages/report/Report'));
 const AIChat = lazy(() => import('./pages/ai/AIChat'));
 const ReportPreview = lazy(() => import('./pages/ai/ReportPreview'));
 
@@ -54,6 +48,7 @@ export function prefetchRoute(path: string) {
     '/data/project': () => import('./pages/data/ProjectList'),
     '/calculation/hydraulic': () => import('./pages/calculation/HydraulicAnalysis'),
     '/ai/chat': () => import('./pages/ai/AIChat'),
+    '/ai/report': () => import('./pages/ai/ReportPreview'),
     '/ai/trace': () => import('./pages/data/KnowledgeBase'),
   };
 
@@ -155,14 +150,6 @@ export const router = createBrowserRouter([
         ),
       },
       {
-        path: 'report',
-        element: (
-          <Suspense fallback={<Loading />}>
-            <Report />
-          </Suspense>
-        ),
-      },
-      {
         path: 'ai/chat',
         element: (
           <Suspense fallback={<Loading />}>
@@ -171,18 +158,18 @@ export const router = createBrowserRouter([
         ),
       },
       {
-        path: 'ai/trace',
-        element: (
-          <Suspense fallback={<Loading />}>
-            <KnowledgeBase />
-          </Suspense>
-        ),
-      },
-      {
         path: 'ai/report',
         element: (
           <Suspense fallback={<Loading />}>
             <ReportPreview />
+          </Suspense>
+        ),
+      },
+      {
+        path: 'ai/trace',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <KnowledgeBase />
           </Suspense>
         ),
       },

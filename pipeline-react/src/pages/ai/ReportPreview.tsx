@@ -1,389 +1,2217 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import dayjs, { type Dayjs } from 'dayjs';
+import { Alert, Button, DatePicker, Empty, Modal, Popconfirm, Select, Space, Spin, Switch, Tag, message } from 'antd';
 import {
-  Button,
-  Card,
-  Empty,
-  Space,
-  Spin,
-  Table,
-  Tag,
-  Typography,
-  message,
-} from 'antd';
-import { ReloadOutlined } from '@ant-design/icons';
-import { projectApi, reportApi } from '../../api';
-import type { AnalysisReport, Project } from '../../types';
+  DeleteOutlined,
+  DownloadOutlined,
+  FileSearchOutlined,
+  FileTextOutlined,
+  ReloadOutlined,
+  RobotOutlined,
+  SaveOutlined,
+} from '@ant-design/icons';
+import { calculationHistoryApi, pipelineApi, projectApi, pumpStationApi } from '../../api';
+import { agentApi } from '../../api/agent';
 import AnimatedPage from '../../components/common/AnimatedPage';
+import type { CalculationHistory, PageResult, Pipeline, Project, PumpStation, R } from '../../types';
 
-const { Paragraph } = Typography;
+const { RangePicker } = DatePicker;
 
-const TEXT = {
-  pageTitle: '报告预览',
-  pageDescription: '从数据库读取项目信息和历史生成报告，支持按勾选项目筛选。',
-  projectTitle: '项目勾选',
-  projectDescription: '以下项目编号、项目名称、负责人、创建时间均直接来自数据库。',
-  historyTitle: '历史生成报告',
-  historyDescription: '下方展示数据库中已生成的历史报告，可按上方勾选项目进行筛选。',
-  reload: '刷新数据',
-  selectAll: '全选',
-  clearAll: '清空',
-  selectedCount: '已勾选',
-  selectedUnit: '项',
-  dbTag: '数据库',
-  allReports: '全部历史报告',
-  filteredReports: '按勾选项目筛选',
-  fieldNumber: '项目编号',
-  fieldName: '项目名称',
-  fieldResponsible: '负责人',
-  fieldCreateTime: '创建时间',
-  reportNo: '报告编号',
-  reportTitle: '报告标题',
-  reportType: '报告类型',
-  reportStatus: '状态',
-  projectEmpty: '数据库中暂无项目数据',
-  reportEmpty: '数据库中暂无历史生成报告',
-  reportFilterEmpty: '当前勾选项目暂无历史生成报告',
-  loadProjectFailed: '读取项目数据失败，请稍后重试',
-  loadReportFailed: '读取历史生成报告失败，请稍后重试',
-  statusCompleted: '已完成',
-  statusGenerating: '生成中',
-  statusFailed: '失败',
-  statusUnknown: '未知',
-  typeUnknown: '未分类',
-} as const;
+type ReportType = 'AI_REPORT' | 'RISK_REVIEW' | 'ENERGY_DIAGNOSIS' | 'OPERATION_BRIEF';
+type RangePreset = '7d' | '30d' | '90d' | 'year' | 'all' | 'custom';
+type OutputFormat = 'markdown' | 'docx' | 'pdf';
+type IntelligenceLevel = 'standard' | 'enhanced' | 'expert';
+type HistoryFilter = 'all' | 'ai' | 'normal' | 'completed' | 'running' | 'failed';
+type DateRangeValue = [Dayjs, Dayjs] | null;
+type JsonRecord = Record<string, unknown>;
+type RiskLevel = '高' | '中' | '低';
+type SuggestionPriority = '高' | '中' | '低';
 
-function formatDateTime(value?: string) {
-  if (!value) {
-    return '-';
-  }
+type RiskItem = {
+  target: string;
+  riskType: string;
+  level: RiskLevel;
+  reason: string;
+  suggestion: string;
+};
 
-  return value.replace('T', ' ');
-}
+type SuggestionItem = {
+  target: string;
+  reason: string;
+  action: string;
+  expected: string;
+  priority: SuggestionPriority;
+};
 
-function sortProjects(list: Project[]) {
-  return [...list].sort((left, right) => {
-    const leftTime = new Date(left.createTime || left.buildDate || 0).getTime();
-    const rightTime = new Date(right.createTime || right.buildDate || 0).getTime();
+type ReportResult = {
+  source: 'ai' | 'fallback' | 'history';
+  highlights: string[];
+  summary: string[];
+  risks: RiskItem[];
+  suggestions: SuggestionItem[];
+  conclusion: string;
+  rawText: string;
+};
 
-    if (leftTime !== rightTime) {
-      return rightTime - leftTime;
-    }
+type PreviewRecord = {
+  id: string;
+  title: string;
+  typeLabel: string;
+  createdAt: string;
+  rangeLabel: string;
+  intelligenceLabel: string;
+  projectNames: string[];
+  outputFormat: OutputFormat;
+  sourceLabel: string;
+  result: ReportResult;
+};
 
-    return left.proId - right.proId;
-  });
-}
+type LocalReportRecord = PreviewRecord & { selectedProjectIds: number[] };
 
-function sortReports(list: AnalysisReport[]) {
-  return [...list].sort((left, right) => {
-    const leftTime = new Date(left.createTime || 0).getTime();
-    const rightTime = new Date(right.createTime || 0).getTime();
+type ProjectInsight = {
+  project: Project;
+  pipelineCount: number;
+  totalThroughput: number;
+  historyCount: number;
+  abnormalCount: number;
+  failedCount: number;
+  lowPressureCount: number;
+  infeasibleCount: number;
+  avgFrictionRatio: number | null;
+  avgEnergyIntensity: number | null;
+};
 
-    if (leftTime !== rightTime) {
-      return rightTime - leftTime;
-    }
+type HistoryItem = {
+  id: string;
+  kind: 'ai' | 'normal';
+  status: 'completed' | 'running' | 'failed';
+  title: string;
+  time: string;
+  summary: string;
+  preview?: PreviewRecord | LocalReportRecord;
+};
 
-    return right.id - left.id;
-  });
-}
+const TEMPLATE_KEY = 'pipeline-ai-report-template-v3';
+const HISTORY_KEY = 'pipeline-ai-report-history-v3';
+const COUNT_KEY = 'pipeline-ai-report-count-v3';
 
-function getStatusMeta(status?: number) {
-  if (status === 1) {
-    return { text: TEXT.statusCompleted, color: 'success' as const };
-  }
-
-  if (status === 0) {
-    return { text: TEXT.statusGenerating, color: 'processing' as const };
-  }
-
-  if (status === 2) {
-    return { text: TEXT.statusFailed, color: 'error' as const };
-  }
-
-  return { text: TEXT.statusUnknown, color: 'default' as const };
-}
-
-function getReportTypeText(value?: string) {
-  if (!value) {
-    return TEXT.typeUnknown;
-  }
-
-  const normalized = value.trim().toUpperCase();
-
-  if (normalized === 'DAILY') {
-    return '日报';
-  }
-
-  if (normalized === 'WEEKLY') {
-    return '周报';
-  }
-
-  if (normalized === 'MONTHLY') {
-    return '月报';
-  }
-
-  if (normalized === 'ANNUAL') {
-    return '年报';
-  }
-
-  if (normalized === 'HYDRAULIC') {
-    return '水力分析';
-  }
-
-  if (normalized === 'OPTIMIZATION') {
-    return '泵站优化';
-  }
-
-  if (normalized === 'SENSITIVITY') {
-    return '敏感性分析';
-  }
-
-  return value;
-}
-
-export default function ReportPreview() {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [reports, setReports] = useState<AnalysisReport[]>([]);
-  const [selectedProjectIds, setSelectedProjectIds] = useState<number[]>([]);
-  const [projectLoading, setProjectLoading] = useState(false);
-  const [reportLoading, setReportLoading] = useState(false);
-
-  const loadProjects = async () => {
-    setProjectLoading(true);
-    try {
-      const response = await projectApi.list();
-      const nextProjects = sortProjects(Array.isArray(response.data) ? response.data : []);
-      const availableIds = new Set(nextProjects.map((item) => item.proId));
-
-      setProjects(nextProjects);
-      setSelectedProjectIds((current) => current.filter((id) => availableIds.has(id)));
-    } catch {
-      message.error(TEXT.loadProjectFailed);
-    } finally {
-      setProjectLoading(false);
-    }
-  };
-
-  const loadReports = async () => {
-    setReportLoading(true);
-    try {
-      const response = await reportApi.page({ pageNum: 1, pageSize: 200 });
-      const nextReports = sortReports(Array.isArray(response.data?.list) ? response.data.list : []);
-      setReports(nextReports);
-    } catch {
-      message.error(TEXT.loadReportFailed);
-    } finally {
-      setReportLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void loadProjects();
-    void loadReports();
-  }, []);
-
-  const projectMap = useMemo(() => {
-    return new Map(projects.map((item) => [item.proId, item]));
-  }, [projects]);
-
-  const filteredReports = useMemo(() => {
-    if (selectedProjectIds.length === 0) {
-      return reports;
-    }
-
-    const selectedIdSet = new Set(selectedProjectIds);
-    return reports.filter((item) => item.proId !== undefined && selectedIdSet.has(item.proId));
-  }, [reports, selectedProjectIds]);
-
-  const projectColumns = [
-    {
-      title: TEXT.fieldNumber,
-      dataIndex: 'number',
-      key: 'number',
-      render: (value: string | undefined) => value || '-',
-    },
-    {
-      title: TEXT.fieldName,
-      dataIndex: 'name',
-      key: 'name',
-      render: (value: string | undefined) => value || '-',
-    },
-    {
-      title: TEXT.fieldResponsible,
-      dataIndex: 'responsible',
-      key: 'responsible',
-      render: (value: string | undefined) => value || '-',
-    },
-    {
-      title: TEXT.fieldCreateTime,
-      dataIndex: 'createTime',
-      key: 'createTime',
-      render: (_: unknown, record: Project) => formatDateTime(record.createTime || record.buildDate),
-    },
-  ];
-
-  const reportColumns = [
-    {
-      title: TEXT.fieldNumber,
-      dataIndex: 'proId',
-      key: 'projectNumber',
-      render: (_: unknown, record: AnalysisReport) => projectMap.get(record.proId ?? -1)?.number || '-',
-    },
-    {
-      title: '项目名称',
-      dataIndex: 'projectName',
-      key: 'projectName',
-      render: (_: unknown, record: AnalysisReport) => projectMap.get(record.proId ?? -1)?.name || '-',
-    },
-    {
-      title: TEXT.reportNo,
-      dataIndex: 'reportNo',
-      key: 'reportNo',
-      render: (value: string | undefined) => value || '-',
-    },
-    {
-      title: TEXT.reportTitle,
-      dataIndex: 'reportTitle',
-      key: 'reportTitle',
-      render: (value: string | undefined) => value || '-',
-    },
-    {
-      title: TEXT.reportType,
-      dataIndex: 'reportType',
-      key: 'reportType',
-      render: (value: string | undefined) => getReportTypeText(value),
-    },
-    {
-      title: TEXT.reportStatus,
-      dataIndex: 'status',
-      key: 'status',
-      render: (value: number | undefined) => {
-        const meta = getStatusMeta(value);
-        return <Tag color={meta.color}>{meta.text}</Tag>;
-      },
-    },
-    {
-      title: TEXT.fieldCreateTime,
-      dataIndex: 'createTime',
-      key: 'createTime',
-      render: (value: string | undefined) => formatDateTime(value),
-    },
-  ];
-
-  const toggleProjectSelection = (projectId: number) => {
-    setSelectedProjectIds((current) => {
-      if (current.includes(projectId)) {
-        return current.filter((id) => id !== projectId);
-      }
-
-      return [...current, projectId];
-    });
-  };
-
+function PreviewContent({ preview }: { preview: PreviewRecord | LocalReportRecord }) {
   return (
-    <AnimatedPage>
-      <div className="page-header">
-        <h2>{TEXT.pageTitle}</h2>
-        <p>{TEXT.pageDescription}</p>
+    <div className="grid gap-4 xl:grid-cols-2">
+      <div className="rounded-[24px] border border-white/8 bg-white/5 p-5 xl:col-span-2">
+        <div className="grid gap-3 text-sm text-slate-300 md:grid-cols-2 xl:grid-cols-3">
+          <div className="rounded-2xl border border-white/8 bg-white/5 px-4 py-3">
+            <div className="text-xs uppercase tracking-[0.2em] text-slate-500">生成时间</div>
+            <div className="mt-2 text-sm text-slate-100">{formatTime(preview.createdAt)}</div>
+          </div>
+          <div className="rounded-2xl border border-white/8 bg-white/5 px-4 py-3">
+            <div className="text-xs uppercase tracking-[0.2em] text-slate-500">分析范围</div>
+            <div className="mt-2 text-sm text-slate-100">{preview.rangeLabel}</div>
+          </div>
+          <div className="rounded-2xl border border-white/8 bg-white/5 px-4 py-3">
+            <div className="text-xs uppercase tracking-[0.2em] text-slate-500">智能等级</div>
+            <div className="mt-2 text-sm text-slate-100">{preview.intelligenceLabel}</div>
+          </div>
+          <div className="rounded-2xl border border-white/8 bg-white/5 px-4 py-3">
+            <div className="text-xs uppercase tracking-[0.2em] text-slate-500">报告类型</div>
+            <div className="mt-2 text-sm text-slate-100">{preview.typeLabel}</div>
+          </div>
+          <div className="rounded-2xl border border-white/8 bg-white/5 px-4 py-3">
+            <div className="text-xs uppercase tracking-[0.2em] text-slate-500">输出格式</div>
+            <div className="mt-2 text-sm text-slate-100">{preview.outputFormat.toUpperCase()}</div>
+          </div>
+          <div className="rounded-2xl border border-white/8 bg-white/5 px-4 py-3">
+            <div className="text-xs uppercase tracking-[0.2em] text-slate-500">来源</div>
+            <div className="mt-2 text-sm text-slate-100">{preview.sourceLabel}</div>
+          </div>
+        </div>
+        <div className="mt-3 rounded-2xl border border-white/8 bg-white/5 px-4 py-3 text-sm text-slate-300">
+          <span className="text-slate-400">覆盖项目：</span>
+          {preview.projectNames.length ? preview.projectNames.join('、') : '未选择项目'}
+        </div>
       </div>
 
-      <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-        <Card
-          className="page-card"
-          title={TEXT.projectTitle}
-          extra={
-            <Space size="small" wrap>
-              <Tag color="blue">
-                {TEXT.selectedCount} {selectedProjectIds.length} {TEXT.selectedUnit}
-              </Tag>
-              <Button size="small" icon={<ReloadOutlined />} onClick={() => void loadProjects()}>
-                {TEXT.reload}
-              </Button>
-              <Button
-                size="small"
-                onClick={() => setSelectedProjectIds(projects.map((item) => item.proId))}
-                disabled={projects.length === 0}
-              >
-                {TEXT.selectAll}
-              </Button>
-              <Button
-                size="small"
-                onClick={() => setSelectedProjectIds([])}
-                disabled={selectedProjectIds.length === 0}
-              >
-                {TEXT.clearAll}
-              </Button>
-            </Space>
-          }
-        >
-          <Paragraph type="secondary" style={{ marginBottom: 16 }}>
-            {TEXT.projectDescription}
-          </Paragraph>
+      <div className="rounded-[24px] border border-cyan-300/15 bg-[linear-gradient(135deg,rgba(34,211,238,0.14),rgba(15,23,42,0.92))] p-5 shadow-[0_18px_40px_rgba(8,47,73,0.18)] xl:col-span-2">
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-lg font-semibold text-white">关键发现</div>
+          <div className="text-xs uppercase tracking-[0.2em] text-cyan-100/70">AI Findings</div>
+        </div>
+        {preview.result.highlights.length ? (
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {preview.result.highlights.map((item, index) => (
+              <div key={`${index}-${item}`} className="rounded-[20px] border border-cyan-200/15 bg-slate-950/35 px-4 py-4 backdrop-blur">
+                <div className="text-xs uppercase tracking-[0.2em] text-cyan-100/70">发现 {String(index + 1).padStart(2, '0')}</div>
+                <div className="mt-3 text-sm leading-7 text-slate-100">{item}</div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-4 text-sm text-slate-400">暂无关键发现</div>
+        )}
+      </div>
 
-          {projectLoading ? (
-            <div style={{ display: 'flex', justifyContent: 'center', padding: '72px 0' }}>
-              <Spin />
+      <div className="rounded-[24px] border border-white/8 bg-white/5 p-5 xl:col-span-2">
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-lg font-semibold text-white">风险对象</div>
+          <div className="text-xs uppercase tracking-[0.2em] text-slate-500">对象 / 类型 / 等级 / 原因 / 建议</div>
+        </div>
+        {preview.result.risks.length ? (
+          <>
+            <div className="mt-4 hidden overflow-x-auto lg:block">
+              <table className="min-w-full divide-y divide-white/10 text-left text-sm">
+                <thead>
+                  <tr className="text-slate-400">
+                    <th className="px-4 py-3 font-medium">风险对象</th>
+                    <th className="px-4 py-3 font-medium">风险类型</th>
+                    <th className="px-4 py-3 font-medium">等级</th>
+                    <th className="px-4 py-3 font-medium">原因</th>
+                    <th className="px-4 py-3 font-medium">建议</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/8">
+                  {preview.result.risks.map((item, index) => (
+                    <tr key={`${item.target}-${item.riskType}-${index}`} className="align-top text-slate-200">
+                      <td className="px-4 py-4 font-medium text-white">{item.target}</td>
+                      <td className="px-4 py-4">{item.riskType}</td>
+                      <td className="px-4 py-4"><Tag color={getRiskLevelColor(item.level)}>{item.level}</Tag></td>
+                      <td className="px-4 py-4 leading-6">{item.reason}</td>
+                      <td className="px-4 py-4 leading-6">{item.suggestion}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          ) : projects.length === 0 ? (
-            <Empty description={TEXT.projectEmpty} style={{ padding: '48px 0 24px' }} />
-          ) : (
-            <Table
-              size="large"
-              rowKey={(record) => String(record.proId)}
-              pagination={false}
-              columns={projectColumns}
-              dataSource={projects}
-              rowSelection={{
-                selectedRowKeys: selectedProjectIds,
-                onChange: (selectedRowKeys) =>
-                  setSelectedProjectIds(selectedRowKeys.map((item) => Number(item))),
-                columnWidth: 56,
-              }}
-              onRow={(record) => ({
-                onClick: () => toggleProjectSelection(record.proId),
-                style: { cursor: 'pointer' },
-              })}
-            />
-          )}
-        </Card>
+            <div className="mt-4 grid gap-3 lg:hidden">
+              {preview.result.risks.map((item, index) => (
+                <div key={`${item.target}-${item.riskType}-${index}`} className="rounded-2xl border border-white/8 bg-white/5 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm text-slate-400">风险对象</div>
+                      <div className="mt-1 text-base font-semibold text-white">{item.target}</div>
+                    </div>
+                    <Tag color={getRiskLevelColor(item.level)}>{item.level}</Tag>
+                  </div>
+                  <div className="mt-3 grid gap-3 text-sm text-slate-300">
+                    <div>
+                      <div className="text-slate-400">风险类型</div>
+                      <div className="mt-1 text-slate-100">{item.riskType}</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-400">原因</div>
+                      <div className="mt-1 leading-6 text-slate-100">{item.reason}</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-400">建议</div>
+                      <div className="mt-1 leading-6 text-slate-100">{item.suggestion}</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <div className="mt-4 text-slate-400">暂无风险对象</div>
+        )}
+      </div>
 
-        <Card
-          className="page-card"
-          title={TEXT.historyTitle}
-          extra={
-            <Space size="small" wrap>
-              <Tag color={selectedProjectIds.length > 0 ? 'blue' : 'default'}>
-                {selectedProjectIds.length > 0 ? TEXT.filteredReports : TEXT.allReports}
-              </Tag>
-              <Button size="small" icon={<ReloadOutlined />} onClick={() => void loadReports()}>
-                {TEXT.reload}
-              </Button>
-            </Space>
-          }
-        >
-          <Paragraph type="secondary" style={{ marginBottom: 16 }}>
-            {TEXT.historyDescription}
-          </Paragraph>
+      <div className="rounded-[24px] border border-white/8 bg-white/5 p-5 xl:col-span-2">
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-lg font-semibold text-white">优化建议</div>
+          <div className="text-xs uppercase tracking-[0.2em] text-slate-500">对象 / 原因 / 措施 / 预期</div>
+        </div>
+        {preview.result.suggestions.length ? (
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            {preview.result.suggestions.map((item, index) => (
+              <div key={`${item.target}-${item.action}-${index}`} className="rounded-2xl border border-white/8 bg-white/5 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm text-slate-400">优化对象</div>
+                    <div className="mt-1 text-base font-semibold text-white">{item.target}</div>
+                  </div>
+                  <Tag color={getSuggestionPriorityColor(item.priority)}>{item.priority}</Tag>
+                </div>
+                <div className="mt-4 grid gap-3 text-sm text-slate-300">
+                  <div>
+                    <div className="text-slate-400">触发原因</div>
+                    <div className="mt-1 leading-6 text-slate-100">{item.reason}</div>
+                  </div>
+                  <div>
+                    <div className="text-slate-400">建议措施</div>
+                    <div className="mt-1 leading-6 text-slate-100">{item.action}</div>
+                  </div>
+                  <div>
+                    <div className="text-slate-400">预期收益</div>
+                    <div className="mt-1 leading-6 text-slate-100">{item.expected}</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-4 text-slate-400">暂无优化建议</div>
+        )}
+      </div>
 
-          <Table
-            size="middle"
-            rowKey={(record) => String(record.id)}
-            loading={reportLoading}
-            pagination={{ pageSize: 10, showSizeChanger: false }}
-            columns={reportColumns}
-            dataSource={filteredReports}
-            locale={{
-              emptyText: (
-                <Empty
-                  description={
-                    selectedProjectIds.length > 0 ? TEXT.reportFilterEmpty : TEXT.reportEmpty
-                  }
-                  style={{ padding: '48px 0 24px' }}
-                />
-              ),
-            }}
-          />
-        </Card>
-      </Space>
+      <div className="rounded-[24px] border border-white/8 bg-white/5 p-5 xl:col-span-2">
+        <div className="text-lg font-semibold text-white">报告摘要</div>
+        <div className="mt-4 space-y-3">
+          {preview.result.summary.length
+            ? preview.result.summary.map((item) => (
+                <div key={item} className="rounded-2xl border border-white/8 bg-white/5 px-4 py-3 text-sm leading-6 text-slate-200">
+                  {item}
+                </div>
+              ))
+            : <div className="text-slate-400">暂无报告摘要</div>}
+        </div>
+      </div>
+
+      <div className="rounded-[24px] border border-white/8 bg-white/5 p-5 xl:col-span-2">
+        <div className="text-lg font-semibold text-white">最终结论</div>
+        <div className="mt-4 rounded-2xl border border-white/8 bg-white/5 px-4 py-4 text-sm leading-7 text-slate-200">
+          {preview.result.conclusion || '暂无结论'}
+        </div>
+      </div>
+
+      {preview.result.rawText ? (
+        <div className="rounded-[24px] border border-white/8 bg-white/5 p-5 xl:col-span-2">
+          <div className="text-lg font-semibold text-white">原始计算数据</div>
+          <pre className="mt-4 overflow-x-auto whitespace-pre-wrap rounded-2xl border border-white/8 bg-slate-950/60 px-4 py-4 text-xs leading-6 text-slate-200">
+            {preview.result.rawText}
+          </pre>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+const REPORT_TYPE_OPTIONS: Array<{ label: string; value: ReportType }> = [
+  { label: '智能分析报告', value: 'AI_REPORT' },
+  { label: '风险复盘报告', value: 'RISK_REVIEW' },
+  { label: '能耗诊断报告', value: 'ENERGY_DIAGNOSIS' },
+  { label: '运行简报', value: 'OPERATION_BRIEF' },
+];
+const RANGE_OPTIONS: Array<{ label: string; value: RangePreset }> = [
+  { label: '最近7天', value: '7d' },
+  { label: '最近30天', value: '30d' },
+  { label: '最近90天', value: '90d' },
+  { label: '本年度', value: 'year' },
+  { label: '全部历史', value: 'all' },
+  { label: '自定义', value: 'custom' },
+];
+const INTELLIGENCE_OPTIONS: Array<{ label: string; value: IntelligenceLevel }> = [
+  { label: '标准', value: 'standard' },
+  { label: '增强', value: 'enhanced' },
+  { label: '专家', value: 'expert' },
+];
+const OUTPUT_OPTIONS: Array<{ label: string; value: OutputFormat }> = [
+  { label: 'Markdown', value: 'markdown' },
+  { label: 'DOCX 模板', value: 'docx' },
+  { label: 'PDF 模板', value: 'pdf' },
+];
+const HISTORY_FILTER_OPTIONS: Array<{ label: string; value: HistoryFilter }> = [
+  { label: '全部报告', value: 'all' },
+  { label: 'AI报告', value: 'ai' },
+  { label: '普通报告', value: 'normal' },
+  { label: '已完成', value: 'completed' },
+  { label: '生成中', value: 'running' },
+  { label: '失败', value: 'failed' },
+];
+
+const CALCULATION_TYPE_LABELS: Record<string, string> = {
+  HYDRAULIC: '水力分析',
+  OPTIMIZATION: '泵站优化',
+  SENSITIVITY: '敏感性分析',
+};
+
+const HISTORY_FIELD_LABELS: Record<string, string> = {
+  flowRate: '流量',
+  density: '密度',
+  viscosity: '粘度',
+  length: '管道长度',
+  diameter: '管径',
+  thickness: '壁厚',
+  roughness: '粗糙度',
+  startAltitude: '起点高程',
+  endAltitude: '终点高程',
+  inletPressure: '首站进站压头',
+  pump480Num: 'ZMI480 数量',
+  pump375Num: 'ZMI375 数量',
+  pump480Head: 'ZMI480 扬程',
+  pump375Head: 'ZMI375 扬程',
+  pumpEfficiency: '泵效率',
+  motorEfficiency: '电机效率',
+  electricityPrice: '电价',
+  workingDays: '工作天数',
+  hydraulicSlope: '水力坡降',
+  frictionHeadLoss: '摩阻损失',
+  totalHead: '总扬程',
+  firstStationOutPressure: '首站出站压头',
+  endStationInPressure: '末站进站压头',
+  reynoldsNumber: '雷诺数',
+  flowRegime: '流态',
+  totalPressureDrop: '总压降',
+  totalEnergyConsumption: '总能耗',
+  totalCost: '总成本',
+  isFeasible: '方案可行性',
+  totalCalculations: '总计算次数',
+  duration: '分析耗时',
+};
+
+const DEFAULT_ANALYSIS_TARGET = '当前分析范围';
+
+function normalizeRiskLevel(value: unknown): RiskLevel {
+  const text = String(value ?? '').trim().toLowerCase();
+  if (!text) return '中';
+  if (text.includes('高') || text.includes('high') || text.includes('critical') || text.includes('严重')) return '高';
+  if (text.includes('低') || text.includes('low')) return '低';
+  return '中';
+}
+
+function getRiskLevelColor(level: RiskLevel) {
+  if (level === '高') return 'red';
+  if (level === '中') return 'gold';
+  return 'blue';
+}
+
+function normalizeSuggestionPriority(value: unknown): SuggestionPriority {
+  const text = String(value ?? '').trim().toLowerCase();
+  if (!text) return '中';
+  if (text.includes('高') || text.includes('high') || text.includes('critical') || text.includes('紧急')) return '高';
+  if (text.includes('低') || text.includes('low')) return '低';
+  return '中';
+}
+
+function getSuggestionPriorityColor(priority: SuggestionPriority) {
+  if (priority === '高') return 'red';
+  if (priority === '中') return 'gold';
+  return 'blue';
+}
+
+function pickFirstString(record: JsonRecord, keys: string[]) {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
+function buildRiskItem(
+  target: string,
+  riskType: string,
+  level: RiskLevel,
+  reason: string,
+  suggestion: string,
+): RiskItem {
+  return {
+    target: target.trim() || DEFAULT_ANALYSIS_TARGET,
+    riskType: riskType.trim() || '风险提示',
+    level,
+    reason: reason.trim() || '需要结合上下文进一步核实。',
+    suggestion: suggestion.trim() || '建议补充现场数据后复核。',
+  };
+}
+
+function buildSuggestionItem(
+  target: string,
+  reason: string,
+  action: string,
+  expected: string,
+  priority: SuggestionPriority = '中',
+): SuggestionItem {
+  return {
+    target: target.trim() || DEFAULT_ANALYSIS_TARGET,
+    reason: reason.trim() || '需要结合上下文补充触发原因。',
+    action: action.trim() || '建议结合当前工况进一步复核。',
+    expected: expected.trim() || '建议补充量化收益或后续跟踪指标。',
+    priority,
+  };
+}
+
+function pickLabelValue(text: string, label: string) {
+  const match = text.match(new RegExp(`${label}[：:]\\s*([^\\n]+)`));
+  return match?.[1]?.trim() ?? '';
+}
+
+function inferSuggestionPriorityFromText(text: string): SuggestionPriority {
+  if (text.includes('高优先级') || text.includes('立即') || text.includes('优先') || text.includes('异常')) return '高';
+  if (text.includes('跟踪') || text.includes('持续')) return '中';
+  return '低';
+}
+
+function inferRiskTypeFromText(text: string) {
+  if (text.includes('压降') || text.includes('摩阻')) return '压降偏高';
+  if (text.includes('效率')) return '效率下降';
+  if (text.includes('能耗') || text.includes('波动')) return '能耗波动';
+  if (text.includes('不可行')) return '方案不可行';
+  if (text.includes('失败') || text.includes('错误')) return '计算失败';
+  if (text.includes('压力') || text.includes('压头')) return '压力异常';
+  return '风险提示';
+}
+
+function inferRiskLevelFromText(text: string): RiskLevel {
+  if (text.includes('不可行') || text.includes('失败') || text.includes('错误') || text.includes('小于等于 0')) return '高';
+  if (text.includes('偏高') || text.includes('下降') || text.includes('波动') || text.includes('异常')) return '中';
+  return '低';
+}
+
+function normalizeRiskItem(value: unknown): RiskItem | null {
+  if (typeof value === 'string') {
+    const text = value.trim();
+    if (!text) return null;
+    return buildRiskItem(DEFAULT_ANALYSIS_TARGET, inferRiskTypeFromText(text), inferRiskLevelFromText(text), text, '建议结合上下文进一步复核。');
+  }
+
+  if (!isRecord(value)) return null;
+
+  const target = pickFirstString(value, ['target', 'object', 'subject', 'name', 'riskObject', '对象', '风险对象']);
+  const riskType = pickFirstString(value, ['riskType', 'type', 'category', 'risk_category', '风险类型']);
+  const reason = pickFirstString(value, ['reason', 'cause', 'description', 'detail', '原因']);
+  const suggestion = pickFirstString(value, ['suggestion', 'advice', 'recommendation', 'action', '建议']);
+  const summaryText = pickFirstString(value, ['summary', 'text', 'message']);
+
+  if (!target && !riskType && !reason && !suggestion && !summaryText) return null;
+
+  const mergedReason = reason || summaryText;
+  return buildRiskItem(
+    target || DEFAULT_ANALYSIS_TARGET,
+    riskType || inferRiskTypeFromText(mergedReason || summaryText),
+    normalizeRiskLevel(value.level ?? value.riskLevel ?? value['等级']),
+    mergedReason || '需要结合上下文进一步核实。',
+    suggestion || '建议结合上下文进一步复核。',
+  );
+}
+
+function normalizeRiskList(value: unknown): RiskItem[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => normalizeRiskItem(item))
+      .filter((item): item is RiskItem => Boolean(item))
+      .slice(0, 6);
+  }
+
+  if (typeof value === 'string') {
+    return toLines(value)
+      .map((item) => normalizeRiskItem(item))
+      .filter((item): item is RiskItem => Boolean(item))
+      .slice(0, 6);
+  }
+
+  return [];
+}
+
+function normalizeSuggestionItem(value: unknown): SuggestionItem | null {
+  if (typeof value === 'string') {
+    const text = value.trim();
+    if (!text) return null;
+    const target = pickLabelValue(text, '对象');
+    const reason = pickLabelValue(text, '原因');
+    const action = pickLabelValue(text, '措施') || pickLabelValue(text, '建议');
+    const expected = pickLabelValue(text, '预期');
+    const priority = pickLabelValue(text, '优先级');
+    return buildSuggestionItem(
+      target || DEFAULT_ANALYSIS_TARGET,
+      reason || '该建议来自旧版文本，建议结合最新数据补充原因说明。',
+      action || text,
+      expected || '建议补充量化收益或执行优先级后落地。',
+      normalizeSuggestionPriority(priority || inferSuggestionPriorityFromText(text)),
+    );
+  }
+
+  if (!isRecord(value)) return null;
+
+  const target = pickFirstString(value, ['target', 'object', 'subject', 'name', '对象']);
+  const reason = pickFirstString(value, ['reason', 'cause', 'why', 'description', 'detail', '原因']);
+  const action = pickFirstString(value, ['action', 'measure', 'step', 'suggestion', 'advice', 'recommendation', '措施', '建议']);
+  const expected = pickFirstString(value, ['expected', 'impact', 'benefit', 'result', 'outcome', '预期']);
+  const summaryText = pickFirstString(value, ['summary', 'text', 'message']);
+
+  if (!target && !reason && !action && !expected && !summaryText) return null;
+
+  return buildSuggestionItem(
+    target || DEFAULT_ANALYSIS_TARGET,
+    reason || summaryText || '建议结合上下文补充触发原因。',
+    action || summaryText || '建议结合当前工况进一步复核。',
+    expected || '建议补充量化收益或后续跟踪指标。',
+    normalizeSuggestionPriority(value.priority ?? value.level ?? value['优先级'] ?? value['等级'] ?? inferSuggestionPriorityFromText(`${reason} ${action} ${summaryText}`)),
+  );
+}
+
+function normalizeSuggestionList(value: unknown): SuggestionItem[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => normalizeSuggestionItem(item))
+      .filter((item): item is SuggestionItem => Boolean(item))
+      .slice(0, 4);
+  }
+
+  if (typeof value === 'string') {
+    const text = value.trim();
+    if (!text) return [];
+    const labeledSuggestion = normalizeSuggestionItem(text);
+    if (
+      labeledSuggestion &&
+      (text.includes('对象：') || text.includes('措施：') || text.includes('原因：') || text.includes('预期：') || text.includes('优先级：'))
+    ) {
+      return [labeledSuggestion];
+    }
+    return toLines(text)
+      .map((item) => normalizeSuggestionItem(item))
+      .filter((item): item is SuggestionItem => Boolean(item))
+      .slice(0, 4);
+  }
+
+  return [];
+}
+
+function normalizePreviewRecord(record: LocalReportRecord): LocalReportRecord {
+  return {
+    ...record,
+    result: {
+      ...record.result,
+      highlights: toLines(record.result.highlights),
+      summary: toLines(record.result.summary),
+      risks: normalizeRiskList(record.result.risks),
+      suggestions: normalizeSuggestionList(record.result.suggestions),
+      conclusion: typeof record.result.conclusion === 'string' ? record.result.conclusion : '',
+      rawText: typeof record.result.rawText === 'string' ? record.result.rawText : '',
+    },
+  };
+}
+
+function normalizeLocalReportRecords(records: LocalReportRecord[]) {
+  return records.map((item) => normalizePreviewRecord(item));
+}
+
+function escapeMarkdownTableCell(value: string) {
+  return value.replace(/\|/g, '\\|').replace(/\r?\n/g, '<br />');
+}
+
+function formatPercent(value: number, digits = 1) {
+  return `${new Intl.NumberFormat('zh-CN', {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  }).format(value * 100)}%`;
+}
+
+function readStorage<T>(key: string, fallback: T): T {
+  if (typeof window === 'undefined') return fallback;
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeStorage(key: string, value: unknown) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(key, JSON.stringify(value));
+}
+
+function formatTime(value?: string) {
+  if (!value) return '-';
+  const parsed = dayjs(value);
+  return parsed.isValid() ? parsed.format('YYYY-MM-DD HH:mm') : value.replace('T', ' ');
+}
+
+function getRangeLabel(preset: RangePreset, customRange: DateRangeValue) {
+  if (preset === 'custom' && customRange) {
+    return `${customRange[0].format('YYYY-MM-DD')} 至 ${customRange[1].format('YYYY-MM-DD')}`;
+  }
+  return RANGE_OPTIONS.find((item) => item.value === preset)?.label ?? '最近30天';
+}
+
+function getComparisonLabel(preset: RangePreset, customRange: DateRangeValue) {
+  if (preset === 'custom' && customRange) {
+    const currentStart = customRange[0].startOf('day');
+    const currentEnd = customRange[1].endOf('day');
+    const days = currentEnd.startOf('day').diff(currentStart.startOf('day'), 'day') + 1;
+    const previousEnd = currentStart.subtract(1, 'day').endOf('day');
+    const previousStart = previousEnd.subtract(days - 1, 'day').startOf('day');
+    return `${currentStart.format('YYYY-MM-DD')} 至 ${currentEnd.format('YYYY-MM-DD')} vs ${previousStart.format('YYYY-MM-DD')} 至 ${previousEnd.format('YYYY-MM-DD')}`;
+  }
+  if (preset === '7d') return '最近7天 vs 前7天';
+  if (preset === '30d') return '最近30天 vs 前30天';
+  if (preset === '90d') return '最近90天 vs 前90天';
+  if (preset === 'year') return '本年度 vs 去年同期';
+  return '全部历史累计（无前置周期）';
+}
+
+function getRangeWindow(preset: RangePreset, customRange: DateRangeValue) {
+  if (preset === 'custom') {
+    return { start: customRange?.[0]?.startOf('day') ?? null, end: customRange?.[1]?.endOf('day') ?? null };
+  }
+  if (preset === 'all') return { start: null, end: null };
+  if (preset === 'year') return { start: dayjs().startOf('year'), end: dayjs().endOf('day') };
+  const days = preset === '7d' ? 7 : preset === '30d' ? 30 : 90;
+  return { start: dayjs().subtract(days - 1, 'day').startOf('day'), end: dayjs().endOf('day') };
+}
+
+function inWindow(value: string | undefined, start: Dayjs | null, end: Dayjs | null) {
+  if (!value) return false;
+  const current = dayjs(value);
+  if (!current.isValid()) return false;
+  if (start && current.isBefore(start)) return false;
+  if (end && current.isAfter(end)) return false;
+  return true;
+}
+
+function extractText(payload: Record<string, unknown>) {
+  const candidates = [payload.final_response, payload.response, payload.result, payload.output, payload.message];
+  for (const item of candidates) {
+    if (typeof item === 'string' && item.trim()) return item;
+    if (item && typeof item === 'object') {
+      const nested = item as Record<string, unknown>;
+      if (typeof nested.response === 'string' && nested.response.trim()) return nested.response;
+      if (typeof nested.final_response === 'string' && nested.final_response.trim()) return nested.final_response;
+    }
+  }
+  return '';
+}
+
+function toLines(value: unknown) {
+  if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean);
+  if (typeof value === 'string') {
+    return value.split(/\r?\n|(?<=[。！？；!?])/).map((item) => item.replace(/^[\d.、\-\s]+/, '').trim()).filter(Boolean);
+  }
+  return [];
+}
+
+function isRecord(value: unknown): value is JsonRecord {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function parseJsonRecord(value?: string): JsonRecord {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value);
+    return isRecord(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function formatNumber(value: number) {
+  return new Intl.NumberFormat('zh-CN', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 6,
+  }).format(value);
+}
+
+function formatFieldValue(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '-';
+  if (typeof value === 'number') return formatNumber(value);
+  if (typeof value === 'boolean') return value ? '是' : '否';
+  if (Array.isArray(value)) {
+    const text = value.map((item) => formatFieldValue(item)).filter((item) => item !== '-').join('，');
+    return text || '-';
+  }
+  if (isRecord(value)) return JSON.stringify(value, null, 2);
+  return String(value);
+}
+
+function isFilledSnapshotValue(value: unknown) {
+  if (value === null || value === undefined) return false;
+  if (typeof value === 'string') return value.trim().length > 0;
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (typeof value === 'boolean') return true;
+  if (Array.isArray(value)) return value.length > 0;
+  if (isRecord(value)) return Object.keys(value).length > 0;
+  return true;
+}
+
+function getCollectionCompleteness<T extends object>(items: T[], keys: string[]) {
+  if (!items.length || !keys.length) return { filled: 0, total: 0 };
+  return items.reduce((acc, item) => {
+    const current = item as Record<string, unknown>;
+    keys.forEach((key) => {
+      acc.total += 1;
+      if (isFilledSnapshotValue(current[key])) acc.filled += 1;
+    });
+    return acc;
+  }, { filled: 0, total: 0 });
+}
+
+function getHistoryCompleteness(histories: CalculationHistory[]) {
+  if (!histories.length) return { filled: 0, total: 0 };
+  return histories.reduce((acc, history) => {
+    const checks = [
+      Boolean(history.calcType?.trim() || history.calcTypeName?.trim()),
+      typeof history.projectId === 'number' || Boolean(history.projectName?.trim()),
+      Boolean(history.createTime && dayjs(history.createTime).isValid()),
+      Object.keys(parseJsonRecord(history.inputParams)).length > 0,
+      Object.keys(parseJsonRecord(history.outputResult)).length > 0,
+    ];
+    acc.total += checks.length;
+    acc.filled += checks.filter(Boolean).length;
+    return acc;
+  }, { filled: 0, total: 0 });
+}
+
+function getHistoryStatusLabel(status?: number) {
+  if (status === 0) return '生成中';
+  if (status === 2) return '失败';
+  return '已完成';
+}
+
+function getHistoryTypeLabel(history: CalculationHistory) {
+  if (history.calcTypeName?.trim()) return history.calcTypeName;
+  const calcType = history.calcType?.toUpperCase();
+  if (calcType && CALCULATION_TYPE_LABELS[calcType]) return CALCULATION_TYPE_LABELS[calcType];
+  return history.calcType || '普通报告';
+}
+
+function getHistoryInputSource(history: CalculationHistory, input: JsonRecord) {
+  return history.calcType?.toUpperCase() === 'SENSITIVITY' && isRecord(input.baseParams) ? input.baseParams : input;
+}
+
+function getHistoryOutputSource(history: CalculationHistory, output: JsonRecord) {
+  return history.calcType?.toUpperCase() === 'SENSITIVITY' && isRecord(output.baseResult) ? output.baseResult : output;
+}
+
+function isHistoryAbnormal(history: CalculationHistory) {
+  const outputSource = getHistoryOutputSource(history, parseJsonRecord(history.outputResult));
+  if (history.status === 2) return true;
+  if (history.errorMessage?.trim()) return true;
+  if (typeof outputSource.endStationInPressure === 'number' && outputSource.endStationInPressure <= 0) return true;
+  if (outputSource.isFeasible === false) return true;
+  if (
+    typeof outputSource.frictionHeadLoss === 'number' &&
+    typeof outputSource.totalHead === 'number' &&
+    outputSource.totalHead > 0 &&
+    outputSource.frictionHeadLoss / outputSource.totalHead > 0.7
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function buildMetricLines(source: JsonRecord, limit: number) {
+  return Object.entries(source)
+    .filter(([, value]) => value !== null && value !== undefined && value !== '')
+    .filter(([, value]) => !isRecord(value))
+    .slice(0, limit)
+    .map(([key, value]) => `${HISTORY_FIELD_LABELS[key] ?? key}：${formatFieldValue(value)}`);
+}
+
+function normalizeEfficiencyRatio(value: unknown) {
+  const numberValue = toFiniteNumber(value);
+  if (numberValue === null || numberValue <= 0) return null;
+  return numberValue > 1 ? numberValue / 100 : numberValue;
+}
+
+function buildProjectInsights(
+  selectedProjects: Project[],
+  visiblePipelines: Pipeline[],
+  visibleHistories: CalculationHistory[],
+): ProjectInsight[] {
+  const pipelinesByProject = new Map<number, Pipeline[]>();
+  const historiesByProject = new Map<number, CalculationHistory[]>();
+
+  visiblePipelines.forEach((item) => {
+    const list = pipelinesByProject.get(item.proId) ?? [];
+    list.push(item);
+    pipelinesByProject.set(item.proId, list);
+  });
+
+  visibleHistories.forEach((item) => {
+    if (typeof item.projectId !== 'number') return;
+    const list = historiesByProject.get(item.projectId) ?? [];
+    list.push(item);
+    historiesByProject.set(item.projectId, list);
+  });
+
+  return selectedProjects.map((project) => {
+    const projectPipelines = pipelinesByProject.get(project.proId) ?? [];
+    const projectHistories = historiesByProject.get(project.proId) ?? [];
+    let abnormalCount = 0;
+    let failedCount = 0;
+    let lowPressureCount = 0;
+    let infeasibleCount = 0;
+    let frictionRatioSum = 0;
+    let frictionRatioCount = 0;
+    let energyIntensitySum = 0;
+    let energyIntensityCount = 0;
+
+    projectHistories.forEach((history) => {
+      const input = getHistoryInputSource(history, parseJsonRecord(history.inputParams));
+      const output = getHistoryOutputSource(history, parseJsonRecord(history.outputResult));
+      if (isHistoryAbnormal(history)) abnormalCount += 1;
+      if (history.status === 2) failedCount += 1;
+      if (typeof output.endStationInPressure === 'number' && output.endStationInPressure <= 0) lowPressureCount += 1;
+      if (output.isFeasible === false) infeasibleCount += 1;
+
+      const frictionHeadLoss = toFiniteNumber(output.frictionHeadLoss);
+      const totalHead = toFiniteNumber(output.totalHead);
+      if (frictionHeadLoss !== null && totalHead !== null && totalHead > 0) {
+        frictionRatioSum += frictionHeadLoss / totalHead;
+        frictionRatioCount += 1;
+      }
+
+      const totalEnergyConsumption = toFiniteNumber(output.totalEnergyConsumption);
+      const flowRate = toFiniteNumber(input.flowRate ?? output.flowRate);
+      if (totalEnergyConsumption !== null && flowRate !== null && flowRate > 0) {
+        energyIntensitySum += totalEnergyConsumption / flowRate;
+        energyIntensityCount += 1;
+      }
+    });
+
+    return {
+      project,
+      pipelineCount: projectPipelines.length,
+      totalThroughput: projectPipelines.reduce((sum, item) => sum + (toFiniteNumber(item.throughput) ?? 0), 0),
+      historyCount: projectHistories.length,
+      abnormalCount,
+      failedCount,
+      lowPressureCount,
+      infeasibleCount,
+      avgFrictionRatio: frictionRatioCount ? frictionRatioSum / frictionRatioCount : null,
+      avgEnergyIntensity: energyIntensityCount ? energyIntensitySum / energyIntensityCount : null,
+    };
+  });
+}
+
+function buildProjectContextLines(projectInsights: ProjectInsight[]) {
+  return projectInsights
+    .sort((left, right) => (right.abnormalCount - left.abnormalCount) || ((right.avgEnergyIntensity ?? 0) - (left.avgEnergyIntensity ?? 0)))
+    .slice(0, 5)
+    .map((item) => {
+      const parts = [
+        `管道 ${item.pipelineCount} 条`,
+        item.totalThroughput > 0 ? `设计输量 ${formatNumber(item.totalThroughput)}` : '',
+        `历史 ${item.historyCount} 条`,
+        `异常 ${item.abnormalCount} 条`,
+        item.avgEnergyIntensity !== null ? `单位输量能耗指数 ${formatNumber(item.avgEnergyIntensity)}` : '',
+        item.avgFrictionRatio !== null ? `平均摩阻占比 ${formatPercent(item.avgFrictionRatio)}` : '',
+      ].filter(Boolean);
+      return `${item.project.name}：${parts.join('，')}`;
+    });
+}
+
+function buildPumpStationContextLines(pumpStations: PumpStation[]) {
+  return pumpStations
+    .map((station) => {
+      const pumpEfficiency = normalizeEfficiencyRatio(station.pumpEfficiency);
+      const electricEfficiency = normalizeEfficiencyRatio(station.electricEfficiency);
+      const combinedEfficiency = pumpEfficiency !== null && electricEfficiency !== null ? pumpEfficiency * electricEfficiency : null;
+      const parts = [
+        pumpEfficiency !== null ? `泵效率 ${formatPercent(pumpEfficiency)}` : '',
+        electricEfficiency !== null ? `电机效率 ${formatPercent(electricEfficiency)}` : '',
+        combinedEfficiency !== null ? `综合效率 ${formatPercent(combinedEfficiency)}` : '',
+        toFiniteNumber(station.displacement) !== null ? `排量 ${formatNumber(station.displacement)}` : '',
+      ].filter(Boolean);
+      return { text: `${station.name}：${parts.join('，')}`, combinedEfficiency: combinedEfficiency ?? Number.POSITIVE_INFINITY };
+    })
+    .sort((left, right) => left.combinedEfficiency - right.combinedEfficiency)
+    .slice(0, 5)
+    .map((item) => item.text);
+}
+
+function buildAnalysisSuggestions(
+  projectInsights: ProjectInsight[],
+  pumpStations: PumpStation[],
+  selectedProjects: Project[],
+  historyCount: number,
+  dataCompletenessRate: number,
+): SuggestionItem[] {
+  const suggestions: SuggestionItem[] = [];
+  const seen = new Set<string>();
+  const pushSuggestion = (item: SuggestionItem | null) => {
+    if (!item) return;
+    const key = `${item.target}|${item.action}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    suggestions.push(item);
+  };
+
+  const energyProjects = projectInsights.filter((item) => item.avgEnergyIntensity !== null);
+  if (energyProjects.length) {
+    const avgEnergyIntensity = energyProjects.reduce((sum, item) => sum + (item.avgEnergyIntensity ?? 0), 0) / energyProjects.length;
+    const highestEnergyProject = [...energyProjects].sort((left, right) => (right.avgEnergyIntensity ?? 0) - (left.avgEnergyIntensity ?? 0))[0];
+    if (highestEnergyProject?.avgEnergyIntensity !== null && avgEnergyIntensity > 0 && highestEnergyProject.avgEnergyIntensity > avgEnergyIntensity * 1.05) {
+      const deviation = (highestEnergyProject.avgEnergyIntensity - avgEnergyIntensity) / avgEnergyIntensity;
+      pushSuggestion(buildSuggestionItem(
+        highestEnergyProject.project.name,
+        `单位输量能耗高于已选项目均值 ${formatPercent(deviation)}。`,
+        '优化泵站负荷分配，复核高峰时段运行策略。',
+        '预计可降低单位输量能耗 5%~8%。',
+        deviation > 0.12 ? '高' : '中',
+      ));
+    }
+  }
+
+  const abnormalProject = [...projectInsights].sort((left, right) => (right.abnormalCount - left.abnormalCount) || (right.failedCount - left.failedCount))[0];
+  if (abnormalProject && abnormalProject.abnormalCount > 0) {
+    const reasonParts = [
+      `${abnormalProject.historyCount} 条历史中有 ${abnormalProject.abnormalCount} 条异常`,
+      abnormalProject.lowPressureCount > 0 ? `末站压力不足 ${abnormalProject.lowPressureCount} 次` : '',
+      abnormalProject.infeasibleCount > 0 ? `方案不可行 ${abnormalProject.infeasibleCount} 次` : '',
+    ].filter(Boolean);
+    pushSuggestion(buildSuggestionItem(
+      abnormalProject.project.name,
+      reasonParts.join('，'),
+      '复核入口压头、泵扬程与流量设定，必要时重新执行水力分析和泵站优化。',
+      '优先消除不可行工况，减少异常回放次数。',
+      abnormalProject.lowPressureCount > 0 || abnormalProject.infeasibleCount > 0 ? '高' : '中',
+    ));
+  }
+
+  const frictionProject = [...projectInsights]
+    .filter((item) => item.avgFrictionRatio !== null && item.avgFrictionRatio > 0.7)
+    .sort((left, right) => (right.avgFrictionRatio ?? 0) - (left.avgFrictionRatio ?? 0))[0];
+  if (frictionProject) {
+    pushSuggestion(buildSuggestionItem(
+      frictionProject.project.name,
+      `平均摩阻损失占总扬程 ${formatPercent(frictionProject.avgFrictionRatio ?? 0)}，沿程压降偏高。`,
+      '复核管道粗糙度、清管计划和当前输量设置，必要时拆分峰值工况。',
+      '有助于回收部分扬程裕度并降低沿程损失。',
+      (frictionProject.avgFrictionRatio ?? 0) > 0.85 ? '高' : '中',
+    ));
+  }
+
+  const stationCandidates = pumpStations
+    .map((station) => {
+      const pumpEfficiency = normalizeEfficiencyRatio(station.pumpEfficiency);
+      const electricEfficiency = normalizeEfficiencyRatio(station.electricEfficiency);
+      if (pumpEfficiency === null || electricEfficiency === null) return null;
+      return {
+        station,
+        combinedEfficiency: pumpEfficiency * electricEfficiency,
+      };
+    })
+    .filter((item): item is { station: PumpStation; combinedEfficiency: number } => Boolean(item));
+  if (stationCandidates.length) {
+    const averageEfficiency = stationCandidates.reduce((sum, item) => sum + item.combinedEfficiency, 0) / stationCandidates.length;
+    const lowestEfficiencyStation = [...stationCandidates].sort((left, right) => left.combinedEfficiency - right.combinedEfficiency)[0];
+    if (averageEfficiency > 0 && lowestEfficiencyStation.combinedEfficiency < averageEfficiency * 0.95) {
+      const deviation = (averageEfficiency - lowestEfficiencyStation.combinedEfficiency) / averageEfficiency;
+      pushSuggestion(buildSuggestionItem(
+        lowestEfficiencyStation.station.name,
+        `综合效率低于共享泵站均值 ${formatPercent(deviation)}。`,
+        '检查泵频率与扬程匹配情况，复核泵组切换与负荷分配策略。',
+        '有助于减少无效扬程和单位电耗。',
+        deviation > 0.1 ? '高' : '中',
+      ));
+    }
+  }
+
+  if (!suggestions.length) {
+    pushSuggestion(buildSuggestionItem(
+      selectedProjects[0]?.name || DEFAULT_ANALYSIS_TARGET,
+      historyCount > 0
+        ? `当前分析范围共有 ${historyCount} 条历史记录，数据完整率 ${dataCompletenessRate}%。`
+        : '当前分析范围缺少可复用的历史分析样本。',
+      historyCount > 0 ? '补齐关键参数口径并继续积累历史样本，再做深度优化分析。' : '先补齐项目、管道和历史分析数据，再执行深入诊断。',
+      '提升后续建议的量化程度和可执行性。',
+      historyCount > 0 ? '中' : '高',
+    ));
+  }
+
+  return suggestions.slice(0, 4);
+}
+
+function buildHistorySuggestions(history: CalculationHistory, outputSource: JsonRecord) {
+  const calcType = history.calcType?.toUpperCase();
+  const projectName = history.projectName || DEFAULT_ANALYSIS_TARGET;
+  const suggestions: SuggestionItem[] = [];
+
+  if (calcType === 'HYDRAULIC') {
+    if (typeof outputSource.endStationInPressure === 'number' && outputSource.endStationInPressure <= 0) {
+      suggestions.push(buildSuggestionItem(
+        projectName,
+        '末站进站压头小于等于 0，当前输送工况存在不可行风险。',
+        '优先复核首站进站压头、泵扬程和沿程摩阻参数。',
+        '恢复末站正压后可重新校核工况可行性。',
+        '高',
+      ));
+    } else {
+      suggestions.push(buildSuggestionItem(
+        projectName,
+        '当前水力分析已形成有效结果，仍需持续跟踪末站压力与摩阻损失。',
+        '结合末站进站压头和摩阻损失持续复核当前输送工况。',
+        '有助于提前发现压降抬升趋势。',
+        '中',
+      ));
+    }
+  } else if (calcType === 'OPTIMIZATION') {
+    if (outputSource.isFeasible === false) {
+      suggestions.push(buildSuggestionItem(
+        projectName,
+        '当前泵机组合未满足末站压力约束，优化结果不可行。',
+        '调整泵机组合或运行流量后重新执行优化计算。',
+        '优先筛出可行方案，减少无效调度试算。',
+        '高',
+      ));
+    } else {
+      suggestions.push(buildSuggestionItem(
+        projectName,
+        '当前优化记录已给出可行泵机组合，具备继续压缩电耗的基础。',
+        '优先落地当前可行泵机组合，并结合电价继续校核总成本。',
+        '在满足末站压力前提下降低综合运行成本。',
+        '中',
+      ));
+    }
+  } else if (calcType === 'SENSITIVITY') {
+    suggestions.push(buildSuggestionItem(
+      projectName,
+      '敏感性分析已识别关键变量，后续优化应优先围绕高敏感参数展开。',
+      '优先关注敏感度排名靠前的变量，并复核其现场测量值。',
+      '可提升参数校核效率并减少重复试算。',
+      '中',
+    ));
+  } else {
+    suggestions.push(buildSuggestionItem(
+      projectName,
+      '该历史记录缺少可直接执行的专项优化动作，需要先回放关键入参与结果。',
+      '结合原始入参与输出结果复核该历史记录，并按需重新计算。',
+      '为后续形成专项整改建议提供依据。',
+      '中',
+    ));
+  }
+
+  if (history.remark?.trim()) {
+    suggestions.push(buildSuggestionItem(
+      projectName,
+      '该记录附带人工备注，需要纳入后续跟踪。',
+      `跟踪备注事项：${history.remark.trim()}`,
+      '补齐现场反馈后可形成闭环处置记录。',
+      '中',
+    ));
+  }
+
+  return suggestions.slice(0, 4);
+}
+
+function buildWorkbenchFallbackRisks(params: {
+  visibleHistories: CalculationHistory[];
+  visiblePipelines: Pipeline[];
+  pumpStations: PumpStation[];
+}): RiskItem[] {
+  const { visibleHistories, visiblePipelines, pumpStations } = params;
+  const items: RiskItem[] = [];
+  const seen = new Set<string>();
+
+  const pushRisk = (item: RiskItem | null) => {
+    if (!item) return;
+    const key = `${item.target}-${item.riskType}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    items.push(item);
+  };
+
+  const failedByProject = visibleHistories.reduce<Map<string, number>>((acc, history) => {
+    if (history.status !== 2) return acc;
+    const key = history.projectName?.trim() || '未命名项目';
+    acc.set(key, (acc.get(key) ?? 0) + 1);
+    return acc;
+  }, new Map());
+
+  [...failedByProject.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 2)
+    .forEach(([projectName, count]) => {
+      pushRisk(buildRiskItem(
+        projectName,
+        '计算失败',
+        '高',
+        `当前分析范围内共有 ${count} 条历史记录执行失败，说明参数或服务状态存在不稳定因素。`,
+        '优先复核输入参数、计算服务状态和相关依赖。',
+      ));
+    });
+
+  visibleHistories.slice(0, 20).forEach((history) => {
+    const output = parseJsonRecord(history.outputResult);
+    const outputSource = getHistoryOutputSource(history, output);
+    const target = history.projectName?.trim() || '未命名项目';
+
+    if (typeof outputSource.endStationInPressure === 'number' && outputSource.endStationInPressure <= 0) {
+      pushRisk(buildRiskItem(
+        target,
+        '末站压力不足',
+        '高',
+        `末站进站压头为 ${formatFieldValue(outputSource.endStationInPressure)}，已低于可行工况阈值。`,
+        '检查首站进站压头、泵扬程和沿程摩阻参数。',
+      ));
+    }
+
+    if (outputSource.isFeasible === false) {
+      pushRisk(buildRiskItem(
+        target,
+        '方案不可行',
+        '高',
+        '历史优化结果显示当前泵机组合不可行，无法满足末站压力约束。',
+        '调整泵机组合或重新设定运行流量后再计算。',
+      ));
+    }
+
+    if (
+      typeof outputSource.frictionHeadLoss === 'number' &&
+      typeof outputSource.totalHead === 'number' &&
+      outputSource.totalHead > 0 &&
+      outputSource.frictionHeadLoss / outputSource.totalHead > 0.7
+    ) {
+      const ratio = outputSource.frictionHeadLoss / outputSource.totalHead;
+      pushRisk(buildRiskItem(
+        target,
+        '压降偏高',
+        ratio > 0.85 ? '高' : '中',
+        `摩阻损失占总扬程 ${formatPercent(ratio)}，当前扬程利用率偏低。`,
+        '检查局部阻力、管道工况和当前负荷分配。',
+      ));
+    }
+  });
+
+  if (visiblePipelines.length > 1) {
+    const averageThroughput = visiblePipelines.reduce((sum, item) => sum + item.throughput, 0) / visiblePipelines.length;
+    visiblePipelines
+      .filter((item) => averageThroughput > 0 && item.throughput > averageThroughput * 1.15)
+      .sort((a, b) => b.throughput - a.throughput)
+      .slice(0, 2)
+      .forEach((item) => {
+        pushRisk(buildRiskItem(
+          item.name,
+          '负荷偏高',
+          item.throughput > averageThroughput * 1.35 ? '高' : '中',
+          `设计输量 ${formatNumber(item.throughput)} 高于当前范围均值 ${formatNumber(averageThroughput)}。`,
+          '检查负荷分配与沿线压降是否匹配。',
+        ));
+      });
+  }
+
+  if (pumpStations.length > 1) {
+    const averageEfficiency = pumpStations.reduce((sum, item) => sum + item.pumpEfficiency, 0) / pumpStations.length;
+    pumpStations
+      .filter((item) => averageEfficiency > 0 && item.pumpEfficiency < averageEfficiency * 0.92)
+      .sort((a, b) => a.pumpEfficiency - b.pumpEfficiency)
+      .slice(0, 2)
+      .forEach((item) => {
+        const gap = averageEfficiency - item.pumpEfficiency;
+        pushRisk(buildRiskItem(
+          item.name,
+          '效率下降',
+          gap > averageEfficiency * 0.12 ? '高' : '中',
+          `泵效率 ${formatFieldValue(item.pumpEfficiency)} 低于当前范围均值 ${formatFieldValue(averageEfficiency)}。`,
+          '排查设备状态、启停策略和运行点是否偏离高效区间。',
+        ));
+      });
+  }
+
+  return items.slice(0, 6);
+}
+
+function buildHistoryPreview(history: CalculationHistory): PreviewRecord {
+  const input = parseJsonRecord(history.inputParams);
+  const output = parseJsonRecord(history.outputResult);
+  const inputSource = getHistoryInputSource(history, input);
+  const outputSource = getHistoryOutputSource(history, output);
+  const typeLabel = getHistoryTypeLabel(history);
+  const projectName = history.projectName || '未命名项目';
+  const statusLabel = getHistoryStatusLabel(history.status);
+
+  const summary = [
+    `${projectName} 的${typeLabel}记录当前状态为${statusLabel}，生成时间 ${formatTime(history.createTime)}。`,
+    history.calcDurationFormatted
+      ? `本次计算耗时 ${history.calcDurationFormatted}。`
+      : typeof history.calcDuration === 'number'
+        ? `本次计算耗时 ${history.calcDuration} ms。`
+        : '本次记录未返回计算耗时。',
+    ...buildMetricLines(inputSource, 2).map((item) => `关键入参：${item}`),
+    ...buildMetricLines(outputSource, 2).map((item) => `关键结果：${item}`),
+  ].slice(0, 4);
+
+  const risks: RiskItem[] = [];
+  if (history.status === 2) {
+    risks.push(buildRiskItem(
+      projectName,
+      '计算失败',
+      '高',
+      history.errorMessage?.trim() || '该记录执行失败，请检查计算服务状态与输入参数。',
+      '检查输入参数、计算服务状态和上游依赖后重新计算。',
+    ));
+  }
+  if (typeof outputSource.endStationInPressure === 'number' && outputSource.endStationInPressure <= 0) {
+    risks.push(buildRiskItem(
+      projectName,
+      '末站压力不足',
+      '高',
+      '末站进站压头小于等于 0，当前输送工况存在不可行风险。',
+      '优先复核首站进站压头、泵扬程和沿程摩阻参数。',
+    ));
+  }
+  if (outputSource.isFeasible === false) {
+    risks.push(buildRiskItem(
+      projectName,
+      '方案不可行',
+      '高',
+      '优化结果显示当前泵机组合不可行，无法满足末站压力约束。',
+      '调整泵机组合或运行流量后重新执行优化计算。',
+    ));
+  }
+  if (
+    typeof outputSource.frictionHeadLoss === 'number' &&
+    typeof outputSource.totalHead === 'number' &&
+    outputSource.totalHead > 0 &&
+    outputSource.frictionHeadLoss / outputSource.totalHead > 0.7
+  ) {
+    const ratio = outputSource.frictionHeadLoss / outputSource.totalHead;
+    risks.push(buildRiskItem(
+      projectName,
+      '压降偏高',
+      ratio > 0.85 ? '高' : '中',
+      `摩阻损失占总扬程 ${formatPercent(ratio)}，当前能耗和扬程利用率需要重点复核。`,
+      '检查摩阻参数、局部阻力和当前输送负荷是否匹配。',
+    ));
+  }
+
+  const conclusion = history.status === 2
+    ? `该${typeLabel}记录执行失败，建议修正参数或恢复服务后重新计算。`
+    : history.remark?.trim() || `该${typeLabel}记录已完成，可直接预览结果或导出归档。`;
+
+  const rawSections = [
+    history.remark?.trim() ? `备注\n${history.remark.trim()}` : '',
+    Object.keys(input).length ? `输入参数\n${JSON.stringify(input, null, 2)}` : '',
+    Object.keys(output).length ? `输出结果\n${JSON.stringify(output, null, 2)}` : '',
+  ].filter(Boolean);
+
+  return {
+    id: `history-preview-${history.id}`,
+    title: `${projectName} ${typeLabel}`,
+    typeLabel,
+    createdAt: history.createTime || new Date().toISOString(),
+    rangeLabel: '单次计算记录',
+    intelligenceLabel: '历史回放',
+    projectNames: [projectName],
+    outputFormat: 'markdown',
+    sourceLabel: '服务端历史记录',
+    result: {
+      source: 'history',
+      summary,
+      risks: risks.slice(0, 6),
+      suggestions: buildHistorySuggestions(history, outputSource),
+      conclusion,
+      rawText: rawSections.join('\n\n'),
+    },
+  };
+}
+
+function parseAiResult(rawText: string, fallback: ReportResult): ReportResult {
+  try {
+    const cleaned = rawText.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim();
+    const start = cleaned.indexOf('{');
+    const end = cleaned.lastIndexOf('}');
+    const parsed = JSON.parse(start >= 0 && end > start ? cleaned.slice(start, end + 1) : cleaned) as Record<string, unknown>;
+    const summary = toLines(parsed.summary);
+    const risks = normalizeRiskList(parsed.risks ?? parsed.riskList ?? parsed.risk_list);
+    const suggestions = normalizeSuggestionList(
+      parsed.suggestions ?? parsed.suggestionList ?? parsed.suggestion_list ?? parsed.recommendations ?? parsed.recommendation_list,
+    );
+    const hasSpecificSuggestionTarget = suggestions.some((item) => item.target !== DEFAULT_ANALYSIS_TARGET);
+    return {
+      source: 'ai',
+      summary: summary.length ? summary.slice(0, 4) : fallback.summary,
+      risks: risks.length ? risks : fallback.risks,
+      suggestions: suggestions.length && hasSpecificSuggestionTarget ? suggestions : fallback.suggestions,
+      conclusion: typeof parsed.conclusion === 'string' && parsed.conclusion.trim() ? parsed.conclusion.trim() : fallback.conclusion,
+      rawText,
+    };
+  } catch {
+    return { ...fallback, source: 'fallback', rawText };
+  }
+}
+
+async function fetchAllPagedList<T>(requestPage: (pageNum: number, pageSize: number) => Promise<R<PageResult<T>>>) {
+  const result: T[] = [];
+  let pageNum = 1;
+  let total = Number.POSITIVE_INFINITY;
+  while (result.length < total && pageNum <= 20) {
+    const response = await requestPage(pageNum, 100);
+    const page = response.data;
+    const list = Array.isArray(page?.list) ? page.list : [];
+    total = typeof page?.total === 'number' ? page.total : list.length;
+    result.push(...list);
+    if (list.length < 100) break;
+    pageNum += 1;
+  }
+  return result;
+}
+
+function downloadMarkdown(preview: PreviewRecord) {
+  const content = [
+    `# ${preview.title}`,
+    '',
+    `- 生成时间：${formatTime(preview.createdAt)}`,
+    `- 分析范围：${preview.rangeLabel}`,
+    `- 智能等级：${preview.intelligenceLabel}`,
+    `- 覆盖项目：${preview.projectNames.join('、') || '未选择项目'}`,
+    `- 输出格式：${preview.outputFormat}`,
+    `- 来源：${preview.sourceLabel}`,
+    '',
+    '## 智能摘要',
+    ...(preview.result.summary.length ? preview.result.summary.map((item) => `- ${item}`) : ['- 暂无']),
+    '',
+    '## 风险列表',
+    ...(preview.result.risks.length
+      ? [
+          '| 风险对象 | 风险类型 | 等级 | 原因 | 建议 |',
+          '| --- | --- | --- | --- | --- |',
+          ...preview.result.risks.map((item) => `| ${escapeMarkdownTableCell(item.target)} | ${escapeMarkdownTableCell(item.riskType)} | ${item.level} | ${escapeMarkdownTableCell(item.reason)} | ${escapeMarkdownTableCell(item.suggestion)} |`),
+        ]
+      : ['- 暂无']),
+    '',
+    '## 优化建议',
+    ...(preview.result.suggestions.length
+      ? preview.result.suggestions.flatMap((item, index) => ([
+          `### 优先建议 ${index + 1}`,
+          `对象：${item.target}`,
+          `原因：${item.reason}`,
+          `措施：${item.action}`,
+          `预期：${item.expected}`,
+          `优先级：${item.priority}`,
+          '',
+        ]))
+      : ['- 暂无']),
+    '',
+    '## 报告结论',
+    preview.result.conclusion || '暂无',
+    ...(preview.result.rawText
+      ? [
+          '',
+          '## 原始计算数据',
+          '```text',
+          preview.result.rawText,
+          '```',
+        ]
+      : []),
+  ].join('\n');
+  const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${preview.title.replace(/[\\/:*?"<>|]/g, '-')}.md`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(url);
+}
+
+
+function toFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function normalizePercent(value: number) {
+  return Math.abs(value) <= 1 ? value * 100 : value;
+}
+
+function clampScore(value: number) {
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function averageMetric<T>(items: T[], getter: (item: T) => number | null) {
+  const values = items
+    .map(getter)
+    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+  if (!values.length) return null;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function computeChangePercent(current: number | null, previous: number | null) {
+  if (current === null || previous === null) return null;
+  if (previous === 0) return current === 0 ? 0 : null;
+  return Number((((current - previous) / Math.abs(previous)) * 100).toFixed(1));
+}
+
+function formatSignedPercent(value: number | null) {
+  if (value === null || !Number.isFinite(value)) return '?';
+  const sign = value > 0 ? '+' : '';
+  return `${sign}${value.toFixed(1)}%`;
+}
+
+function formatSignedCount(value: number | null) {
+  if (value === null || !Number.isFinite(value)) return '?';
+  const normalized = Math.round(value);
+  const sign = normalized > 0 ? '+' : '';
+  return `${sign}${normalized}`;
+}
+
+function getTrendValueClass(value: number | null, positiveGood: boolean) {
+  if (value === null || !Number.isFinite(value) || value === 0) return 'text-slate-100';
+  const isGood = positiveGood ? value > 0 : value < 0;
+  return isGood ? 'text-emerald-300' : 'text-rose-300';
+}
+
+function getHealthValueClass(score: number | null) {
+  if (score === null) return 'text-slate-100';
+  if (score >= 85) return 'text-emerald-300';
+  if (score >= 70) return 'text-amber-300';
+  return 'text-rose-300';
+}
+
+function getHistoryRiskLevel(history: CalculationHistory) {
+  const outputSource = getHistoryOutputSource(history, parseJsonRecord(history.outputResult));
+  const pumpEfficiency =
+    toFiniteNumber(outputSource.pumpEfficiency) ??
+    toFiniteNumber(outputSource.electricEfficiency) ??
+    toFiniteNumber(outputSource.motorEfficiency);
+  const normalizedEfficiency = pumpEfficiency !== null ? normalizePercent(pumpEfficiency) : null;
+  if (history.status === 2) return 'high';
+  if (outputSource.isFeasible === false) return 'high';
+  if (typeof outputSource.endStationInPressure === 'number' && outputSource.endStationInPressure <= 0) return 'high';
+  if (normalizedEfficiency !== null && normalizedEfficiency < 45) return 'high';
+  if (isHistoryAbnormal(history)) return 'abnormal';
+  return 'normal';
+}
+
+function getHistoryEnergyMetric(history: CalculationHistory) {
+  const outputSource = getHistoryOutputSource(history, parseJsonRecord(history.outputResult));
+  return (
+    toFiniteNumber(outputSource.totalEnergyConsumption) ??
+    toFiniteNumber(outputSource.energyConsumption) ??
+    toFiniteNumber(outputSource.frictionHeadLoss)
+  );
+}
+
+function getHistoryEfficiencyMetric(history: CalculationHistory) {
+  const inputSource = getHistoryInputSource(history, parseJsonRecord(history.inputParams));
+  const outputSource = getHistoryOutputSource(history, parseJsonRecord(history.outputResult));
+  const pumpEfficiency =
+    toFiniteNumber(outputSource.pumpEfficiency) ??
+    toFiniteNumber(inputSource.pumpEfficiency);
+  const electricEfficiency =
+    toFiniteNumber(outputSource.electricEfficiency) ??
+    toFiniteNumber(outputSource.motorEfficiency) ??
+    toFiniteNumber(inputSource.electricEfficiency) ??
+    toFiniteNumber(inputSource.motorEfficiency);
+
+  if (pumpEfficiency !== null) {
+    const normalizedPump = normalizePercent(pumpEfficiency);
+    if (electricEfficiency !== null) {
+      return (normalizedPump * normalizePercent(electricEfficiency)) / 100;
+    }
+    return normalizedPump;
+  }
+
+  const totalHead = toFiniteNumber(outputSource.totalHead);
+  const frictionHeadLoss = toFiniteNumber(outputSource.frictionHeadLoss);
+  if (totalHead !== null && frictionHeadLoss !== null && totalHead > 0) {
+    return Math.max(0, ((totalHead - frictionHeadLoss) / totalHead) * 100);
+  }
+
+  return null;
+}
+
+function getComparisonPeriod(rangePreset: RangePreset, customRange: DateRangeValue) {
+  if (rangePreset === 'custom' && customRange) {
+    const currentStart = customRange[0].startOf('day');
+    const currentEnd = customRange[1].endOf('day');
+    const days = currentEnd.startOf('day').diff(currentStart.startOf('day'), 'day') + 1;
+    const previousEnd = currentStart.subtract(1, 'day').endOf('day');
+    const previousStart = previousEnd.subtract(days - 1, 'day').startOf('day');
+    return { currentStart, currentEnd, previousStart, previousEnd };
+  }
+
+  if (rangePreset === '7d' || rangePreset === '30d' || rangePreset === '90d') {
+    const days = rangePreset === '7d' ? 7 : rangePreset === '30d' ? 30 : 90;
+    const currentEnd = dayjs().endOf('day');
+    const currentStart = dayjs().subtract(days - 1, 'day').startOf('day');
+    const previousEnd = currentStart.subtract(1, 'day').endOf('day');
+    const previousStart = previousEnd.subtract(days - 1, 'day').startOf('day');
+    return { currentStart, currentEnd, previousStart, previousEnd };
+  }
+
+  if (rangePreset === 'year') {
+    const currentStart = dayjs().startOf('year');
+    const currentEnd = dayjs().endOf('day');
+    const previousStart = currentStart.subtract(1, 'year').startOf('year');
+    const previousEnd = currentStart.subtract(1, 'year').endOf('year');
+    return { currentStart, currentEnd, previousStart, previousEnd };
+  }
+
+  const currentEnd = dayjs().endOf('day');
+  const currentStart = currentEnd.subtract(29, 'day').startOf('day');
+  const previousEnd = currentStart.subtract(1, 'day').endOf('day');
+  const previousStart = previousEnd.subtract(29, 'day').startOf('day');
+  return { currentStart, currentEnd, previousStart, previousEnd };
+}
+
+function renderStatus(status: HistoryItem['status']) {
+  if (status === 'completed') return <Tag color="green">已完成</Tag>;
+  if (status === 'running') return <Tag color="blue">生成中</Tag>;
+  return <Tag color="red">失败</Tag>;
+}
+
+export default function ReportPreview() {  const savedTemplate = useMemo(() => readStorage<Record<string, unknown> | null>(TEMPLATE_KEY, null), []);
+  const savedCustomRange = useMemo(() => {
+    const raw = savedTemplate?.customRange;
+    if (!Array.isArray(raw) || raw.length !== 2) return null;
+    const start = dayjs(String(raw[0]));
+    const end = dayjs(String(raw[1]));
+    return start.isValid() && end.isValid() ? [start, end] as [Dayjs, Dayjs] : null;
+  }, [savedTemplate]);
+
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
+  const [pumpStations, setPumpStations] = useState<PumpStation[]>([]);
+  const [histories, setHistories] = useState<CalculationHistory[]>([]);
+  const [localReports, setLocalReports] = useState<LocalReportRecord[]>(() => normalizeLocalReportRecords(readStorage(HISTORY_KEY, [] as LocalReportRecord[])));
+  const [analysisCount, setAnalysisCount] = useState<number>(() => readStorage(COUNT_KEY, 0));
+  const [selectedProjectIds, setSelectedProjectIds] = useState<number[]>(
+    Array.isArray(savedTemplate?.selectedProjectIds) ? (savedTemplate.selectedProjectIds as number[]) : [],
+  );
+  const [reportType, setReportType] = useState<ReportType>((savedTemplate?.reportType as ReportType) ?? 'AI_REPORT');
+  const [rangePreset, setRangePreset] = useState<RangePreset>((savedTemplate?.rangePreset as RangePreset) ?? '30d');
+  const [customRange, setCustomRange] = useState<DateRangeValue>(savedCustomRange);
+  const [intelligenceLevel, setIntelligenceLevel] = useState<IntelligenceLevel>((savedTemplate?.intelligenceLevel as IntelligenceLevel) ?? 'enhanced');
+  const [outputFormat, setOutputFormat] = useState<OutputFormat>((savedTemplate?.outputFormat as OutputFormat) ?? 'markdown');
+  const [enableSummary, setEnableSummary] = useState(savedTemplate?.enableSummary !== false);
+  const [enableRisk, setEnableRisk] = useState(savedTemplate?.enableRisk !== false);
+  const [enableSuggestions, setEnableSuggestions] = useState(savedTemplate?.enableSuggestions !== false);
+  const [enableConclusion, setEnableConclusion] = useState(savedTemplate?.enableConclusion !== false);
+  const [historyFilter, setHistoryFilter] = useState<HistoryFilter>('all');
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [analysing, setAnalysing] = useState(false);
+  const [deletingIds, setDeletingIds] = useState<string[]>([]);
+  const [clearingCurrentList, setClearingCurrentList] = useState(false);
+  const [activePreview, setActivePreview] = useState<PreviewRecord | LocalReportRecord | null>(null);
+  const [previewModalRecord, setPreviewModalRecord] = useState<PreviewRecord | LocalReportRecord | null>(null);
+
+  const loadData = useCallback(async (mode: 'initial' | 'refresh') => {
+    mode === 'initial' ? setLoading(true) : setRefreshing(true);
+    try {
+      const [projectResult, historyResult, pumpResult] = await Promise.allSettled([
+        projectApi.list(),
+        fetchAllPagedList<CalculationHistory>((pageNum, pageSize) => calculationHistoryApi.page({ pageNum, pageSize })),
+        pumpStationApi.list(),
+      ]);
+      const nextProjects = projectResult.status === 'fulfilled' ? (projectResult.value.data ?? []) : [];
+      const nextHistories = historyResult.status === 'fulfilled' ? historyResult.value : [];
+      const nextPumpStations = pumpResult.status === 'fulfilled' ? (pumpResult.value.data ?? []) : [];
+      setProjects([...nextProjects].sort((a, b) => a.proId - b.proId));
+      setHistories([...nextHistories].sort((a, b) => dayjs(b.createTime).valueOf() - dayjs(a.createTime).valueOf()));
+      setPumpStations(nextPumpStations);
+      const pipelineResults = await Promise.allSettled(nextProjects.map((item) => pipelineApi.listByProject(item.proId)));
+      setPipelines(pipelineResults.flatMap((item) => (item.status === 'fulfilled' ? item.value.data ?? [] : [])));
+      setSelectedProjectIds((current) => {
+        const available = new Set(nextProjects.map((item) => item.proId));
+        const filtered = current.filter((id) => available.has(id));
+        return filtered.length ? filtered : nextProjects.map((item) => item.proId);
+      });
+    } catch {
+      message.error('智能报告中心数据加载失败');
+    } finally {
+      mode === 'initial' ? setLoading(false) : setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadData('initial');
+  }, [loadData]);
+
+  useEffect(() => {
+    writeStorage(HISTORY_KEY, localReports);
+  }, [localReports]);
+
+  useEffect(() => {
+    writeStorage(COUNT_KEY, analysisCount);
+  }, [analysisCount]);
+
+  const rangeWindow = useMemo(() => getRangeWindow(rangePreset, customRange), [rangePreset, customRange]);
+  const rangeLabel = useMemo(() => getRangeLabel(rangePreset, customRange), [rangePreset, customRange]);
+  const comparisonLabel = useMemo(() => getComparisonLabel(rangePreset, customRange), [rangePreset, customRange]);
+  const selectedSet = useMemo(() => new Set(selectedProjectIds), [selectedProjectIds]);
+  const selectedProjects = useMemo(() => projects.filter((item) => selectedSet.has(item.proId)), [projects, selectedSet]);
+  const visiblePipelines = useMemo(() => pipelines.filter((item) => selectedSet.has(item.proId)), [pipelines, selectedSet]);
+  const selectedHistoriesAll = useMemo(() => histories.filter((item) => selectedSet.has(item.projectId ?? -1)), [histories, selectedSet]);
+  const visibleHistories = useMemo(
+    () => histories.filter((item) => selectedSet.has(item.projectId ?? -1) && inWindow(item.createTime, rangeWindow.start, rangeWindow.end)),
+    [histories, rangeWindow.end, rangeWindow.start, selectedSet],
+  );
+  const abnormalHistories = useMemo(() => visibleHistories.filter((item) => isHistoryAbnormal(item)), [visibleHistories]);
+  const projectInsights = useMemo(() => buildProjectInsights(selectedProjects, visiblePipelines, visibleHistories), [selectedProjects, visiblePipelines, visibleHistories]);
+  const projectContextLines = useMemo(() => buildProjectContextLines(projectInsights), [projectInsights]);
+  const pumpStationContextLines = useMemo(() => buildPumpStationContextLines(pumpStations), [pumpStations]);
+
+  const snapshot = useMemo(() => {
+    const abnormalHistoryCount = abnormalHistories.length;
+    const highRiskHistories = visibleHistories.filter((item) => getHistoryRiskLevel(item) === 'high');
+    const highRiskCount = highRiskHistories.length;
+    const analysisObjectCount = visibleHistories.length || visiblePipelines.length || selectedProjects.length;
+    const abnormalRate = visibleHistories.length ? abnormalHistoryCount / visibleHistories.length : 0;
+    const highRiskRate = visibleHistories.length ? highRiskCount / visibleHistories.length : 0;
+    const healthScore = visibleHistories.length
+      ? clampScore(100 - abnormalRate * 60 - highRiskRate * 95)
+      : null;
+    const comparisonPeriod = getComparisonPeriod(rangePreset, customRange);
+    const previousHistories = selectedHistoriesAll.filter((item) => inWindow(item.createTime, comparisonPeriod.previousStart, comparisonPeriod.previousEnd));
+    const energyChangePercent = computeChangePercent(
+      averageMetric(visibleHistories, (item) => getHistoryEnergyMetric(item)),
+      averageMetric(previousHistories, (item) => getHistoryEnergyMetric(item)),
+    );
+    const efficiencyChangePercent = computeChangePercent(
+      averageMetric(visibleHistories, (item) => getHistoryEfficiencyMetric(item)),
+      averageMetric(previousHistories, (item) => getHistoryEfficiencyMetric(item)),
+    );
+    const previousRiskCount = previousHistories.filter((item) => getHistoryRiskLevel(item) === 'high').length;
+
+    return {
+      projectCount: selectedProjects.length,
+      pipelineCount: visiblePipelines.length,
+      pumpStationCount: pumpStations.length,
+      historyCount: visibleHistories.length,
+      analysisObjectCount,
+      failedHistoryCount: visibleHistories.filter((item) => item.status === 2).length,
+      abnormalHistoryCount,
+      highRiskCount,
+      abnormalRate: visibleHistories.length ? Math.round(abnormalRate * 100) : 0,
+      highRiskRate: visibleHistories.length ? Math.round(highRiskRate * 100) : 0,
+      healthScore,
+      todayHistoryCount: visibleHistories.filter((item) => dayjs(item.createTime).isSame(dayjs(), 'day')).length,
+      latestHistoryTime: visibleHistories[0]?.createTime,
+      latestAbnormalTime: abnormalHistories[0]?.createTime,
+      comparisonLabel,
+      currentRangeLabel: `${comparisonPeriod.currentStart.format('MM-DD')} ? ${comparisonPeriod.currentEnd.format('MM-DD')}`,
+      previousRangeLabel: `${comparisonPeriod.previousStart.format('MM-DD')} ? ${comparisonPeriod.previousEnd.format('MM-DD')}`,
+      currentSampleCount: visibleHistories.length,
+      previousSampleCount: previousHistories.length,
+      energyChangePercent,
+      efficiencyChangePercent,
+      riskCountChange: highRiskCount - previousRiskCount,
+      previousRiskCount,
+    };
+  }, [abnormalHistories, comparisonLabel, customRange, pumpStations, rangePreset, selectedHistoriesAll, selectedProjects, visibleHistories, visiblePipelines]);
+
+  const overviewCards = useMemo(() => ([
+    {
+      label: '???????',
+      value: snapshot.analysisObjectCount,
+      hint: `??????? ${snapshot.historyCount} ?????????`,
+      valueClassName: 'text-white',
+    },
+    {
+      label: '?????',
+      value: snapshot.abnormalHistoryCount,
+      hint: '??????????????????',
+      valueClassName: snapshot.abnormalHistoryCount > 0 ? 'text-amber-300' : 'text-emerald-300',
+    },
+    {
+      label: '??????',
+      value: snapshot.highRiskCount,
+      hint: '?????????????????',
+      valueClassName: snapshot.highRiskCount > 0 ? 'text-rose-300' : 'text-emerald-300',
+    },
+    {
+      label: '??????',
+      value: snapshot.healthScore !== null ? `${snapshot.healthScore} ?` : '?',
+      hint: snapshot.healthScore !== null ? '???????????????' : '???????????????',
+      valueClassName: getHealthValueClass(snapshot.healthScore),
+    },
+  ]), [snapshot.abnormalHistoryCount, snapshot.analysisObjectCount, snapshot.healthScore, snapshot.highRiskCount, snapshot.historyCount]);
+
+  const trendCards = useMemo(() => ([
+    {
+      label: '????????',
+      value: formatSignedPercent(snapshot.energyChangePercent),
+      hint: snapshot.previousSampleCount ? `???? ${snapshot.currentSampleCount} ??????? ${snapshot.previousSampleCount} ?` : '???????????????',
+      valueClassName: getTrendValueClass(snapshot.energyChangePercent, false),
+    },
+    {
+      label: '????????',
+      value: formatSignedPercent(snapshot.efficiencyChangePercent),
+      hint: snapshot.previousSampleCount ? '?????????????' : '???????????????',
+      valueClassName: getTrendValueClass(snapshot.efficiencyChangePercent, true),
+    },
+    {
+      label: '??????',
+      value: formatSignedCount(snapshot.riskCountChange),
+      hint: `??????? ${snapshot.highRiskCount} ????? ${snapshot.previousRiskCount} ?`,
+      valueClassName: getTrendValueClass(snapshot.riskCountChange, false),
+    },
+  ]), [snapshot.currentSampleCount, snapshot.efficiencyChangePercent, snapshot.energyChangePercent, snapshot.highRiskCount, snapshot.previousRiskCount, snapshot.previousSampleCount, snapshot.riskCountChange]);
+
+  const saveTemplate = useCallback(() => {
+    writeStorage(TEMPLATE_KEY, {
+      selectedProjectIds,
+      reportType,
+      rangePreset,
+      customRange: customRange ? customRange.map((item) => item.toISOString()) : null,
+      intelligenceLevel,
+      outputFormat,
+      enableSummary,
+      enableRisk,
+      enableSuggestions,
+      enableConclusion,
+    });
+    message.success('当前配置已保存为模板');
+  }, [customRange, enableConclusion, enableRisk, enableSuggestions, enableSummary, intelligenceLevel, outputFormat, rangePreset, reportType, selectedProjectIds]);
+
+  const runAnalysis = useCallback(async () => {
+    if (!selectedProjects.length) {
+      message.warning('请至少选择一个项目');
+      return null;
+    }
+    const projectInsights = buildProjectInsights(selectedProjects, visiblePipelines, visibleHistories);
+    const projectContextLines = buildProjectContextLines(projectInsights);
+    const pumpStationContextLines = buildPumpStationContextLines(pumpStations);
+    const fallbackRisks = enableRisk
+      ? [...buildAnalysisRisks(projectInsights), ...buildWorkbenchFallbackRisks({ visibleHistories, visiblePipelines, pumpStations })].slice(0, 6)
+      : [];
+    const fallbackSuggestions = enableSuggestions
+      ? buildAnalysisSuggestions(
+          projectInsights,
+          pumpStations,
+          selectedProjects,
+          snapshot.historyCount,
+          snapshot.dataCompletenessRate,
+        )
+      : [];
+    const fallback: ReportResult = {
+      source: 'fallback',
+      summary: enableSummary ? [`本次分析覆盖 ${snapshot.projectCount} 个项目、${snapshot.pipelineCount} 条管道、${snapshot.pumpStationCount} 座共享泵站。`, `已纳入 ${snapshot.historyCount} 条历史记录，其中失败记录 ${snapshot.failedHistoryCount} 条。`] : [],
+      risks: fallbackRisks,
+      suggestions: fallbackSuggestions,
+      conclusion: enableConclusion ? '系统已经具备智能报告基础能力，但正式结论仍建议结合更多历史样本和现场工况复核。' : '',
+      rawText: '',
+    };
+
+    fallback.summary = enableSummary
+      ? [
+          `本次分析依据覆盖 ${snapshot.projectCount} 个项目、${snapshot.pipelineCount} 条管道、${snapshot.pumpStationCount} 座泵站。`,
+          `当前样本池纳入 ${snapshot.historyCount} 条记录，识别异常 ${snapshot.abnormalHistoryCount} 条，数据完整率 ${snapshot.dataCompletenessRate}%。`,
+          `比对周期为 ${snapshot.comparisonLabel}，最近异常时间 ${formatTime(snapshot.latestAbnormalTime)}。`,
+        ]
+      : [];
+    fallback.risks = fallbackRisks;
+    fallback.suggestions = fallbackSuggestions;
+
+    setAnalysing(true);
+    let result = fallback;
+    try {
+      const prompt = [
+        '你是管道能耗分析系统的报告助手。',
+        '请严格输出 JSON，格式为 {"summary":["..."],"risks":[{"target":"风险对象","riskType":"风险类型","level":"高/中/低","reason":"原因","suggestion":"建议"}],"suggestions":[{"target":"对象","reason":"原因","action":"措施","expected":"预期","priority":"高/中/低"}],"conclusion":"..."}。',
+        '风险提示必须写成风险列表，逐条具体到对象，不要写成段落；如果没有明确风险，risks 返回空数组。',
+        '优化建议必须与具体对象绑定，不要输出泛化建议。每条 suggestions 都要明确对象、原因、措施、预期和优先级；对象可以是项目、管道、共享泵站或当前分析范围。',
+        '原因只能引用当前提供的数据和对象，不要编造未提供的天数、趋势或现场事件。',
+        `报告类型：${REPORT_TYPE_OPTIONS.find((item) => item.value === reportType)?.label ?? '智能分析报告'}`,
+        `分析范围：${rangeLabel}`,
+        `智能等级：${INTELLIGENCE_OPTIONS.find((item) => item.value === intelligenceLevel)?.label ?? '增强'}`,
+        `项目数量：${snapshot.projectCount}，管道数量：${snapshot.pipelineCount}，共享泵站数量：${snapshot.pumpStationCount}，历史记录数量：${snapshot.historyCount}，失败历史数量：${snapshot.failedHistoryCount}`,
+        `项目列表：${selectedProjects.map((item) => `${item.number || '-'} ${item.name}`).join('；')}`,
+        `分析依据快照：覆盖项目 ${snapshot.projectCount}，覆盖管道 ${snapshot.pipelineCount}，覆盖泵站 ${snapshot.pumpStationCount}，记录总量 ${snapshot.historyCount}，异常记录 ${snapshot.abnormalHistoryCount}，数据完整率 ${snapshot.dataCompletenessRate}% ，最近异常时间 ${formatTime(snapshot.latestAbnormalTime)}，比对周期 ${snapshot.comparisonLabel}`,
+        `项目画像：${projectContextLines.length ? projectContextLines.join('；') : '暂无项目画像'}`,
+        `泵站画像：${pumpStationContextLines.length ? pumpStationContextLines.join('；') : '暂无泵站画像'}`,
+        `本地对象绑定建议参考：${fallbackSuggestions.length ? fallbackSuggestions.map((item, index) => `优先建议 ${index + 1}：对象=${item.target}；原因=${item.reason}；措施=${item.action}；预期=${item.expected}；优先级=${item.priority}`).join('；') : '暂无'}`,
+        `候选风险对象：${[
+          ...selectedProjects.map((item) => item.name),
+          ...visiblePipelines.slice(0, 6).map((item) => item.name),
+          ...pumpStations.slice(0, 6).map((item) => item.name),
+        ].join('；')}`,
+      ].join('\n');
+      const response = await agentApi.chat(prompt, `report-workbench-${Date.now()}`);
+      const rawText = extractText(response);
+      result = rawText ? parseAiResult(rawText, fallback) : fallback;
+      if (!rawText) message.warning('AI 未返回可解析内容，已回退到本地分析');
+    } catch {
+      message.warning('AI 服务暂不可用，已回退到本地分析');
+    } finally {
+      setAnalysing(false);
+    }
+
+    const preview: PreviewRecord = {
+      id: `preview-${Date.now()}`,
+      title: `${selectedProjects.map((item) => item.name).join('、')} ${REPORT_TYPE_OPTIONS.find((item) => item.value === reportType)?.label ?? '智能分析报告'}`,
+      typeLabel: REPORT_TYPE_OPTIONS.find((item) => item.value === reportType)?.label ?? '智能分析报告',
+      createdAt: new Date().toISOString(),
+      rangeLabel,
+      intelligenceLabel: INTELLIGENCE_OPTIONS.find((item) => item.value === intelligenceLevel)?.label ?? '增强',
+      projectNames: selectedProjects.map((item) => item.name),
+      outputFormat,
+      sourceLabel: result.source === 'ai' ? 'AI 结构化输出' : '规则回退分析',
+      result,
+    };
+    setActivePreview(preview);
+    setAnalysisCount((current) => current + 1);
+    return preview;
+  }, [enableConclusion, enableRisk, enableSuggestions, enableSummary, intelligenceLevel, outputFormat, projectContextLines, projectInsights, pumpStationContextLines, pumpStations, rangeLabel, reportType, selectedProjects, snapshot.abnormalHistoryCount, snapshot.comparisonLabel, snapshot.dataCompletenessRate, snapshot.failedHistoryCount, snapshot.historyCount, snapshot.latestAbnormalTime, snapshot.pipelineCount, snapshot.projectCount, snapshot.pumpStationCount, visibleHistories, visiblePipelines]);
+
+  const generateReport = useCallback(async () => {
+    const preview = activePreview ?? (await runAnalysis());
+    if (!preview) return;
+    const record: LocalReportRecord = { ...preview, id: `local-${Date.now()}`, selectedProjectIds: [...selectedProjectIds] };
+    setLocalReports((current) => [record, ...current].slice(0, 30));
+    setActivePreview(record);
+    message.success('已加入历史报告区');
+  }, [activePreview, runAnalysis, selectedProjectIds]);
+
+  const openPreview = useCallback((preview: PreviewRecord | LocalReportRecord) => {
+    setActivePreview(preview);
+    setPreviewModalRecord(preview);
+  }, []);
+
+  const historyItems = useMemo<HistoryItem[]>(() => {
+    const localItems = localReports
+      .filter((item) => item.selectedProjectIds.some((id) => selectedSet.has(id)))
+      .map((item) => ({
+        id: item.id,
+        source: 'local' as const,
+        kind: 'ai' as const,
+        status: 'completed' as const,
+        title: item.title,
+        time: item.createdAt,
+        summary: item.result.conclusion || item.result.summary[0] || '已生成智能报告。',
+        preview: item,
+      }));
+    const serverItems = visibleHistories.map((item) => ({
+      id: `history-${item.id}`,
+      source: 'server' as const,
+      historyId: item.id,
+      kind: `${item.calcTypeName ?? ''} ${item.calcType ?? ''}`.toUpperCase().includes('AI') ? 'ai' as const : 'normal' as const,
+      status: item.status === 0 ? 'running' as const : item.status === 2 ? 'failed' as const : 'completed' as const,
+      title: `${item.projectName || '未命名项目'} ${item.calcTypeName || item.calcType || '历史分析'}`,
+      time: item.createTime || new Date().toISOString(),
+      summary: item.errorMessage || item.remark || '来自服务端历史记录。',
+      preview: buildHistoryPreview(item),
+    }));
+    return [...localItems, ...serverItems].sort((a, b) => dayjs(b.time).valueOf() - dayjs(a.time).valueOf()).filter((item) => {
+      if (historyFilter === 'all') return true;
+      if (historyFilter === 'ai') return item.kind === 'ai';
+      if (historyFilter === 'normal') return item.kind === 'normal';
+      return item.status === historyFilter;
+    });
+  }, [historyFilter, localReports, selectedSet, visibleHistories]);
+
+  const currentHistoryStats = useMemo(() => ({
+    localIds: historyItems.filter((item) => item.id.startsWith('local-')).map((item) => item.id),
+    serverIds: historyItems
+      .map((item) => (item.id.startsWith('history-') ? Number(item.id.replace(/^history-/, '')) : Number.NaN))
+      .filter((item) => Number.isFinite(item)),
+  }), [historyItems]);
+
+  const deletingIdSet = useMemo(() => new Set(deletingIds), [deletingIds]);
+
+  const removeDeletedPreviewRecords = useCallback((deletedPreviewIds: string[]) => {
+    if (!deletedPreviewIds.length) return;
+    setActivePreview((current) => (current && deletedPreviewIds.includes(current.id) ? null : current));
+    setPreviewModalRecord((current) => (current && deletedPreviewIds.includes(current.id) ? null : current));
+  }, []);
+
+  const handleDeleteHistoryItem = useCallback(async (item: HistoryItem) => {
+    setDeletingIds((current) => (current.includes(item.id) ? current : [...current, item.id]));
+    try {
+      if (item.id.startsWith('local-')) {
+        setLocalReports((current) => current.filter((report) => report.id !== item.id));
+        removeDeletedPreviewRecords([item.id]);
+        message.success('已删除本地 AI 报告');
+        return;
+      }
+
+      const historyId = Number(item.id.replace(/^history-/, ''));
+      if (!Number.isFinite(historyId)) {
+        throw new Error('历史记录 ID 无效');
+      }
+
+      await calculationHistoryApi.delete(historyId);
+      setHistories((current) => current.filter((history) => history.id !== historyId));
+      removeDeletedPreviewRecords([`history-preview-${historyId}`]);
+      message.success('已删除服务端历史记录');
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '删除失败');
+    } finally {
+      setDeletingIds((current) => current.filter((id) => id !== item.id));
+    }
+  }, [removeDeletedPreviewRecords]);
+
+  const handleClearCurrentHistory = useCallback(async () => {
+    if (!currentHistoryStats.localIds.length && !currentHistoryStats.serverIds.length) {
+      return;
+    }
+
+    setClearingCurrentList(true);
+    try {
+      const deletedPreviewIds = [
+        ...currentHistoryStats.localIds,
+        ...currentHistoryStats.serverIds.map((id) => `history-preview-${id}`),
+      ];
+      if (currentHistoryStats.serverIds.length) {
+        await calculationHistoryApi.batchDelete(currentHistoryStats.serverIds);
+      }
+      if (currentHistoryStats.localIds.length) {
+        setLocalReports((current) => current.filter((report) => !currentHistoryStats.localIds.includes(report.id)));
+      }
+      if (currentHistoryStats.serverIds.length) {
+        setHistories((current) => current.filter((history) => !currentHistoryStats.serverIds.includes(history.id)));
+      }
+      removeDeletedPreviewRecords(deletedPreviewIds);
+
+      const deletedParts: string[] = [];
+      if (currentHistoryStats.localIds.length) deletedParts.push(`${currentHistoryStats.localIds.length} 条本地 AI 报告`);
+      if (currentHistoryStats.serverIds.length) deletedParts.push(`${currentHistoryStats.serverIds.length} 条服务端记录`);
+      message.success(`已清空${deletedParts.join('、')}`);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '批量删除失败');
+    } finally {
+      setClearingCurrentList(false);
+    }
+  }, [currentHistoryStats.localIds, currentHistoryStats.serverIds, removeDeletedPreviewRecords]);
+
+  if (loading) {
+    return <AnimatedPage className="flex min-h-[520px] items-center justify-center"><Spin size="large" /></AnimatedPage>;
+  }
+  return (
+    <AnimatedPage className="mx-auto flex w-full max-w-[1480px] flex-col gap-6 px-4 py-6 text-slate-100 md:px-6">
+      <section className="overflow-hidden rounded-[30px] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.18),transparent_35%),linear-gradient(145deg,#0f172a_0%,#111827_50%,#020617_100%)] p-6 shadow-[0_28px_80px_rgba(2,8,23,0.4)] md:p-8">
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+          <div className="max-w-3xl">
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-4 py-2 text-sm text-cyan-100"><RobotOutlined />智能报告中心</div>
+            <h1 className="text-3xl font-semibold tracking-tight text-white md:text-4xl">AI 报告工作台</h1>
+            <p className="mt-3 text-base leading-7 text-slate-300">基于项目、管道、共享泵站和历史分析记录，自动生成摘要、风险、建议和报告结论。</p>
+          </div>
+          <Space wrap>
+            <Button icon={<ReloadOutlined />} loading={refreshing} onClick={() => void loadData('refresh')}>刷新数据</Button>
+            <Button icon={<SaveOutlined />} onClick={saveTemplate}>保存模板</Button>
+            <Button type="primary" icon={<RobotOutlined />} loading={analysing} onClick={() => void runAnalysis()}>开始 AI 分析</Button>
+            <Button type="primary" ghost icon={<FileTextOutlined />} onClick={() => void generateReport()}>生成智能报告</Button>
+          </Space>
+        </div>
+        <div className="mt-6">
+          <Alert type="info" showIcon message="安全说明" description="前端不会存储 API Key。页面只调用现有后端 agent 服务，密钥必须配置在服务端。" />
+        </div>
+      </section>
+
+      <section className="grid gap-4">
+        <div className="rounded-[28px] border border-white/10 bg-[#08111f]/92 p-6 shadow-[0_24px_60px_rgba(2,8,23,0.35)]">
+          <div className="mb-5 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+            <div>
+              <div className="text-xl font-semibold text-white">????????</div>
+              <div className="mt-1 text-sm text-slate-400">?????????????????????</div>
+            </div>
+            <div className="text-sm text-slate-400">?????{rangeLabel}</div>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {overviewCards.map((item) => (
+              <div key={item.label} className="rounded-[24px] border border-white/12 bg-white/6 p-5 shadow-[0_18px_40px_rgba(15,23,42,0.24)] backdrop-blur">
+                <div className="text-sm text-slate-300">{item.label}</div>
+                <div className={`mt-3 text-3xl font-semibold ${item.valueClassName}`}>{item.value}</div>
+                <div className="mt-2 text-sm text-slate-400">{item.hint}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-[28px] border border-white/10 bg-[#08111f]/92 p-6 shadow-[0_24px_60px_rgba(2,8,23,0.35)]">
+          <div className="mb-5 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+            <div>
+              <div className="text-xl font-semibold text-white">????????</div>
+              <div className="mt-1 text-sm text-slate-400">?????????????????????????????????</div>
+            </div>
+            <div className="text-sm text-slate-400">{snapshot.currentRangeLabel} vs {snapshot.previousRangeLabel}</div>
+          </div>
+          <div className="grid gap-4 md:grid-cols-3">
+            {trendCards.map((item) => (
+              <div key={item.label} className="rounded-[24px] border border-white/12 bg-white/6 p-5 shadow-[0_18px_40px_rgba(15,23,42,0.24)] backdrop-blur">
+                <div className="text-sm text-slate-300">{item.label}</div>
+                <div className={`mt-3 text-3xl font-semibold ${item.valueClassName}`}>{item.value}</div>
+                <div className="mt-2 text-sm text-slate-400">{item.hint}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-[1.35fr_0.9fr]">
+        <div className="rounded-[28px] border border-white/10 bg-[#0b1220]/92 p-6 shadow-[0_24px_60px_rgba(2,8,23,0.35)]">
+          <div className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <div className="text-lg font-semibold text-white">生成智能报告</div>
+              <div className="mt-1 text-sm text-slate-400">选择项目、分析范围、智能等级和输出模块。</div>
+            </div>
+            <Tag color="blue">{selectedProjects.length} 个项目已纳入分析</Tag>
+          </div>
+          <div className="grid gap-5 md:grid-cols-2">
+            <div className="space-y-4">
+              <div>
+                <div className="mb-2 text-sm text-slate-300">选择项目</div>
+                <Select mode="multiple" value={selectedProjectIds} onChange={setSelectedProjectIds} maxTagCount="responsive" style={{ width: '100%' }} options={projects.map((item) => ({ label: `${item.number || '-'} ${item.name}`, value: item.proId }))} />
+              </div>
+              <div>
+                <div className="mb-2 text-sm text-slate-300">报告类型</div>
+                <Select style={{ width: '100%' }} value={reportType} onChange={setReportType} options={REPORT_TYPE_OPTIONS} />
+              </div>
+              <div>
+                <div className="mb-2 text-sm text-slate-300">分析范围</div>
+                <Select style={{ width: '100%' }} value={rangePreset} onChange={setRangePreset} options={RANGE_OPTIONS} />
+              </div>
+              {rangePreset === 'custom' ? (
+                <div>
+                  <div className="mb-2 text-sm text-slate-300">自定义时间范围</div>
+                  <RangePicker
+                    style={{ width: '100%' }}
+                    value={customRange}
+                    onChange={(value) => {
+                      const nextValue = value as [Dayjs | null, Dayjs | null] | null;
+                      if (!nextValue || !nextValue[0] || !nextValue[1]) {
+                        setCustomRange(null);
+                        return;
+                      }
+                      setCustomRange([nextValue[0], nextValue[1]]);
+                    }}
+                  />
+                </div>
+              ) : null}
+            </div>
+            <div className="space-y-4">
+              <div>
+                <div className="mb-2 text-sm text-slate-300">智能等级</div>
+                <Select style={{ width: '100%' }} value={intelligenceLevel} onChange={setIntelligenceLevel} options={INTELLIGENCE_OPTIONS} />
+              </div>
+              <div>
+                <div className="mb-2 text-sm text-slate-300">输出格式</div>
+                <Select style={{ width: '100%' }} value={outputFormat} onChange={setOutputFormat} options={OUTPUT_OPTIONS} />
+              </div>
+              <div className="rounded-[24px] border border-white/8 bg-white/5 p-4">
+                <div className="mb-3 text-sm font-medium text-white">AI 功能开关</div>
+                <div className="space-y-3 text-sm text-slate-300">
+                  <div className="flex items-center justify-between"><span>智能摘要</span><Switch checked={enableSummary} onChange={setEnableSummary} /></div>
+                  <div className="flex items-center justify-between"><span>风险提示</span><Switch checked={enableRisk} onChange={setEnableRisk} /></div>
+                  <div className="flex items-center justify-between"><span>优化建议</span><Switch checked={enableSuggestions} onChange={setEnableSuggestions} /></div>
+                  <div className="flex items-center justify-between"><span>自动结论</span><Switch checked={enableConclusion} onChange={setEnableConclusion} /></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-[28px] border border-white/10 bg-[#09101d]/92 p-6 shadow-[0_24px_60px_rgba(2,8,23,0.35)]">
+          <div className="mb-4 text-lg font-semibold text-white">AI ????</div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-2xl border border-white/8 bg-white/5 p-4"><div className="text-sm text-slate-400">??????</div><div className="mt-2 text-2xl font-semibold text-white">{snapshot.currentSampleCount}</div></div>
+            <div className="rounded-2xl border border-white/8 bg-white/5 p-4"><div className="text-sm text-slate-400">?????</div><div className="mt-2 text-2xl font-semibold text-white">{snapshot.previousSampleCount}</div></div>
+            <div className="rounded-2xl border border-white/8 bg-white/5 p-4"><div className="text-sm text-slate-400">????</div><div className="mt-2 text-2xl font-semibold text-amber-300">{snapshot.analysisObjectCount ? `${snapshot.abnormalRate}%` : '?'}</div></div>
+            <div className="rounded-2xl border border-white/8 bg-white/5 p-4"><div className="text-sm text-slate-400">?????</div><div className="mt-2 text-2xl font-semibold text-rose-300">{snapshot.analysisObjectCount ? `${snapshot.highRiskRate}%` : '?'}</div></div>
+          </div>
+          <div className="mt-4 rounded-[24px] border border-cyan-300/15 bg-cyan-400/8 p-4 text-sm leading-7 text-slate-300">?????{rangeLabel}??? {snapshot.analysisObjectCount} ?????????? {snapshot.abnormalHistoryCount} ????? {snapshot.highRiskCount} ??????? {snapshot.healthScore !== null ? `${snapshot.healthScore} ?` : '?????'}?????????? {formatSignedPercent(snapshot.energyChangePercent)}??? {formatSignedPercent(snapshot.efficiencyChangePercent)}????? {formatSignedCount(snapshot.riskCountChange)}?</div>
+        </div>
+      </section>
+
+      <section className="rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,#0b1220_0%,#0f172a_100%)] p-6 shadow-[0_24px_60px_rgba(2,8,23,0.35)]">
+        <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="text-xl font-semibold text-white">AI 分析结果区</div>
+            <div className="mt-1 text-sm text-slate-400">先看摘要、风险和建议，再决定是否生成报告。</div>
+          </div>
+          {activePreview ? <Button icon={<DownloadOutlined />} onClick={() => downloadMarkdown(activePreview)}>导出摘要</Button> : null}
+        </div>
+        {activePreview ? (
+          <PreviewContent preview={activePreview} />
+        ) : (
+          <div className="rounded-[28px] border border-dashed border-white/10 px-6 py-16 text-center">
+            <div className="mx-auto max-w-md">
+              <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-cyan-400/10 text-cyan-200"><RobotOutlined style={{ fontSize: 28 }} /></div>
+              <div className="text-xl font-semibold text-white">等待 AI 分析</div>
+              <div className="mt-3 text-sm leading-7 text-slate-400">点击“开始 AI 分析”后，这里会显示智能摘要、风险提示、优化建议和报告结论。</div>
+            </div>
+          </div>
+        )}
+      </section>
+
+      <section className="rounded-[28px] border border-white/10 bg-[#08111f]/92 p-6 shadow-[0_24px_60px_rgba(2,8,23,0.35)]">
+        <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="text-xl font-semibold text-white">历史报告区</div>
+            <div className="mt-1 text-sm text-slate-400">保留 AI 报告、普通记录、完成状态和失败状态的管理入口。</div>
+          </div>
+          <Space wrap>
+            {HISTORY_FILTER_OPTIONS.map((item) => <Button key={item.value} size="small" type={historyFilter === item.value ? 'primary' : 'default'} onClick={() => setHistoryFilter(item.value)}>{item.label}</Button>)}
+            {historyItems.length ? (
+              <Popconfirm
+                title="清空当前筛选结果？"
+                description={`将删除 ${currentHistoryStats.localIds.length} 条本地 AI 报告和 ${currentHistoryStats.serverIds.length} 条服务端记录，删除后不可恢复。`}
+                okText="清空"
+                cancelText="取消"
+                onConfirm={() => void handleClearCurrentHistory()}
+              >
+                <Button danger icon={<DeleteOutlined />} loading={clearingCurrentList}>
+                  清空当前列表
+                </Button>
+              </Popconfirm>
+            ) : null}
+          </Space>
+        </div>
+        {historyItems.length ? (
+          <div className="grid gap-4">
+            {historyItems.map((item) => (
+              <div key={item.id} className="rounded-[24px] border border-white/8 bg-white/5 p-5">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="text-base font-semibold text-white">{item.title}</div>
+                      <Tag color={item.kind === 'ai' ? 'blue' : 'default'}>{item.kind === 'ai' ? 'AI报告' : '普通报告'}</Tag>
+                      {renderStatus(item.status)}
+                    </div>
+                    <div className="mt-2 text-sm text-slate-400">{formatTime(item.time)}</div>
+                    <div className="mt-3 text-sm leading-7 text-slate-300">{item.summary}</div>
+                  </div>
+                  <Space wrap>
+                    {item.preview ? <Button icon={<FileSearchOutlined />} onClick={() => openPreview(item.preview!)}>预览</Button> : null}
+                    {item.preview ? <Button icon={<DownloadOutlined />} onClick={() => downloadMarkdown(item.preview!)}>导出</Button> : null}
+                    <Popconfirm
+                      title={item.preview ? '删除这条本地 AI 报告？' : '删除这条服务端历史记录？'}
+                      description={item.preview ? '删除后将从当前浏览器本地存储中移除。' : '删除后将从数据库历史记录中移除，且不可恢复。'}
+                      okText="删除"
+                      cancelText="取消"
+                      onConfirm={() => void handleDeleteHistoryItem(item)}
+                    >
+                      <Button danger icon={<DeleteOutlined />} loading={deletingIdSet.has(item.id)}>
+                        删除
+                      </Button>
+                    </Popconfirm>
+                  </Space>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <Empty description="当前筛选条件下暂无可展示的报告记录。" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        )}
+      </section>
+      <Modal
+        open={Boolean(previewModalRecord)}
+        title={previewModalRecord?.title || '报告预览'}
+        onCancel={() => setPreviewModalRecord(null)}
+        width={1080}
+        footer={
+          previewModalRecord
+            ? [
+                <Button key="download" icon={<DownloadOutlined />} onClick={() => downloadMarkdown(previewModalRecord)}>
+                  导出
+                </Button>,
+                <Button key="close" type="primary" onClick={() => setPreviewModalRecord(null)}>
+                  关闭
+                </Button>,
+              ]
+            : null
+        }
+        styles={{
+          container: {
+            background: 'linear-gradient(180deg, #0b1220 0%, #0f172a 100%)',
+            border: '1px solid rgba(255,255,255,0.08)',
+          },
+          header: {
+            background: 'transparent',
+            borderBottom: '1px solid rgba(255,255,255,0.08)',
+          },
+          body: {
+            paddingTop: 20,
+          },
+        }}
+      >
+        {previewModalRecord ? <PreviewContent preview={previewModalRecord} /> : null}
+      </Modal>
     </AnimatedPage>
   );
 }

@@ -1,6 +1,5 @@
 import { http } from './request';
 import type {
-  AnalysisReport,
   CalculationHistory,
   HydraulicAnalysisParams,
   HydraulicAnalysisResult,
@@ -56,6 +55,19 @@ export const oilPropertyApi = {
   delete: (ids: number[]) => http.delete<R<boolean>>(`/oil-property/${ids.join(',')}`),
 };
 
+export const knowledgeDocumentApi = {
+  list: () => http.get<R<KnowledgeDocument[]>>('/knowledge-doc/list'),
+  listTasks: (id: number) => http.get<R<KnowledgeIngestTask[]>>(`/knowledge-doc/${id}/tasks`),
+  upload: (formData: FormData) =>
+    http.post<R<KnowledgeDocument>>('/knowledge-doc/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    }),
+  retry: (id: number) => http.post<R<KnowledgeDocument>>(`/knowledge-doc/${id}/retry`),
+  delete: (id: number) => http.delete<R<boolean>>(`/knowledge-doc/${id}`),
+};
+
 export const calculationApi = {
   hydraulicAnalysis: (params: HydraulicAnalysisParams) =>
     http.post<R<HydraulicAnalysisResult>>('/calculation/hydraulic-analysis', params),
@@ -80,30 +92,6 @@ export const statisticsApi = {
     }),
 };
 
-export const reportApi = {
-  page: (params?: {
-    reportType?: string;
-    projectId?: number;
-    userId?: number;
-    pageNum?: number;
-    pageSize?: number;
-  }) => http.get<R<PageResult<AnalysisReport>>>('/calculation/report/page', { params }),
-  recent: (limit = 10, userId?: number) =>
-    http.get<R<AnalysisReport[]>>('/calculation/report/recent', {
-      params: { limit, userId },
-    }),
-  detail: (id: number) => http.get<R<AnalysisReport>>(`/calculation/report/${id}`),
-  delete: (id: number) => http.delete<R<void>>(`/calculation/report/${id}`),
-};
-
-export const knowledgeDocumentApi = {
-  list: () => http.get<R<KnowledgeDocument[]>>('/knowledge-doc/list'),
-  listTasks: (id: number) => http.get<R<KnowledgeIngestTask[]>>(`/knowledge-doc/${id}/tasks`),
-  upload: (data: FormData) => http.post<R<KnowledgeDocument>>('/knowledge-doc/upload', data),
-  retry: (id: number) => http.post<R<KnowledgeDocument>>(`/knowledge-doc/${id}/retry`),
-  delete: (id: number) => http.delete<R<boolean>>(`/knowledge-doc/${id}`),
-};
-
 export const calculationHistoryApi = {
   page: (params?: {
     calcType?: string;
@@ -126,4 +114,6 @@ export const calculationHistoryApi = {
       params,
     }),
   detail: (id: number) => http.get<R<CalculationHistory>>(`/calculation/history/${id}`),
+  delete: (id: number) => http.delete<R<void>>(`/calculation/history/${id}`),
+  batchDelete: (ids: number[]) => http.post<R<number>>('/calculation/history/batch-delete', ids),
 };

@@ -55,7 +55,7 @@ class Settings(BaseSettings):
     SQL_CONNECT_TIMEOUT_SECONDS: int = Field(default=10)
     SQL_MAX_LIMIT: int = Field(default=100)
     SQL_ALLOWED_TABLES: str = Field(
-        default="t_project,t_pipeline,t_pump_station,t_oil_property,t_calculation_history,t_calculation_result,t_sensitivity_analysis,t_kg_node,t_kg_edge,t_agent_trace,t_agent_trace_event,t_hitl_record,t_analysis_report"
+        default="t_project,t_pipeline,t_pump_station,t_oil_property,t_calculation_history,t_calculation_result,t_sensitivity_analysis,t_kg_node,t_kg_edge,t_agent_trace,t_agent_trace_event,t_hitl_record"
     )
     SQL_BLOCKED_TABLES: str = Field(
         default="sys_user,sys_role,sys_menu,sys_config,sys_dict_data,sys_dict_type,sys_logininfor,sys_oper_log"

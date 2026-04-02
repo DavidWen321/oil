@@ -1,37 +1,36 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+/**
+ * PipelineList - 管道参数管理页面
+ */
+
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ColumnWidthOutlined,
-  DeleteOutlined,
-  EditOutlined,
+  Card,
+  Button,
+  Space,
+  Modal,
+  Form,
+  Input,
+  InputNumber,
+  message,
+  Popconfirm,
+  Tooltip,
+  Row,
+  Col,
+  Select,
+} from 'antd';
+import {
   PlusOutlined,
-  ReloadOutlined,
-  RiseOutlined,
+  EditOutlined,
+  DeleteOutlined,
   SearchOutlined,
-  SlidersOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons';
-import { Button, Card, Col, Form, Input, InputNumber, Modal, Popconfirm, Row, Tooltip, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import type { Pipeline } from '../../types';
-import { pipelineApi } from '../../api';
+import type { Pipeline, Project } from '../../types';
+import { pipelineApi, projectApi } from '../../api';
 import AnimatedPage from '../../components/common/AnimatedPage';
 import ResponsiveTable from '../../components/common/ResponsiveTable';
 import styles from './DataPage.module.css';
-
-const heroStyle = {
-  '--hero-bg-start': '#ecfeff',
-  '--hero-bg-end': '#f8fafc',
-  '--hero-outline': 'rgba(8, 145, 178, 0.18)',
-  '--hero-glow': 'rgba(8, 145, 178, 0.24)',
-  '--hero-accent': '#0f766e',
-  '--hero-icon-bg': 'rgba(8, 145, 178, 0.12)',
-} as CSSProperties;
-
-function formatNumber(value?: number | null, digits = 0) {
-  if (value == null || Number.isNaN(value)) {
-    return '--';
-  }
-  return value.toFixed(digits);
-}
 
 function nowrapTitle(text: string) {
   return <span style={{ whiteSpace: 'nowrap' }}>{text}</span>;
@@ -40,29 +39,115 @@ function nowrapTitle(text: string) {
 export default function PipelineList() {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<Pipeline[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingItem, setEditingItem] = useState<Pipeline | null>(null);
   const [searchText, setSearchText] = useState('');
   const [form] = Form.useForm<Pipeline>();
 
-  useEffect(() => {
-    void fetchData();
-  }, []);
+  const projectNameById = useMemo(
+    () => new Map(projects.map((project) => [project.proId, project.name] as const)),
+    [projects],
+  );
 
-  const fetchData = async () => {
-    setLoading(true);
+  const getProjectName = useCallback((proId?: number) => {
+    if (typeof proId !== 'number') {
+      return '未绑定项目';
+    }
+    return projectNameById.get(proId) ?? `项目 ${proId}`;
+  }, [projectNameById]);
+
+  const fetchData = async ({ silent = false }: { silent?: boolean } = {}) => {
+    if (!silent) {
+      setLoading(true);
+    }
+
     try {
-      const res = await pipelineApi.listByProject(1);
-      setData(res.data || []);
+      const projectResult = await projectApi.list();
+      const nextProjects = Array.isArray(projectResult.data) ? projectResult.data : [];
+      setProjects(nextProjects);
+
+      if (nextProjects.length === 0) {
+        setData([]);
+        return;
+      }
+
+      const pipelineResults = await Promise.allSettled(
+        nextProjects.map((project) => pipelineApi.listByProject(project.proId)),
+      );
+
+      const nextData = pipelineResults
+        .flatMap((result) =>
+          result.status === 'fulfilled' && Array.isArray(result.value.data) ? result.value.data : [],
+        )
+        .sort((left, right) => {
+          if (left.proId !== right.proId) {
+            return left.proId - right.proId;
+          }
+          return left.id - right.id;
+        });
+
+      setData(nextData);
+
+      if (!silent && pipelineResults.some((result) => result.status !== 'fulfilled')) {
+        message.warning('部分项目的管道数据加载失败，当前已显示成功返回的数据。');
+      }
     } catch {
-      setData([]);
-      message.error('加载管道数据失败');
+      if (!silent) {
+        setProjects([]);
+        setData([]);
+        message.error('加载管道数据失败');
+      }
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   };
 
+  useEffect(() => {
+    let active = true;
+
+    const refresh = (silent = false) => {
+      if (!active) {
+        return;
+      }
+      void fetchData({ silent });
+    };
+
+    refresh(false);
+
+    const intervalId = window.setInterval(() => {
+      refresh(true);
+    }, 30000);
+
+    const handleFocus = () => {
+      refresh(true);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refresh(true);
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
   const handleAdd = () => {
+    if (projects.length === 0) {
+      message.warning('请先新增项目，再维护管道参数。');
+      return;
+    }
+
     setEditingItem(null);
     form.resetFields();
     setModalVisible(true);
@@ -77,7 +162,7 @@ export default function PipelineList() {
   const handleDelete = async (id: number) => {
     try {
       await pipelineApi.delete([id]);
-      message.success('管道已删除');
+      message.success('删除成功');
       await fetchData();
     } catch {
       message.error('删除失败，请稍后重试');
@@ -91,8 +176,8 @@ export default function PipelineList() {
         await pipelineApi.update({ ...editingItem, ...values });
         message.success('管道已更新');
       } else {
-        await pipelineApi.create({ ...values, proId: 1 });
-        message.success('管道已添加');
+        await pipelineApi.create(values);
+        message.success('新增成功');
       }
       setModalVisible(false);
       await fetchData();
@@ -108,48 +193,47 @@ export default function PipelineList() {
     }
 
     return data.filter((item) =>
-      [item.name, item.length, item.diameter, item.throughput]
-        .some((value) => String(value ?? '').toLowerCase().includes(keyword)),
+      [item.name, getProjectName(item.proId)]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(keyword)),
     );
-  }, [data, searchText]);
-
-  const totalLength = useMemo(
-    () => data.reduce((sum, item) => sum + (item.length || 0), 0),
-    [data],
-  );
-
-  const averageDiameter = useMemo(() => {
-    if (!data.length) {
-      return 0;
-    }
-    return data.reduce((sum, item) => sum + (item.diameter || 0), 0) / data.length;
-  }, [data]);
-
-  const maxThroughput = useMemo(
-    () => data.reduce((max, item) => Math.max(max, item.throughput || 0), 0),
-    [data],
-  );
+  }, [data, getProjectName, searchText]);
 
   const columns: ColumnsType<Pipeline> = [
     {
-      title: nowrapTitle('ID'),
-      dataIndex: 'id',
+      title: nowrapTitle('编号'),
       width: 90,
       align: 'center',
+      render: (_value, _record, index) => index + 1,
+    },
+    {
+      title: nowrapTitle('所属项目'),
+      dataIndex: 'proId',
+      width: 180,
+      align: 'center',
+      render: (proId?: number) => (
+        <span style={{ whiteSpace: 'nowrap', color: 'var(--text-secondary)' }}>
+          {getProjectName(proId)}
+        </span>
+      ),
     },
     {
       title: nowrapTitle('管道名称'),
       dataIndex: 'name',
       width: 220,
       align: 'center',
-      render: (text: string) => <span className={styles.valueAccent}>{text}</span>,
+      render: (text: string) => (
+        <span style={{ fontWeight: 500, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+          {text}
+        </span>
+      ),
     },
     {
       title: nowrapTitle('长度 (km)'),
       dataIndex: 'length',
       width: 140,
       align: 'center',
-      render: (value?: number) => <span>{formatNumber(value, 1)}</span>,
+      render: (val: number) => <span style={{ whiteSpace: 'nowrap' }}>{val?.toFixed(1)}</span>,
     },
     {
       title: nowrapTitle('管径 (mm)'),
@@ -164,7 +248,7 @@ export default function PipelineList() {
       align: 'center',
     },
     {
-      title: nowrapTitle('输量 (m3/h)'),
+      title: nowrapTitle('输量 (m³/h)'),
       dataIndex: 'throughput',
       width: 150,
       align: 'center',
@@ -188,7 +272,7 @@ export default function PipelineList() {
       align: 'center',
       fixed: 'right',
       render: (_, record) => (
-        <div className={styles.actionGroup}>
+        <Space size="small">
           <Button
             type="text"
             size="small"
@@ -199,10 +283,10 @@ export default function PipelineList() {
             编辑
           </Button>
           <Popconfirm
-            title="确认删除这条管道吗？"
-            description="删除后将无法恢复。"
-            onConfirm={() => void handleDelete(record.id)}
-            okText="删除"
+            title="确定删除吗？"
+            description="此操作不可恢复。"
+            onConfirm={() => handleDelete(record.id)}
+            okText="确定"
             cancelText="取消"
             okButtonProps={{ danger: true }}
           >
@@ -211,12 +295,12 @@ export default function PipelineList() {
               size="small"
               danger
               icon={<DeleteOutlined />}
-              className={`${styles.actionBtn} ${styles.actionBtnDanger}`}
+              className={styles.actionBtn}
             >
               删除
             </Button>
           </Popconfirm>
-        </div>
+        </Space>
       ),
     },
   ];
@@ -224,101 +308,37 @@ export default function PipelineList() {
   return (
     <AnimatedPage className={styles.page}>
       <div className={styles.pageContent}>
-        <section className={styles.hero} style={heroStyle}>
-          <div className={styles.heroGrid}>
+        <header className={styles.header}>
+          <div className={styles.headerTop}>
             <div className={styles.headerInfo}>
-              <span className={styles.eyebrow}>Data Entry / Pipelines</span>
-              <h1 className={styles.title}>管道参数录入</h1>
+              <h1 className={styles.title}>管道参数</h1>
               <p className={styles.subtitle}>
-                维护管线长度、管径、壁厚、设计输量和高程参数，为水力分析、敏感性分析和监测计算提供基础输入。
+                管理数据库中全部项目的管道参数，并自动同步最新的管径、长度、壁厚、输量与高程数据。
               </p>
-              <div className={styles.heroChips}>
-                <span className={styles.heroChip}>默认读取项目 #1 的管道数据</span>
-                <span className={styles.heroChip}>关键几何参数集中展示，录入时更容易对照</span>
-                <span className={styles.heroChip}>移动端会压缩成双列信息卡，不会再像表格截图</span>
-              </div>
             </div>
             <div className={styles.headerActions}>
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={handleAdd}
-                className={styles.primaryButton}
-              >
+              <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd} size="middle">
                 新增管道
               </Button>
             </div>
           </div>
-
-          <div className={styles.heroStats}>
-            <div className={styles.statCard}>
-              <div className={styles.statTop}>
-                <span className={styles.statLabel}>管线总数</span>
-                <span className={styles.statIcon}>
-                  <SlidersOutlined />
-                </span>
-              </div>
-              <div className={styles.statValue}>{data.length}</div>
-              <div className={styles.statHint}>每条管线都可以作为后续分析的独立对象。</div>
-            </div>
-
-            <div className={styles.statCard}>
-              <div className={styles.statTop}>
-                <span className={styles.statLabel}>累计里程</span>
-                <span className={styles.statIcon}>
-                  <RiseOutlined />
-                </span>
-              </div>
-              <div className={styles.statValue}>{formatNumber(totalLength, 1)}</div>
-              <div className={styles.statHint}>当前项目下所有已录入管道长度总和，单位 km。</div>
-            </div>
-
-            <div className={styles.statCard}>
-              <div className={styles.statTop}>
-                <span className={styles.statLabel}>平均管径</span>
-                <span className={styles.statIcon}>
-                  <ColumnWidthOutlined />
-                </span>
-              </div>
-              <div className={styles.statValue}>{formatNumber(averageDiameter, 0)}</div>
-              <div className={styles.statHint}>
-                最高设计输量 {formatNumber(maxThroughput, 0)} m3/h。
-              </div>
-            </div>
-          </div>
-        </section>
+        </header>
 
         <Card className={styles.tableCard} bordered={false}>
-          <div className={styles.tableHeader}>
-            <div className={styles.tableTitleGroup}>
-              <div className={styles.tableEyebrow}>管道台账</div>
-              <h2 className={styles.tableTitle}>录入结果总览</h2>
-              <p className={styles.tableMeta}>建议先录入主干管线，再补支线或差异化参数。</p>
-            </div>
-            <span className={styles.summaryPill}>
-              已显示 {filteredData.length} / {data.length} 条管道
-            </span>
-          </div>
-
           <div className={styles.toolbar}>
             <div className={styles.toolbarLeft}>
               <Input
-                placeholder="搜索管道名称、长度、管径或输量"
+                placeholder="搜索管道名称或所属项目..."
                 prefix={<SearchOutlined style={{ color: 'var(--text-muted)' }} />}
                 value={searchText}
-                onChange={(event) => setSearchText(event.target.value)}
+                onChange={(e) => setSearchText(e.target.value)}
                 className={styles.searchInput}
                 allowClear
               />
             </div>
             <div className={styles.toolbarRight}>
-              <Tooltip title="刷新管道数据">
-                <Button
-                  icon={<ReloadOutlined />}
-                  onClick={() => void fetchData()}
-                  loading={loading}
-                  className={styles.toolbarButton}
-                />
+              <Tooltip title="刷新数据">
+                <Button icon={<ReloadOutlined />} onClick={() => void fetchData()} loading={loading} />
               </Tooltip>
             </div>
           </div>
@@ -328,7 +348,7 @@ export default function PipelineList() {
             dataSource={filteredData}
             rowKey="id"
             loading={loading}
-            scroll={{ x: 1300 }}
+            scroll={{ x: 1430 }}
             pagination={{
               pageSize: 10,
               showSizeChanger: true,
@@ -336,64 +356,31 @@ export default function PipelineList() {
               showTotal: (total) => `共 ${total} 条记录`,
             }}
             cardRender={(record) => (
-              <div className={styles.mobileCard}>
-                <div className={styles.mobileCardTop}>
-                  <div>
-                    <div className={styles.mobileCardTitle}>{record.name}</div>
-                    <div className={styles.mobileCardMeta}>
-                      高程 {formatNumber(record.startAltitude)} m 至 {formatNumber(record.endAltitude)} m
-                    </div>
-                  </div>
-                  <span className={styles.mobileCardBadge}>{formatNumber(record.diameter)} mm</span>
+              <div
+                style={{
+                  padding: 'var(--space-4)',
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 'var(--radius-lg)',
+                }}
+              >
+                <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 15, marginBottom: 8 }}>
+                  {record.name}
                 </div>
-
-                <div className={styles.mobileCardGrid}>
-                  <div className={styles.mobileField}>
-                    <div className={styles.mobileLabel}>长度</div>
-                    <div className={styles.mobileValue}>{formatNumber(record.length, 1)} km</div>
-                  </div>
-                  <div className={styles.mobileField}>
-                    <div className={styles.mobileLabel}>壁厚</div>
-                    <div className={styles.mobileValue}>{formatNumber(record.thickness)} mm</div>
-                  </div>
-                  <div className={styles.mobileField}>
-                    <div className={styles.mobileLabel}>输量</div>
-                    <div className={styles.mobileValue}>{formatNumber(record.throughput)} m3/h</div>
-                  </div>
-                  <div className={styles.mobileField}>
-                    <div className={styles.mobileLabel}>粗糙度</div>
-                    <div className={styles.mobileValue}>{formatNumber(record.roughness, 4)}</div>
-                  </div>
-                </div>
-
-                <div className={styles.mobileActions}>
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={<EditOutlined />}
-                    onClick={() => handleEdit(record)}
-                    className={styles.actionBtn}
-                  >
-                    编辑
-                  </Button>
-                  <Popconfirm
-                    title="确认删除这条管道吗？"
-                    description="删除后将无法恢复。"
-                    onConfirm={() => void handleDelete(record.id)}
-                    okText="删除"
-                    cancelText="取消"
-                    okButtonProps={{ danger: true }}
-                  >
-                    <Button
-                      type="text"
-                      size="small"
-                      danger
-                      icon={<DeleteOutlined />}
-                      className={`${styles.actionBtn} ${styles.actionBtnDanger}`}
-                    >
-                      删除
-                    </Button>
-                  </Popconfirm>
+                <div
+                  style={{
+                    fontSize: 13,
+                    color: 'var(--text-tertiary)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 4,
+                  }}
+                >
+                  <span>所属项目：{getProjectName(record.proId)}</span>
+                  <span>长度：{record.length?.toFixed(1)} km</span>
+                  <span>管径/壁厚：{record.diameter} / {record.thickness} mm</span>
+                  <span>高程：{record.startAltitude} → {record.endAltitude} m</span>
+                  <span>输量：{record.throughput} m³/h</span>
                 </div>
               </div>
             )}
@@ -401,14 +388,7 @@ export default function PipelineList() {
         </Card>
 
         <Modal
-          title={
-            <div className={styles.modalTitleBlock}>
-              <span className={styles.modalTitle}>{editingItem ? '编辑管道参数' : '新增管道'}</span>
-              <span className={styles.modalSubtitle}>
-                完整填写长度、管径、壁厚和高程后，后续分析参数可以直接带入。
-              </span>
-            </div>
-          }
+          title={editingItem ? '编辑管道' : '新增管道'}
           open={modalVisible}
           onOk={() => void handleSubmit()}
           onCancel={() => setModalVisible(false)}
@@ -418,44 +398,44 @@ export default function PipelineList() {
           okText="保存"
           cancelText="取消"
         >
-          <div className={styles.formIntro}>
-            这里的参数会直接参与水力计算，建议录入时对照设计台账或现场定值，减少后续重复修正。
-          </div>
-
           <Form form={form} layout="vertical">
+            <Form.Item
+              name="proId"
+              label="所属项目"
+              rules={[{ required: true, message: '请选择所属项目' }]}
+            >
+              <Select
+                placeholder="请选择所属项目"
+                showSearch
+                optionFilterProp="label"
+                options={projects.map((project) => ({
+                  value: project.proId,
+                  label: project.name || project.number || `项目 ${project.proId}`,
+                }))}
+              />
+            </Form.Item>
+
             <Form.Item
               name="name"
               label="管道名称"
               rules={[{ required: true, message: '请输入管道名称' }]}
             >
-              <Input placeholder="例如：一号主输管线" />
+              <Input placeholder="请输入管道名称" />
             </Form.Item>
 
             <Row gutter={16}>
               <Col span={8}>
-                <Form.Item
-                  name="length"
-                  label="长度 (km)"
-                  rules={[{ required: true, message: '请输入长度' }]}
-                >
+                <Form.Item name="length" label="长度 (km)" rules={[{ required: true, message: '请输入长度' }]}>
                   <InputNumber min={0} precision={2} style={{ width: '100%' }} />
                 </Form.Item>
               </Col>
               <Col span={8}>
-                <Form.Item
-                  name="diameter"
-                  label="管径 (mm)"
-                  rules={[{ required: true, message: '请输入管径' }]}
-                >
+                <Form.Item name="diameter" label="管径 (mm)" rules={[{ required: true, message: '请输入管径' }]}>
                   <InputNumber min={0} style={{ width: '100%' }} />
                 </Form.Item>
               </Col>
               <Col span={8}>
-                <Form.Item
-                  name="thickness"
-                  label="壁厚 (mm)"
-                  rules={[{ required: true, message: '请输入壁厚' }]}
-                >
+                <Form.Item name="thickness" label="壁厚 (mm)" rules={[{ required: true, message: '请输入壁厚' }]}>
                   <InputNumber min={0} style={{ width: '100%' }} />
                 </Form.Item>
               </Col>
@@ -463,7 +443,7 @@ export default function PipelineList() {
 
             <Row gutter={16}>
               <Col span={8}>
-                <Form.Item name="throughput" label="输量 (m3/h)">
+                <Form.Item name="throughput" label="输量 (m³/h)">
                   <InputNumber min={0} style={{ width: '100%' }} />
                 </Form.Item>
               </Col>

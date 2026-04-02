@@ -4,27 +4,24 @@ import {
   DashboardOutlined,
   DatabaseOutlined,
   RobotOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
 import styles from './MobileTabBar.module.css';
 
 const tabs = [
   { key: 'dashboard', label: '首页', icon: <DashboardOutlined />, path: '/dashboard', matchPrefix: '/dashboard' },
   { key: 'data', label: '数据', icon: <DatabaseOutlined />, path: '/data/project', matchPrefix: '/data' },
-  {
-    key: 'calculation',
-    label: '计算',
-    icon: <CalculatorOutlined />,
-    path: '/calculation/hydraulic',
-    matchPrefix: '/calculation',
-  },
-  { key: 'ai', label: '助手', icon: <RobotOutlined />, path: '/ai/chat', matchPrefix: '/ai' },
+  { key: 'calculation', label: '计算', icon: <CalculatorOutlined />, path: '/calculation/hydraulic', matchPrefix: '/calculation' },
+  { key: 'ai', label: 'AI', icon: <RobotOutlined />, path: '/ai/report', matchPrefix: '/ai' },
+  { key: 'settings', label: '设置', icon: <SettingOutlined />, path: '/settings', matchPrefix: '/settings' },
 ];
 
 export default function MobileTabBar() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const activeTab = tabs.find((tab) => location.pathname.startsWith(tab.matchPrefix))?.key || 'dashboard';
+  const activeTab =
+    tabs.find((tab) => location.pathname.startsWith(tab.matchPrefix))?.key || 'dashboard';
 
   return (
     <nav className={styles.tabBar} aria-label="主导航">
