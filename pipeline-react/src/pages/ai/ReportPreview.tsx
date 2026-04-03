@@ -2687,6 +2687,8 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
         </div>
       </section>
 
+      {false ? (
+        <>
       <section className="grid gap-4">
         <div className="rounded-[28px] border border-white/10 bg-[#08111f]/92 p-6 shadow-[0_24px_60px_rgba(2,8,23,0.35)]">
           <div className="mb-5 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
@@ -2808,10 +2810,10 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
             <div className="text-xl font-semibold text-white">AI 分析结果区</div>
             <div className="mt-1 text-sm text-slate-400">先看摘要、风险和建议，再决定是否生成报告。</div>
           </div>
-          {activePreview ? <Button icon={<DownloadOutlined />} onClick={() => downloadMarkdown(activePreview)}>导出摘要</Button> : null}
+          {activePreview ? <Button icon={<DownloadOutlined />} onClick={() => downloadMarkdown(activePreview!)}>导出摘要</Button> : null}
         </div>
         {activePreview ? (
-          <PreviewContent preview={activePreview} />
+          <PreviewContent preview={activePreview!} />
         ) : (
           <div className="rounded-[28px] border border-dashed border-white/10 px-6 py-16 text-center">
             <div className="mx-auto max-w-md">
@@ -2883,6 +2885,8 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
           <Empty description="当前筛选条件下暂无可展示的报告记录。" image={Empty.PRESENTED_IMAGE_SIMPLE} />
         )}
       </section>
+        </>
+      ) : null}
       <section className="overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,#0a1426_0%,#0b1220_42%,#07101d_100%)] p-6 shadow-[0_30px_90px_rgba(2,8,23,0.38)] md:p-8">
         <div className="flex flex-col gap-4 border-b border-white/8 pb-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-3xl">
