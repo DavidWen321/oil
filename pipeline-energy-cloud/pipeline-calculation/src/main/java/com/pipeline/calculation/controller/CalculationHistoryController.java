@@ -1,6 +1,9 @@
 package com.pipeline.calculation.controller;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -12,11 +15,17 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pipeline.calculation.domain.dto.CalculationHistoryQuery;
+import com.pipeline.calculation.domain.dto.ReportHistoryCreateRequest;
+import com.pipeline.calculation.domain.entity.CalculationHistory;
 import com.pipeline.calculation.domain.vo.CalculationHistoryVO;
 import com.pipeline.calculation.service.ICalculationHistoryService;
 import com.pipeline.common.core.domain.PageResult;
 import com.pipeline.common.core.domain.Result;
+import com.pipeline.common.core.enums.CalcTypeEnum;
+import com.pipeline.common.core.exception.BusinessException;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -42,6 +51,7 @@ import lombok.RequiredArgsConstructor;
 public class CalculationHistoryController {
 
     private final ICalculationHistoryService calculationHistoryService;
+    private final ObjectMapper objectMapper;
 
     /**
      * 分页查询计算历史
@@ -163,5 +173,105 @@ public class CalculationHistoryController {
             @PathVariable("userId") @NotNull(message = "用户ID不能为空") Long userId) {
         long count = calculationHistoryService.countByUser(userId);
         return Result.ok(count);
+    }
+
+    /**
+     * 归档智能报告到计算历史表
+     *
+     * @param request  报告归档请求
+     * @param userId   用户ID
+     * @param userName 用户名
+     * @return 归档后的历史记录
+     */
+    @Operation(summary = "归档智能报告", description = "将智能报告元数据和结构化结果保存到数据库计算历史表")
+    @PostMapping("/report")
+    public Result<CalculationHistoryVO> saveReport(
+            @RequestBody @Validated ReportHistoryCreateRequest request,
+            @RequestParam(value = "userId", required = false, defaultValue = "1") Long userId,
+            @RequestParam(value = "userName", required = false, defaultValue = "admin") String userName) {
+        try {
+            Long primaryProjectId = getPrimaryProjectId(request.getSelectedProjectIds());
+            String inputJson = objectMapper.writeValueAsString(buildReportInputPayload(request));
+            String outputJson = objectMapper.writeValueAsString(request.getResult());
+
+            Long historyId = calculationHistoryService.createHistory(
+                    CalcTypeEnum.AI_REPORT.getCode(),
+                    primaryProjectId,
+                    request.getTitle(),
+                    userId,
+                    userName,
+                    inputJson);
+
+            if (historyId == null) {
+                throw new BusinessException("智能报告归档失败");
+            }
+
+            CalculationHistory history = new CalculationHistory();
+            history.setId(historyId);
+            history.setOutputResult(outputJson);
+            history.setRemark(buildReportRemark(request));
+            calculationHistoryService.updateById(history);
+
+            return Result.ok(calculationHistoryService.getDetail(historyId));
+        } catch (JsonProcessingException e) {
+            throw new BusinessException("智能报告序列化失败: " + e.getOriginalMessage());
+        }
+    }
+
+    private Long getPrimaryProjectId(List<Long> projectIds) {
+        if (projectIds == null || projectIds.isEmpty()) {
+            return null;
+        }
+        return projectIds.get(0);
+    }
+
+    private Map<String, Object> buildReportInputPayload(ReportHistoryCreateRequest request) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("title", request.getTitle());
+        payload.put("reportType", request.getReportType());
+        payload.put("reportTypeLabel", request.getReportTypeLabel());
+        payload.put("selectedProjectIds", request.getSelectedProjectIds() == null ? List.of() : request.getSelectedProjectIds());
+        payload.put("projectNames", request.getProjectNames() == null ? List.of() : request.getProjectNames());
+        payload.put("rangeLabel", request.getRangeLabel());
+        payload.put("intelligenceLabel", request.getIntelligenceLabel());
+        payload.put("outputFormat", request.getOutputFormat());
+        payload.put("sourceLabel", request.getSourceLabel());
+        return payload;
+    }
+
+    private String buildReportRemark(ReportHistoryCreateRequest request) {
+        if (request.getResult() == null) {
+            return "智能报告已归档";
+        }
+
+        Object conclusion = request.getResult().get("conclusion");
+        if (conclusion instanceof String conclusionText && !conclusionText.isBlank()) {
+            return limitRemark(conclusionText);
+        }
+
+        Object summary = request.getResult().get("summary");
+        if (summary instanceof List<?> summaryList) {
+            List<String> lines = new ArrayList<>();
+            for (Object item : summaryList) {
+                if (item instanceof String text && !text.isBlank()) {
+                    lines.add(text.trim());
+                }
+                if (lines.size() >= 2) {
+                    break;
+                }
+            }
+            if (!lines.isEmpty()) {
+                return limitRemark(String.join("；", lines));
+            }
+        }
+
+        return "智能报告已归档";
+    }
+
+    private String limitRemark(String value) {
+        if (value.length() <= 500) {
+            return value;
+        }
+        return value.substring(0, 497) + "...";
     }
 }

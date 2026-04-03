@@ -171,7 +171,7 @@ export default function OilPropertyList() {
                 fontWeight: 600,
               }}
             >
-              {meta.label}
+              {cls.label}
             </span>
           </span>
         );

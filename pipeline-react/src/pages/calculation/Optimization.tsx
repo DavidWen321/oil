@@ -163,11 +163,11 @@ export default function Optimization() {
     delete payload.pumpStationId;
     setLoading(true);
     try {
-      const response = await calculationApi.optimization(payload);
+      const project = projects.find((item) => item.proId === (payload.projectId ?? null));
+      const response = await calculationApi.optimization(payload, project?.name);
       const nextResult = response.data ?? null;
       setResult(nextResult);
       if (nextResult) {
-        const project = projects.find((item) => item.proId === (payload.projectId ?? null));
         useCalculationLinkStore.getState().linkCalculation({
           calcType: 'OPTIMIZATION',
           projectId: payload.projectId ?? null,

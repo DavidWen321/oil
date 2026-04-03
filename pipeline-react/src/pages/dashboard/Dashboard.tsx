@@ -25,6 +25,7 @@ import AnimatedPage from '../../components/common/AnimatedPage'
 import Chart from '../../components/common/Chart'
 import { useChartConfig } from '../../hooks/useChartConfig'
 import { useChartGesture } from '../../hooks/useChartGesture'
+import { useUserStore } from '../../stores/userStore'
 import type {
   CalculationHistory,
   OilProperty,
@@ -104,6 +105,165 @@ const OIL_HEATMAP_OPTIONS: Array<{
   { key: 'density', label: '密度', unit: 'kg/m3' },
   { key: 'viscosity', label: '运动粘度', unit: 'm2/s' },
 ]
+
+function createDemoDashboardData() {
+  const projects: Project[] = [
+    { proId: 1, number: 'P-2026-001', name: '东部输油干线', responsible: '调度中心' },
+    { proId: 2, number: 'P-2026-002', name: '沿海成品油管道', responsible: '运行二部' },
+  ]
+
+  const pipelines: Pipeline[] = [
+    {
+      id: 101,
+      proId: 1,
+      name: '一线主管道',
+      length: 186.5,
+      diameter: 720,
+      thickness: 14,
+      throughput: 3280,
+      startAltitude: 126,
+      endAltitude: 214,
+      roughness: 0.12,
+    },
+    {
+      id: 102,
+      proId: 1,
+      name: '东部联络段',
+      length: 94.2,
+      diameter: 630,
+      thickness: 12,
+      throughput: 2680,
+      startAltitude: 98,
+      endAltitude: 166,
+      roughness: 0.15,
+    },
+    {
+      id: 201,
+      proId: 2,
+      name: '沿海主干段',
+      length: 210.4,
+      diameter: 660,
+      thickness: 13,
+      throughput: 3010,
+      startAltitude: 54,
+      endAltitude: 148,
+      roughness: 0.11,
+    },
+  ]
+
+  const pumpStations: PumpStation[] = [
+    {
+      id: 1,
+      name: '1号泵站',
+      pumpEfficiency: 84,
+      electricEfficiency: 92,
+      displacement: 3200,
+      comePower: 1680,
+      zmi480Lift: 480,
+      zmi375Lift: 375,
+    },
+    {
+      id: 2,
+      name: '2号泵站',
+      pumpEfficiency: 78,
+      electricEfficiency: 90,
+      displacement: 2950,
+      comePower: 1520,
+      zmi480Lift: 470,
+      zmi375Lift: 365,
+    },
+    {
+      id: 3,
+      name: '3号泵站',
+      pumpEfficiency: 81,
+      electricEfficiency: 91,
+      displacement: 3080,
+      comePower: 1590,
+      zmi480Lift: 476,
+      zmi375Lift: 372,
+    },
+  ]
+
+  const oilProperties: OilProperty[] = [
+    { id: 1, name: '0#原油', density: 842, viscosity: 0.000023 },
+    { id: 2, name: '高凝原油', density: 865, viscosity: 0.000031 },
+    { id: 3, name: '轻质原油', density: 816, viscosity: 0.000017 },
+  ]
+
+  const histories: CalculationHistory[] = [
+    {
+      id: 1,
+      calcType: 'HYDRAULIC',
+      calcTypeName: '水力分析',
+      projectId: 1,
+      projectName: '东部输油干线',
+      status: 1,
+      createTime: '2026-04-02T08:30:00',
+      inputParams: JSON.stringify({ flowRate: 3200, pumpEfficiency: 84, electricEfficiency: 92 }),
+      outputResult: JSON.stringify({
+        totalHead: 522,
+        frictionHeadLoss: 318,
+        endStationInPressure: 1.18,
+        totalEnergyConsumption: 4120,
+        totalCost: 2780,
+      }),
+    },
+    {
+      id: 2,
+      calcType: 'OPTIMIZATION',
+      calcTypeName: '泵站优化',
+      projectId: 1,
+      projectName: '东部输油干线',
+      status: 1,
+      createTime: '2026-04-01T14:20:00',
+      inputParams: JSON.stringify({ flowRate: 3150, pumpEfficiency: 82, electricEfficiency: 91 }),
+      outputResult: JSON.stringify({
+        totalHead: 505,
+        frictionHeadLoss: 296,
+        endStationInPressure: 1.05,
+        totalEnergyConsumption: 3980,
+        totalCost: 2695,
+        isFeasible: true,
+      }),
+    },
+    {
+      id: 3,
+      calcType: 'HYDRAULIC',
+      calcTypeName: '水力分析',
+      projectId: 2,
+      projectName: '沿海成品油管道',
+      status: 1,
+      createTime: '2026-04-02T09:15:00',
+      inputParams: JSON.stringify({ flowRate: 2980, pumpEfficiency: 79, electricEfficiency: 90 }),
+      outputResult: JSON.stringify({
+        totalHead: 488,
+        frictionHeadLoss: 301,
+        endStationInPressure: 0.92,
+        totalEnergyConsumption: 3890,
+        totalCost: 2620,
+      }),
+    },
+    {
+      id: 4,
+      calcType: 'SENSITIVITY',
+      calcTypeName: '敏感性分析',
+      projectId: 2,
+      projectName: '沿海成品油管道',
+      status: 1,
+      createTime: '2026-03-31T17:40:00',
+      inputParams: JSON.stringify({ baseParams: { flowRate: 3020, pumpEfficiency: 80, electricEfficiency: 89 } }),
+      outputResult: JSON.stringify({
+        baseResult: {
+          totalHead: 495,
+          frictionHeadLoss: 308,
+          endStationInPressure: 0.88,
+        },
+      }),
+    },
+  ]
+
+  return { projects, pipelines, pumpStations, oilProperties, histories }
+}
 
 function toFiniteNumber(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) {
@@ -297,6 +457,8 @@ const chartTheme = {
 }
 
 export default function Dashboard() {
+  const token = useUserStore((state) => state.token)
+  const isDemoMode = token === 'demo-token'
   const [trendLoading, setTrendLoading] = useState(true)
   const [trendHistories, setTrendHistories] = useState<CalculationHistory[]>([])
   const [projects, setProjects] = useState<Project[]>([])
@@ -320,6 +482,23 @@ export default function Dashboard() {
   useChartGesture(heatmapChart.containerRef)
 
   useEffect(() => {
+    if (isDemoMode) {
+      const demoData = createDemoDashboardData()
+      setTrendHistories(demoData.histories)
+      setProjects(demoData.projects)
+      setPumpStations(demoData.pumpStations)
+      setOilProperties(demoData.oilProperties)
+      setAllPipelines(demoData.pipelines)
+      setPipelineCount(demoData.pipelines.length)
+      setPumpStationCount(demoData.pumpStations.length)
+      setOilPropertyCount(demoData.oilProperties.length)
+      setMasterDataWarning(null)
+      setPipelineDataWarning(null)
+      setTrendLoading(false)
+      setMasterDataLoading(false)
+      return
+    }
+
     let active = true
     let inflight = false
 
@@ -479,7 +658,7 @@ export default function Dashboard() {
       window.removeEventListener('focus', refreshData)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
-  }, [])
+  }, [isDemoMode])
 
   const projectMetaById = useMemo(
     () => new Map(projects.map((project) => [project.proId, project] as const)),
@@ -488,7 +667,9 @@ export default function Dashboard() {
 
   // 统计卡片数据
   const statsData: StatCardData[] = useMemo(() => {
-    const trendValue = masterDataLoading
+    const trendValue = isDemoMode
+      ? '演示数据'
+      : masterDataLoading
       ? '加载中'
       : masterDataWarning
         ? '部分失败'
@@ -540,7 +721,7 @@ export default function Dashboard() {
         accentClass: styles.statCardToneAmber,
       },
     ]
-  }, [masterDataLoading, masterDataWarning, oilPropertyCount, pipelineCount, projects.length, pumpStationCount])
+  }, [isDemoMode, masterDataLoading, masterDataWarning, oilPropertyCount, pipelineCount, projects.length, pumpStationCount])
 
   const projectDataProfiles = useMemo<ProjectDataProfile[]>(
     () =>
@@ -576,6 +757,10 @@ export default function Dashboard() {
   )
 
   const projectDataSubtitle = useMemo(() => {
+    if (isDemoMode) {
+      return '演示模式：当前展示本地模拟的项目、管道、泵站与记录统计'
+    }
+
     if (trendLoading || masterDataLoading) {
       return '正在读取项目、管道、泵站与记录统计'
     }
@@ -594,6 +779,7 @@ export default function Dashboard() {
     masterDataWarning,
     projectDataProfiles.length,
     trendLoading,
+    isDemoMode,
   ])
 
   const projectDataOption = useMemo<EChartsOption>(() => {
@@ -772,6 +958,10 @@ export default function Dashboard() {
   )
 
   const pipelineScatterSubtitle = useMemo(() => {
+    if (isDemoMode) {
+      return `演示模式：共 ${pipelineScatterPoints.length} 条示例管道，气泡大小映射设计输量`
+    }
+
     if (masterDataLoading) {
       return '正在读取项目与管道参数'
     }
@@ -790,7 +980,7 @@ export default function Dashboard() {
 
     const projectCount = new Set(pipelineScatterPoints.map((point) => point.projectId)).size
     return `共 ${projectCount} 个项目、${pipelineScatterPoints.length} 条有效管道；横轴为管径，纵轴为长度，气泡大小映射设计输量，数据每 30 秒自动刷新`
-  }, [masterDataLoading, pipelineDataWarning, pipelineScatterPoints, projects.length])
+  }, [isDemoMode, masterDataLoading, pipelineDataWarning, pipelineScatterPoints, projects.length])
 
   const pipelineScatterOption = useMemo<EChartsOption>(() => {
     const throughputValues = pipelineScatterPoints

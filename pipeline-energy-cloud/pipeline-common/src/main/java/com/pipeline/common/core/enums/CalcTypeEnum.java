@@ -26,7 +26,12 @@ public enum CalcTypeEnum {
     /**
      * 敏感性分析
      */
-    SENSITIVITY("SENSITIVITY", "敏感性分析");
+    SENSITIVITY("SENSITIVITY", "敏感性分析"),
+
+    /**
+     * AI 智能报告
+     */
+    AI_REPORT("AI_REPORT", "智能报告");
 
     /**
      * 类型编码

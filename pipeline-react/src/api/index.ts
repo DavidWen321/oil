@@ -15,6 +15,7 @@ import type {
   Project,
   PumpStation,
   R,
+  SaveReportRequest,
   SensitivityResult,
   SensitivityVariableInfo,
 } from '../types';
@@ -69,16 +70,23 @@ export const knowledgeDocumentApi = {
 };
 
 export const calculationApi = {
-  hydraulicAnalysis: (params: HydraulicAnalysisParams) =>
-    http.post<R<HydraulicAnalysisResult>>('/calculation/hydraulic-analysis', params),
-  optimization: (params: OptimizationParams) =>
-    http.post<R<OptimizationResult>>('/calculation/optimization', params),
+  hydraulicAnalysis: (params: HydraulicAnalysisParams, projectName?: string) =>
+    http.post<R<HydraulicAnalysisResult>>('/calculation/hydraulic-analysis', params, {
+      params: projectName ? { projectName } : undefined,
+    }),
+  optimization: (params: OptimizationParams, projectName?: string) =>
+    http.post<R<OptimizationResult>>('/calculation/optimization', params, {
+      params: projectName ? { projectName } : undefined,
+    }),
   sensitivityAnalysis: (params: Record<string, unknown>) =>
     http.post<R<SensitivityResult>>('/calculation/sensitivity/analyze', params),
-  quickSensitivityAnalysis: (variableType: string, params: HydraulicAnalysisParams) =>
+  quickSensitivityAnalysis: (variableType: string, params: HydraulicAnalysisParams, projectName?: string) =>
     http.post<R<SensitivityResult>>(
       `/calculation/sensitivity/quick-single?variableType=${encodeURIComponent(variableType)}`,
       params,
+      {
+        params: projectName ? { projectName } : undefined,
+      },
     ),
   getSensitivityVariables: () =>
     http.get<R<SensitivityVariableInfo[]>>('/calculation/sensitivity/variables'),
@@ -116,4 +124,6 @@ export const calculationHistoryApi = {
   detail: (id: number) => http.get<R<CalculationHistory>>(`/calculation/history/${id}`),
   delete: (id: number) => http.delete<R<void>>(`/calculation/history/${id}`),
   batchDelete: (ids: number[]) => http.post<R<number>>('/calculation/history/batch-delete', ids),
+  saveReport: (data: SaveReportRequest) =>
+    http.post<R<CalculationHistory>>('/calculation/history/report', data),
 };

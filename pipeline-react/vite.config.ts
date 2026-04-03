@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-const gatewayTarget = 'http://localhost:8180'
+const gatewayTarget = process.env.VITE_GATEWAY_TARGET || 'http://localhost:8080'
 
 export default defineConfig({
   plugins: [react()],

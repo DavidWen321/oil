@@ -1,4 +1,5 @@
 import { useUserStore } from '../stores/userStore';
+import { handleDemoAgentRequest, isDemoModeActive } from './demo';
 import type {
   HITLResponse,
   KnowledgeDeleteResponse,
@@ -51,6 +52,10 @@ function buildHeaders(headers?: HeadersInit) {
 }
 
 async function requestAgent<T>(path: string, init?: RequestInit): Promise<T> {
+  if (isDemoModeActive()) {
+    return handleDemoAgentRequest<T>(path, init);
+  }
+
   const response = await fetch(`${AGENT_API_BASE}${path}`, {
     ...init,
     headers: buildHeaders(init?.headers),

@@ -161,11 +161,11 @@ export default function HydraulicAnalysis() {
     };
     setLoading(true);
     try {
-      const response = await calculationApi.hydraulicAnalysis(payload);
+      const project = projects.find((item) => item.proId === (payload.projectId ?? null));
+      const response = await calculationApi.hydraulicAnalysis(payload, project?.name);
       const nextResult = response.data ?? null;
       setResult(nextResult);
       if (nextResult) {
-        const project = projects.find((item) => item.proId === (payload.projectId ?? null));
         useCalculationLinkStore.getState().linkCalculation({
           calcType: 'HYDRAULIC',
           projectId: payload.projectId ?? null,

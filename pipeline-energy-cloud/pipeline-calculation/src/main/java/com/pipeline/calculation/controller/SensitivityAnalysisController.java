@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.util.StringUtils;
 
 import com.pipeline.calculation.domain.HydraulicAnalysisParams;
 import com.pipeline.calculation.domain.SensitivityAnalysisParams;
@@ -93,10 +94,11 @@ public class SensitivityAnalysisController {
     public Result<SensitivityAnalysisResult> quickSingleAnalysis(
             @RequestBody @Valid HydraulicAnalysisParams params,
             @RequestParam("variableType") @NotBlank(message = "变量类型不能为空") String variableType,
+            @RequestParam(value = "projectName", required = false) String projectName,
             @RequestParam(value = "userId", required = false, defaultValue = "1") Long userId,
             @RequestParam(value = "userName", required = false, defaultValue = "admin") String userName) {
         long startTime = System.currentTimeMillis();
-        Long historyId = createHistory(params, variableType, userId, userName);
+        Long historyId = createHistory(params, variableType, projectName, userId, userName);
 
         Result<SensitivityAnalysisResult> result =
                 sensitivityAnalysisService.quickSingleAnalysis(params, variableType);
@@ -137,7 +139,7 @@ public class SensitivityAnalysisController {
     ) {}
 
     private Long createHistory(
-            HydraulicAnalysisParams params, String variableType, Long userId, String userName) {
+            HydraulicAnalysisParams params, String variableType, String projectName, Long userId, String userName) {
         SensitivityVariableEnum variableEnum = SensitivityVariableEnum.fromCode(variableType);
         Map<String, Object> inputPayload = Map.of(
                 "analysisType", "SINGLE",
@@ -154,7 +156,7 @@ public class SensitivityAnalysisController {
             return calculationHistoryService.createHistory(
                     "SENSITIVITY",
                     params.getProjectId(),
-                    "敏感性分析",
+                    StringUtils.hasText(projectName) ? projectName : "敏感性分析",
                     userId,
                     userName,
                     inputJson);

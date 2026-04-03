@@ -179,11 +179,11 @@ export default function SensitivityAnalysis() {
     };
     setLoading(true);
     try {
-      const response = await calculationApi.quickSensitivityAnalysis(variableType, payload);
+      const project = projects.find((item) => item.proId === (payload.projectId ?? null));
+      const response = await calculationApi.quickSensitivityAnalysis(variableType, payload, project?.name);
       const nextResult = response.data ?? null;
       setResult(nextResult);
       if (nextResult) {
-        const project = projects.find((item) => item.proId === (payload.projectId ?? null));
         const selectedVariable = variables.find((item) => item.code === variableType);
         useCalculationLinkStore.getState().linkCalculation({
           calcType: 'SENSITIVITY',

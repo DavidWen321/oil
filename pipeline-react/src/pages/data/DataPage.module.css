@@ -4,7 +4,7 @@
   background:
     radial-gradient(circle at top left, rgba(59, 130, 246, 0.12), transparent 26%),
     radial-gradient(circle at top right, rgba(14, 165, 233, 0.1), transparent 22%),
-    linear-gradient(180deg, #f8fbff 0%, #f3f7fb 52%, #eef2f7 100%);
+    linear-gradient(180deg, var(--bg-base) 0%, var(--bg-subtle) 52%, var(--bg-muted) 100%);
   animation: fadeIn var(--duration-normal) var(--ease-out);
 }
 
@@ -204,10 +204,10 @@
 
 .tableCard {
   overflow: hidden;
-  border: 1px solid rgba(148, 163, 184, 0.18);
+  border: 1px solid var(--border-subtle);
   border-radius: 24px;
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 22px 50px -34px rgba(15, 23, 42, 0.42);
+  background: var(--bg-glass-strong);
+  box-shadow: var(--shadow-dropdown);
   backdrop-filter: blur(18px);
 }
 
@@ -260,9 +260,9 @@
   gap: var(--space-4);
   margin: 0 24px 24px;
   padding: 18px;
-  border: 1px solid rgba(148, 163, 184, 0.16);
+  border: 1px solid var(--border-subtle);
   border-radius: 20px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.94) 0%, rgba(248, 250, 252, 0.98) 100%);
+  background: linear-gradient(180deg, var(--bg-glass-strong) 0%, var(--bg-elevated) 100%);
 }
 
 .toolbarLeft,
@@ -285,8 +285,8 @@
   height: 44px;
   padding-inline: 14px;
   border-radius: 14px;
-  border-color: rgba(148, 163, 184, 0.24);
-  background: rgba(255, 255, 255, 0.96);
+  border-color: var(--border-subtle);
+  background: var(--bg-sunken);
   box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
@@ -320,12 +320,12 @@
 }
 
 .tableCard :global(.ant-table-container) {
-  border-top: 1px solid rgba(148, 163, 184, 0.1);
+  border-top: 1px solid var(--border-subtle);
 }
 
 .tableCard :global(.ant-table-thead > tr > th) {
-  background: rgba(226, 232, 240, 0.52);
-  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+  background: color-mix(in srgb, var(--bg-muted) 72%, transparent);
+  border-bottom: 1px solid var(--border-subtle);
   color: var(--text-secondary);
   font-size: var(--text-sm);
   font-weight: var(--font-semibold);
@@ -334,7 +334,7 @@
 
 .tableCard :global(.ant-table-tbody > tr > td) {
   padding: 18px 24px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+  border-bottom: 1px solid var(--border-subtle);
   color: var(--text-primary);
   font-size: var(--text-sm);
 }
@@ -350,14 +350,14 @@
 .tableCard :global(.ant-pagination) {
   padding: 18px 24px 24px;
   margin: 0;
-  border-top: 1px solid rgba(148, 163, 184, 0.1);
+  border-top: 1px solid var(--border-subtle);
 }
 
 .tableCard :global(.ant-pagination .ant-pagination-item),
 .tableCard :global(.ant-pagination .ant-pagination-prev),
 .tableCard :global(.ant-pagination .ant-pagination-next) {
   border-radius: 12px;
-  border-color: rgba(148, 163, 184, 0.18);
+  border-color: var(--border-subtle);
 }
 
 .tableCard :global(.ant-pagination .ant-pagination-item-active) {
@@ -379,9 +379,9 @@
 .actionBtn {
   height: 32px;
   padding-inline: 12px !important;
-  border: 1px solid rgba(148, 163, 184, 0.2) !important;
+  border: 1px solid var(--border-subtle) !important;
   border-radius: var(--radius-full) !important;
-  background: rgba(255, 255, 255, 0.88) !important;
+  background: var(--bg-elevated) !important;
   color: var(--text-secondary) !important;
   box-shadow: none !important;
 }
@@ -415,7 +415,7 @@
   align-items: center;
   padding: 6px 10px;
   border-radius: var(--radius-full);
-  background: rgba(15, 23, 42, 0.05);
+  background: var(--bg-sunken);
   color: var(--text-secondary);
   font-size: 12px;
   font-weight: var(--font-semibold);
@@ -424,10 +424,10 @@
 
 .mobileCard {
   padding: 18px;
-  border: 1px solid rgba(148, 163, 184, 0.16);
+  border: 1px solid var(--border-subtle);
   border-radius: 22px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.98) 100%);
-  box-shadow: 0 18px 40px -34px rgba(15, 23, 42, 0.52);
+  background: linear-gradient(180deg, var(--bg-glass-strong) 0%, var(--bg-elevated) 100%);
+  box-shadow: var(--shadow-card-hover);
 }
 
 .mobileCardTop {
@@ -456,7 +456,7 @@
   align-items: center;
   padding: 6px 10px;
   border-radius: var(--radius-full);
-  background: rgba(59, 130, 246, 0.1);
+  background: var(--accent-primary-light);
   color: var(--accent-primary-active);
   font-size: 12px;
   font-weight: var(--font-semibold);
@@ -473,7 +473,7 @@
 .mobileField {
   padding: 12px 14px;
   border-radius: 16px;
-  background: rgba(241, 245, 249, 0.92);
+  background: var(--bg-sunken);
 }
 
 .mobileLabel {
@@ -499,14 +499,14 @@
 .modal :global(.ant-modal-content) {
   overflow: hidden;
   border-radius: 28px;
-  border: 1px solid rgba(148, 163, 184, 0.14);
+  border: 1px solid var(--border-subtle);
   box-shadow: var(--shadow-modal);
 }
 
 .modal :global(.ant-modal-header) {
   padding: 24px 24px 16px;
-  background: linear-gradient(180deg, rgba(248, 250, 252, 0.98) 0%, rgba(255, 255, 255, 1) 100%);
-  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+  background: linear-gradient(180deg, var(--bg-glass-strong) 0%, var(--bg-elevated) 100%);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .modal :global(.ant-modal-body) {
@@ -515,8 +515,8 @@
 
 .modal :global(.ant-modal-footer) {
   padding: 16px 24px 24px;
-  border-top: 1px solid rgba(148, 163, 184, 0.12);
-  background: rgba(248, 250, 252, 0.8);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-glass);
 }
 
 .modalTitleBlock {
@@ -541,9 +541,9 @@
 .formIntro {
   margin-bottom: var(--space-5);
   padding: 14px 16px;
-  border: 1px solid rgba(191, 219, 254, 0.8);
+  border: 1px solid color-mix(in srgb, var(--accent-primary) 24%, transparent);
   border-radius: 18px;
-  background: linear-gradient(135deg, rgba(239, 246, 255, 0.95) 0%, rgba(248, 250, 252, 1) 100%);
+  background: linear-gradient(135deg, var(--accent-primary-lighter) 0%, var(--bg-elevated) 100%);
   color: var(--text-secondary);
   font-size: var(--text-sm);
   line-height: 1.7;
@@ -566,7 +566,8 @@
 .modal :global(.ant-input-affix-wrapper),
 .modal :global(.ant-input-number),
 .modal :global(.ant-select-selector) {
-  border-color: rgba(148, 163, 184, 0.22) !important;
+  border-color: var(--border-subtle) !important;
+  background: var(--bg-elevated) !important;
   box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.03);
 }
 
@@ -583,6 +584,58 @@
 .modal :global(.ant-select-focused .ant-select-selector) {
   border-color: var(--accent-primary) !important;
   box-shadow: var(--ring-focus) !important;
+}
+
+:global([data-theme='dark']) .page {
+  background:
+    radial-gradient(circle at top left, rgba(59, 130, 246, 0.16), transparent 26%),
+    radial-gradient(circle at top right, rgba(14, 165, 233, 0.14), transparent 22%),
+    linear-gradient(180deg, #0b1220 0%, var(--bg-base) 42%, var(--bg-subtle) 100%);
+}
+
+:global([data-theme='dark']) .tableCard,
+:global([data-theme='dark']) .toolbar,
+:global([data-theme='dark']) .mobileCard,
+:global([data-theme='dark']) .modal :global(.ant-modal-header) {
+  backdrop-filter: blur(22px);
+}
+
+:global([data-theme='dark']) .tableCard {
+  background: rgba(17, 24, 39, 0.88);
+}
+
+:global([data-theme='dark']) .toolbar {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.92) 0%, rgba(17, 24, 39, 0.86) 100%);
+}
+
+:global([data-theme='dark']) .searchInput :global(.ant-input-affix-wrapper),
+:global([data-theme='dark']) .actionBtn,
+:global([data-theme='dark']) .mobileField {
+  background: rgba(11, 18, 32, 0.88) !important;
+}
+
+:global([data-theme='dark']) .tableCard :global(.ant-table-thead > tr > th) {
+  background: rgba(30, 41, 59, 0.82);
+}
+
+:global([data-theme='dark']) .tableCard :global(.ant-table-tbody > tr:hover > td) {
+  background: rgba(59, 130, 246, 0.08);
+}
+
+:global([data-theme='dark']) .mobileCard {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.92) 0%, rgba(17, 24, 39, 0.88) 100%);
+}
+
+:global([data-theme='dark']) .modal :global(.ant-modal-content) {
+  background: var(--bg-elevated);
+}
+
+:global([data-theme='dark']) .modal :global(.ant-modal-header) {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.96) 0%, rgba(26, 31, 46, 1) 100%);
+}
+
+:global([data-theme='dark']) .modal :global(.ant-modal-footer) {
+  background: rgba(15, 23, 42, 0.76);
 }
 
 @media (max-width: 1023px) {

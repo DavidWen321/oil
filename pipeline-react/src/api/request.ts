@@ -2,6 +2,7 @@
 import type { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { message } from 'antd';
 import { clearPersistedUserState, useUserStore } from '../stores/userStore';
+import { handleDemoHttpRequest, isDemoModeActive } from './demo';
 
 const TOKEN_ERROR_MESSAGE_RE = /(未登录|登录失效|登录超时|token|Token|TOKEN)/;
 
@@ -97,18 +98,30 @@ request.interceptors.response.use(
 
 export const http = {
   get<T>(url: string, config?: AxiosRequestConfig): Promise<T> {
+    if (isDemoModeActive()) {
+      return handleDemoHttpRequest<T>('GET', url, undefined, config);
+    }
     return request.get(url, config);
   },
 
   post<T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> {
+    if (isDemoModeActive()) {
+      return handleDemoHttpRequest<T>('POST', url, data, config);
+    }
     return request.post(url, data, config);
   },
 
   put<T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> {
+    if (isDemoModeActive()) {
+      return handleDemoHttpRequest<T>('PUT', url, data, config);
+    }
     return request.put(url, data, config);
   },
 
   delete<T>(url: string, config?: AxiosRequestConfig): Promise<T> {
+    if (isDemoModeActive()) {
+      return handleDemoHttpRequest<T>('DELETE', url, undefined, config);
+    }
     return request.delete(url, config);
   },
 };

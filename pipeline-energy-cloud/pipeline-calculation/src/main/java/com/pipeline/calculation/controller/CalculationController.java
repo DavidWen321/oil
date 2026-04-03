@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.util.StringUtils;
 
 import com.pipeline.calculation.domain.HydraulicAnalysisParams;
 import com.pipeline.calculation.domain.HydraulicAnalysisResult;
@@ -61,13 +62,14 @@ public class CalculationController {
     public Result<HydraulicAnalysisResult> hydraulicAnalysis(
             @Parameter(description = "水力分析参数", required = true)
             @RequestBody @Valid HydraulicAnalysisParams params,
+            @RequestParam(value = "projectName", required = false) String projectName,
             @RequestParam(value = "userId", required = false, defaultValue = "1") Long userId,
             @RequestParam(value = "userName", required = false, defaultValue = "admin") String userName) {
         long startTime = System.currentTimeMillis();
         Long historyId = createHistory(
                 CalcTypeEnum.HYDRAULIC.getCode(),
                 params.getProjectId(),
-                CalcTypeEnum.HYDRAULIC.getDesc(),
+                StringUtils.hasText(projectName) ? projectName : CalcTypeEnum.HYDRAULIC.getDesc(),
                 userId,
                 userName,
                 params);
@@ -92,13 +94,14 @@ public class CalculationController {
     public Result<OptimizationResult> optimization(
             @Parameter(description = "优化参数", required = true)
             @RequestBody @Valid OptimizationParams params,
+            @RequestParam(value = "projectName", required = false) String projectName,
             @RequestParam(value = "userId", required = false, defaultValue = "1") Long userId,
             @RequestParam(value = "userName", required = false, defaultValue = "admin") String userName) {
         long startTime = System.currentTimeMillis();
         Long historyId = createHistory(
                 CalcTypeEnum.OPTIMIZATION.getCode(),
                 params.getProjectId(),
-                CalcTypeEnum.OPTIMIZATION.getDesc(),
+                StringUtils.hasText(projectName) ? projectName : CalcTypeEnum.OPTIMIZATION.getDesc(),
                 userId,
                 userName,
                 params);
