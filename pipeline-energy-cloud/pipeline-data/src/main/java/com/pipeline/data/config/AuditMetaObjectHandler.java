@@ -3,11 +3,13 @@ package com.pipeline.data.config;
 import java.time.LocalDateTime;
 
 import org.apache.ibatis.reflection.MetaObject;
+import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 
 import com.baomidou.mybatisplus.core.handlers.MetaObjectHandler;
 
 @Component
+@Primary
 public class AuditMetaObjectHandler implements MetaObjectHandler {
 
     @Override

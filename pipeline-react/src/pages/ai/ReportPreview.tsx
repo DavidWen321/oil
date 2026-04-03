@@ -1674,8 +1674,8 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
       latestHistoryTime: visibleHistories[0]?.createTime,
       latestAbnormalTime: abnormalHistories[0]?.createTime,
       comparisonLabel,
-      currentRangeLabel: `${comparisonPeriod.currentStart.format('MM-DD')} ? ${comparisonPeriod.currentEnd.format('MM-DD')}`,
-      previousRangeLabel: `${comparisonPeriod.previousStart.format('MM-DD')} ? ${comparisonPeriod.previousEnd.format('MM-DD')}`,
+      currentRangeLabel: `${comparisonPeriod.currentStart.format('MM-DD')} 至 ${comparisonPeriod.currentEnd.format('MM-DD')}`,
+      previousRangeLabel: `${comparisonPeriod.previousStart.format('MM-DD')} 至 ${comparisonPeriod.previousEnd.format('MM-DD')}`,
       currentSampleCount: visibleHistories.length,
       previousSampleCount: previousHistories.length,
       energyChangePercent,
@@ -1687,48 +1687,48 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
 
   const overviewCards = useMemo(() => ([
     {
-      label: '???????',
+      label: '分析对象数',
       value: snapshot.analysisObjectCount,
-      hint: `??????? ${snapshot.historyCount} ?????????`,
+      hint: `当前范围纳入 ${snapshot.historyCount} 条历史样本`,
       valueClassName: 'text-white',
     },
     {
-      label: '?????',
+      label: '异常记录数',
       value: snapshot.abnormalHistoryCount,
-      hint: '??????????????????',
+      hint: '根据异常规则识别出的记录数量',
       valueClassName: snapshot.abnormalHistoryCount > 0 ? 'text-amber-300' : 'text-emerald-300',
     },
     {
-      label: '??????',
+      label: '高风险记录',
       value: snapshot.highRiskCount,
-      hint: '?????????????????',
+      hint: '需要优先关注的高风险结果',
       valueClassName: snapshot.highRiskCount > 0 ? 'text-rose-300' : 'text-emerald-300',
     },
     {
-      label: '??????',
-      value: snapshot.healthScore !== null ? `${snapshot.healthScore} ?` : '?',
-      hint: snapshot.healthScore !== null ? '???????????????' : '???????????????',
+      label: '健康评分',
+      value: snapshot.healthScore !== null ? `${snapshot.healthScore} 分` : '?',
+      hint: snapshot.healthScore !== null ? '根据异常率和高风险率综合计算' : '暂无足够样本计算评分',
       valueClassName: getHealthValueClass(snapshot.healthScore),
     },
   ]), [snapshot.abnormalHistoryCount, snapshot.analysisObjectCount, snapshot.healthScore, snapshot.highRiskCount, snapshot.historyCount]);
 
   const trendCards = useMemo(() => ([
     {
-      label: '????????',
+      label: '能耗变化率',
       value: formatSignedPercent(snapshot.energyChangePercent),
-      hint: snapshot.previousSampleCount ? `???? ${snapshot.currentSampleCount} ??????? ${snapshot.previousSampleCount} ?` : '???????????????',
+      hint: snapshot.previousSampleCount ? `当前 ${snapshot.currentSampleCount} 条样本，对比上一周期 ${snapshot.previousSampleCount} 条` : '暂无上一周期样本可比较',
       valueClassName: getTrendValueClass(snapshot.energyChangePercent, false),
     },
     {
-      label: '????????',
+      label: '效率变化率',
       value: formatSignedPercent(snapshot.efficiencyChangePercent),
-      hint: snapshot.previousSampleCount ? '?????????????' : '???????????????',
+      hint: snapshot.previousSampleCount ? '正值表示综合运行效率改善' : '暂无上一周期样本可比较',
       valueClassName: getTrendValueClass(snapshot.efficiencyChangePercent, true),
     },
     {
-      label: '??????',
+      label: '高风险变化',
       value: formatSignedCount(snapshot.riskCountChange),
-      hint: `??????? ${snapshot.highRiskCount} ????? ${snapshot.previousRiskCount} ?`,
+      hint: `当前周期 ${snapshot.highRiskCount} 条，对比上一周期 ${snapshot.previousRiskCount} 条`,
       valueClassName: getTrendValueClass(snapshot.riskCountChange, false),
     },
   ]), [snapshot.currentSampleCount, snapshot.efficiencyChangePercent, snapshot.energyChangePercent, snapshot.highRiskCount, snapshot.previousRiskCount, snapshot.previousSampleCount, snapshot.riskCountChange]);
@@ -1987,10 +1987,10 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
         <div className="rounded-[28px] border border-white/10 bg-[#08111f]/92 p-6 shadow-[0_24px_60px_rgba(2,8,23,0.35)]">
           <div className="mb-5 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
             <div>
-              <div className="text-xl font-semibold text-white">????????</div>
-              <div className="mt-1 text-sm text-slate-400">?????????????????????</div>
+              <div className="text-xl font-semibold text-white">当前范围概览</div>
+              <div className="mt-1 text-sm text-slate-400">聚合当前筛选范围内的关键健康指标。</div>
             </div>
-            <div className="text-sm text-slate-400">?????{rangeLabel}</div>
+            <div className="text-sm text-slate-400">范围：{rangeLabel}</div>
           </div>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             {overviewCards.map((item) => (
@@ -2006,8 +2006,8 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
         <div className="rounded-[28px] border border-white/10 bg-[#08111f]/92 p-6 shadow-[0_24px_60px_rgba(2,8,23,0.35)]">
           <div className="mb-5 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
             <div>
-              <div className="text-xl font-semibold text-white">????????</div>
-              <div className="mt-1 text-sm text-slate-400">?????????????????????????????????</div>
+              <div className="text-xl font-semibold text-white">周期趋势对比</div>
+              <div className="mt-1 text-sm text-slate-400">与上一统计周期对比能耗、效率和风险变化。</div>
             </div>
             <div className="text-sm text-slate-400">{snapshot.currentRangeLabel} vs {snapshot.previousRangeLabel}</div>
           </div>
@@ -2087,14 +2087,14 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
         </div>
 
         <div className="rounded-[28px] border border-white/10 bg-[#09101d]/92 p-6 shadow-[0_24px_60px_rgba(2,8,23,0.35)]">
-          <div className="mb-4 text-lg font-semibold text-white">AI ????</div>
+          <div className="mb-4 text-lg font-semibold text-white">AI 态势快照</div>
           <div className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-2xl border border-white/8 bg-white/5 p-4"><div className="text-sm text-slate-400">??????</div><div className="mt-2 text-2xl font-semibold text-white">{snapshot.currentSampleCount}</div></div>
-            <div className="rounded-2xl border border-white/8 bg-white/5 p-4"><div className="text-sm text-slate-400">?????</div><div className="mt-2 text-2xl font-semibold text-white">{snapshot.previousSampleCount}</div></div>
-            <div className="rounded-2xl border border-white/8 bg-white/5 p-4"><div className="text-sm text-slate-400">????</div><div className="mt-2 text-2xl font-semibold text-amber-300">{snapshot.analysisObjectCount ? `${snapshot.abnormalRate}%` : '?'}</div></div>
-            <div className="rounded-2xl border border-white/8 bg-white/5 p-4"><div className="text-sm text-slate-400">?????</div><div className="mt-2 text-2xl font-semibold text-rose-300">{snapshot.analysisObjectCount ? `${snapshot.highRiskRate}%` : '?'}</div></div>
+            <div className="rounded-2xl border border-white/8 bg-white/5 p-4"><div className="text-sm text-slate-400">当前样本数</div><div className="mt-2 text-2xl font-semibold text-white">{snapshot.currentSampleCount}</div></div>
+            <div className="rounded-2xl border border-white/8 bg-white/5 p-4"><div className="text-sm text-slate-400">上期样本数</div><div className="mt-2 text-2xl font-semibold text-white">{snapshot.previousSampleCount}</div></div>
+            <div className="rounded-2xl border border-white/8 bg-white/5 p-4"><div className="text-sm text-slate-400">异常率</div><div className="mt-2 text-2xl font-semibold text-amber-300">{snapshot.analysisObjectCount ? `${snapshot.abnormalRate}%` : '?'}</div></div>
+            <div className="rounded-2xl border border-white/8 bg-white/5 p-4"><div className="text-sm text-slate-400">高风险率</div><div className="mt-2 text-2xl font-semibold text-rose-300">{snapshot.analysisObjectCount ? `${snapshot.highRiskRate}%` : '?'}</div></div>
           </div>
-          <div className="mt-4 rounded-[24px] border border-cyan-300/15 bg-cyan-400/8 p-4 text-sm leading-7 text-slate-300">?????{rangeLabel}??? {snapshot.analysisObjectCount} ?????????? {snapshot.abnormalHistoryCount} ????? {snapshot.highRiskCount} ??????? {snapshot.healthScore !== null ? `${snapshot.healthScore} ?` : '?????'}?????????? {formatSignedPercent(snapshot.energyChangePercent)}??? {formatSignedPercent(snapshot.efficiencyChangePercent)}????? {formatSignedCount(snapshot.riskCountChange)}?</div>
+          <div className="mt-4 rounded-[24px] border border-cyan-300/15 bg-cyan-400/8 p-4 text-sm leading-7 text-slate-300">在 {rangeLabel} 范围内，共纳入 {snapshot.analysisObjectCount} 个分析对象，识别异常记录 {snapshot.abnormalHistoryCount} 条、高风险记录 {snapshot.highRiskCount} 条，当前健康评分 {snapshot.healthScore !== null ? `${snapshot.healthScore} 分` : '暂未生成'}。相较上一周期，能耗 {formatSignedPercent(snapshot.energyChangePercent)}、效率 {formatSignedPercent(snapshot.efficiencyChangePercent)}、高风险数量 {formatSignedCount(snapshot.riskCountChange)}。</div>
         </div>
       </section>
 

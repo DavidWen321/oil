@@ -16,20 +16,28 @@ export default function Login() {
     clearPersistedUserState();
   }, []);
 
+  const applyLoginResult = (res: Awaited<ReturnType<typeof authApi.login>>) => {
+    if (!res.data) {
+      return false;
+    }
+
+    setToken(res.data.token);
+    setUserInfo({
+      userId: res.data.userId,
+      username: res.data.username,
+      nickname: res.data.nickname,
+      roles: ['admin'],
+    });
+    navigate('/dashboard');
+    return true;
+  };
+
   const onFinish = async (values: LoginParams) => {
     setLoading(true);
     try {
       const res = await authApi.login(values);
-      if (res.data) {
-        setToken(res.data.token);
-        setUserInfo({
-          userId: res.data.userId,
-          username: res.data.username,
-          nickname: res.data.nickname,
-          roles: ['admin'],
-        });
+      if (applyLoginResult(res)) {
         message.success('登录成功');
-        navigate('/dashboard');
       }
     } catch {
       // Error is handled by the request interceptor.
@@ -38,16 +46,18 @@ export default function Login() {
     }
   };
 
-  const handleDemoLogin = () => {
-    setToken('demo-token');
-    setUserInfo({
-      userId: 1,
-      username: 'admin',
-      nickname: '管理员',
-      roles: ['admin'],
-    });
-    message.success('演示模式登录成功');
-    navigate('/dashboard');
+  const handleQuickLogin = async () => {
+    setLoading(true);
+    try {
+      const res = await authApi.login({ username: 'admin', password: 'admin123' });
+      if (applyLoginResult(res)) {
+        message.success('已使用默认账号登录');
+      }
+    } catch {
+      // Error is handled by the request interceptor.
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -99,8 +109,8 @@ export default function Login() {
           </Form.Item>
 
           <Form.Item>
-            <Button type="default" block onClick={handleDemoLogin}>
-              演示模式（无需后端）
+            <Button type="default" block onClick={handleQuickLogin} disabled={loading}>
+              快速登录（admin/admin123）
             </Button>
           </Form.Item>
         </Form>
