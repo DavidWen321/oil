@@ -35,29 +35,6 @@ export interface CalculationHistory {
   createTime?: string;
 }
 
-export interface ReportResultPayload {
-  source?: 'ai' | 'fallback' | 'history';
-  highlights?: string[];
-  summary?: string[];
-  risks?: Array<Record<string, unknown>> | string[];
-  suggestions?: Array<Record<string, unknown>> | string[];
-  conclusion?: string;
-  rawText?: string;
-}
-
-export interface SaveReportRequest {
-  title: string;
-  reportType: string;
-  reportTypeLabel: string;
-  selectedProjectIds: number[];
-  projectNames: string[];
-  rangeLabel: string;
-  intelligenceLabel: string;
-  outputFormat: 'markdown' | 'docx' | 'pdf';
-  sourceLabel: string;
-  result: ReportResultPayload;
-}
-
 export interface LoginParams {
   username: string;
   password: string;
