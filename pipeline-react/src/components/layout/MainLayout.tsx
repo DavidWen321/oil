@@ -1,20 +1,12 @@
-/**
- * Main Layout Component
- * Design: Apple HIG + Linear + Stripe Light Theme
- */
-
 import { useCallback, useEffect, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { Avatar, Badge, Button, Dropdown, Layout, Menu } from 'antd';
+import { Avatar, Button, Dropdown, Layout, Menu } from 'antd';
 import type { MenuProps } from 'antd';
 import {
-  AlertOutlined,
   ApiOutlined,
   BarChartOutlined,
-  BellOutlined,
   BookOutlined,
   CalculatorOutlined,
-  CloudOutlined,
   CloseOutlined,
   ControlOutlined,
   DashboardOutlined,
@@ -24,19 +16,15 @@ import {
   LogoutOutlined,
   MenuFoldOutlined,
   MenuOutlined,
-  MonitorOutlined,
   MoonOutlined,
   ProjectOutlined,
   RobotOutlined,
   SettingOutlined,
   SunOutlined,
-  SwapOutlined,
   ThunderboltOutlined,
   UserOutlined,
 } from '@ant-design/icons';
 import { useResponsive } from '../../hooks/useResponsive';
-import { useWebSocket } from '../../hooks/useWebSocket';
-import { useMonitorStore } from '../../stores/monitorStore';
 import { useThemeStore } from '../../stores/themeStore';
 import { useUserStore } from '../../stores/userStore';
 import MobileTabBar from './MobileTabBar';
@@ -72,29 +60,13 @@ const menuItems: MenuProps['items'] = [
     ],
   },
   {
-    key: 'features',
-    icon: <ThunderboltOutlined />,
-    label: '特色功能',
-    children: [
-      { key: '/features/diagnosis', icon: <AlertOutlined />, label: '故障诊断' },
-      { key: '/features/comparison', icon: <SwapOutlined />, label: '方案对比' },
-      { key: '/features/carbon', icon: <CloudOutlined />, label: '碳排核算' },
-      { key: '/features/monitor', icon: <MonitorOutlined />, label: '实时监控' },
-    ],
-  },
-  {
-    key: '/report',
-    icon: <BarChartOutlined />,
-    label: '报告中心',
-  },
-  {
     key: 'ai',
     icon: <RobotOutlined />,
     label: '智能助手',
     children: [
       { key: '/ai/chat', icon: <DeploymentUnitOutlined />, label: '智能对话' },
-      { key: '/ai/trace', icon: <BookOutlined />, label: '知识库录入' },
       { key: '/ai/report', icon: <BarChartOutlined />, label: '智能报告' },
+      { key: '/ai/trace', icon: <BookOutlined />, label: '知识库录入' },
     ],
   },
 ];
@@ -142,18 +114,12 @@ export default function MainLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const isFeatureRoute = location.pathname.startsWith('/features');
   const isAIRoute = location.pathname.startsWith('/ai');
   const isAIChatRoute = location.pathname === '/ai/chat';
   const { userInfo, logout } = useUserStore();
   const { resolved, setMode } = useThemeStore();
-  const alarms = useMonitorStore((state) => state.alarms);
-  const monitorConnected = useMonitorStore((state) => state.connected);
-  const activeCount = alarms.filter((alarm) => alarm.status === 'ACTIVE').length;
   const { isMobile, isTablet, width } = useResponsive();
   const userSummary = buildUserSummary(userInfo);
-
-  useWebSocket({ scope: 'all', subscribeMonitor: false, subscribeAlarms: true });
 
   useEffect(() => {
     if (isTablet) {
@@ -211,7 +177,6 @@ export default function MainLayout() {
     const path = location.pathname;
     if (path.startsWith('/data')) return ['data'];
     if (path.startsWith('/calculation')) return ['calculation'];
-    if (path.startsWith('/features')) return ['features'];
     if (path.startsWith('/ai')) return ['ai'];
     return [];
   };
@@ -248,7 +213,10 @@ export default function MainLayout() {
   ];
 
   return (
-    <Layout className={styles.layout}>
+    <Layout
+      className={styles.layout}
+      data-sider-collapsed={!isMobile && siderCollapsed ? 'true' : 'false'}
+    >
       {isMobile && (
         <div
           className={`${styles.overlay} ${mobileMenuOpen ? styles.visible : ''}`}
@@ -318,22 +286,6 @@ export default function MainLayout() {
               aria-label={resolved === 'dark' ? '切换为浅色模式' : '切换为深色模式'}
             />
 
-            <Badge
-              count={activeCount}
-              size="small"
-              offset={[-2, 2]}
-              color={monitorConnected ? undefined : '#faad14'}
-            >
-              <Button
-                type="text"
-                icon={<BellOutlined />}
-                className={styles.headerBtn}
-                onClick={() => navigate('/features/monitor')}
-                aria-label={activeCount > 0 ? `监控告警，当前 ${activeCount} 条活动告警` : '监控告警'}
-                title={monitorConnected ? '告警通道已连接' : '告警通道未连接，当前使用接口刷新兜底'}
-              />
-            </Badge>
-
             <Dropdown
               menu={{ items: userMenuItems, onClick: handleUserMenuClick }}
               placement="bottomRight"
@@ -357,13 +309,7 @@ export default function MainLayout() {
         </Header>
 
         <Content className={`${styles.content} container-responsive`}>
-          {isFeatureRoute ? (
-            <div className={styles.featureViewport}>
-              <div className={styles.featureStage}>
-                <Outlet />
-              </div>
-            </div>
-          ) : isAIRoute ? (
+          {isAIRoute ? (
             <div className={`${styles.aiViewport} ${isAIChatRoute ? styles.aiChatViewport : ''}`}>
               <Outlet />
             </div>

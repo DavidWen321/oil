@@ -1,4 +1,4 @@
-﻿"""Agent module exports."""
+"""Agent module exports."""
 
 from .prompts import (
     SUPERVISOR_SYSTEM_PROMPT,
@@ -8,8 +8,9 @@ from .prompts import (
     SYNTHESIS_PROMPT,
     PLANNER_SYSTEM_PROMPT,
     REFLEXION_PROMPT,
-    REPORT_AGENT_PROMPT,
 )
+
+
 def get_supervisor():
     from .supervisor import get_supervisor as _get_supervisor
 
@@ -52,11 +53,6 @@ def get_graph_agent():
     return _get_graph_agent()
 
 
-def get_report_agent():
-    from .report_agent import get_report_agent as _get_report_agent
-
-    return _get_report_agent()
-
 __all__ = [
     "SUPERVISOR_SYSTEM_PROMPT",
     "DATA_AGENT_SYSTEM_PROMPT",
@@ -65,7 +61,6 @@ __all__ = [
     "SYNTHESIS_PROMPT",
     "PLANNER_SYSTEM_PROMPT",
     "REFLEXION_PROMPT",
-    "REPORT_AGENT_PROMPT",
     "get_supervisor",
     "get_data_agent",
     "get_calc_agent",
@@ -73,5 +68,4 @@ __all__ = [
     "get_planner",
     "get_reflexion_agent",
     "get_graph_agent",
-    "get_report_agent",
 ]

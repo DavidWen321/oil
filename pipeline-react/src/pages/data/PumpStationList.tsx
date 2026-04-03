@@ -2,15 +2,46 @@
  * PumpStationList - 泵站参数管理页面
  */
 
-import { useState, useEffect } from 'react';
-import { Card, Button, Space, Modal, Form, Input, InputNumber, message, Popconfirm, Tooltip, Row, Col } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined, ReloadOutlined } from '@ant-design/icons';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  Button,
+  Card,
+  Col,
+  Form,
+  Input,
+  InputNumber,
+  Modal,
+  Popconfirm,
+  Row,
+  Space,
+  Tooltip,
+  message,
+} from 'antd';
+import {
+  DeleteOutlined,
+  EditOutlined,
+  PlusOutlined,
+  ReloadOutlined,
+  SearchOutlined,
+} from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
-import type { PumpStation } from '../../types';
 import { pumpStationApi } from '../../api';
+import type { PumpStation } from '../../types';
 import AnimatedPage from '../../components/common/AnimatedPage';
 import ResponsiveTable from '../../components/common/ResponsiveTable';
 import styles from './DataPage.module.css';
+
+function nowrapTitle(text: string) {
+  return <span style={{ whiteSpace: 'nowrap' }}>{text}</span>;
+}
+
+function formatNumber(value: number | undefined, precision?: number) {
+  if (typeof value !== 'number') {
+    return '-';
+  }
+
+  return typeof precision === 'number' ? value.toFixed(precision) : value;
+}
 
 export default function PumpStationList() {
   const [loading, setLoading] = useState(false);
@@ -18,19 +49,17 @@ export default function PumpStationList() {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingItem, setEditingItem] = useState<PumpStation | null>(null);
   const [searchText, setSearchText] = useState('');
-  const [form] = Form.useForm();
+  const [form] = Form.useForm<PumpStation>();
 
   useEffect(() => {
-    fetchData();
+    void fetchData();
   }, []);
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const res = await pumpStationApi.list();
-      if (res.data) {
-        setData(res.data);
-      }
+      const response = await pumpStationApi.list();
+      setData(Array.isArray(response.data) ? response.data : []);
     } catch {
       setData([]);
       message.error('加载泵站数据失败');
@@ -55,7 +84,7 @@ export default function PumpStationList() {
     try {
       await pumpStationApi.delete([id]);
       message.success('删除成功');
-      fetchData();
+      await fetchData();
     } catch {
       message.error('删除失败');
     }
@@ -69,22 +98,23 @@ export default function PumpStationList() {
         message.success('修改成功');
       } else {
         await pumpStationApi.create(values);
-        message.success('添加成功');
+        message.success('新增成功');
       }
       setModalVisible(false);
-      fetchData();
+      await fetchData();
     } catch {
       message.error('操作失败');
     }
   };
 
-  const filteredData = data.filter(item =>
-      item.name.toLowerCase().includes(searchText.toLowerCase())
-  );
+  const filteredData = useMemo(() => {
+    const keyword = searchText.trim().toLowerCase();
+    if (!keyword) {
+      return data;
+    }
 
-  const nowrapTitle = (text: string) => (
-      <span style={{ whiteSpace: 'nowrap' }}>{text}</span>
-  );
+    return data.filter((item) => String(item.name ?? '').toLowerCase().includes(keyword));
+  }, [data, searchText]);
 
   const columns: ColumnsType<PumpStation> = [
     {
@@ -99,7 +129,7 @@ export default function PumpStationList() {
       width: 180,
       align: 'center',
       render: (text: string) => (
-          <span style={{ fontWeight: 500, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+        <span style={{ fontWeight: 500, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
           {text}
         </span>
       ),
@@ -110,8 +140,8 @@ export default function PumpStationList() {
       width: 130,
       align: 'center',
       render: (val: number) => (
-          <span style={{ color: 'var(--accent-primary)', fontWeight: 500 }}>
-          {val}
+        <span style={{ color: 'var(--accent-primary)', fontWeight: 500 }}>
+          {formatNumber(val)}
         </span>
       ),
     },
@@ -120,31 +150,35 @@ export default function PumpStationList() {
       dataIndex: 'electricEfficiency',
       width: 130,
       align: 'center',
+      render: (val: number) => formatNumber(val),
     },
     {
-      title: nowrapTitle('排量(m³/h)'),
+      title: nowrapTitle('排量(m3/h)'),
       dataIndex: 'displacement',
       width: 150,
       align: 'center',
+      render: (val: number) => formatNumber(val),
     },
     {
       title: nowrapTitle('来压(MPa)'),
       dataIndex: 'comePower',
       width: 130,
       align: 'center',
-      render: (val: number) => val?.toFixed(2),
+      render: (val: number) => formatNumber(val, 2),
     },
     {
       title: nowrapTitle('ZMI480扬程(m)'),
       dataIndex: 'zmi480Lift',
       width: 160,
       align: 'center',
+      render: (val: number) => formatNumber(val),
     },
     {
       title: nowrapTitle('ZMI375扬程(m)'),
       dataIndex: 'zmi375Lift',
       width: 160,
       align: 'center',
+      render: (val: number) => formatNumber(val),
     },
     {
       title: nowrapTitle('操作'),
@@ -152,171 +186,193 @@ export default function PumpStationList() {
       width: 150,
       align: 'center',
       render: (_, record) => (
-          <Space size="small">
+        <Space size="small">
+          <Button
+            type="text"
+            size="small"
+            icon={<EditOutlined />}
+            onClick={() => handleEdit(record)}
+            className={styles.actionBtn}
+          >
+            编辑
+          </Button>
+          <Popconfirm
+            title="确定删除吗？"
+            description="此操作不可恢复"
+            onConfirm={() => void handleDelete(record.id)}
+            okText="确定"
+            cancelText="取消"
+            okButtonProps={{ danger: true }}
+          >
             <Button
-                type="text"
-                size="small"
-                icon={<EditOutlined />}
-                onClick={() => handleEdit(record)}
-                className={styles.actionBtn}
+              type="text"
+              size="small"
+              danger
+              icon={<DeleteOutlined />}
+              className={styles.actionBtn}
             >
-              编辑
+              删除
             </Button>
-            <Popconfirm
-                title="确定删除吗？"
-                description="此操作不可恢复"
-                onConfirm={() => handleDelete(record.id)}
-                okText="确定"
-                cancelText="取消"
-                okButtonProps={{ danger: true }}
-            >
-              <Button
-                  type="text"
-                  size="small"
-                  danger
-                  icon={<DeleteOutlined />}
-                  className={styles.actionBtn}
-              >
-                删除
-              </Button>
-            </Popconfirm>
-          </Space>
+          </Popconfirm>
+        </Space>
       ),
     },
   ];
 
   return (
-      <AnimatedPage className={styles.page}>
-        <div className={styles.pageContent}>
-          <header className={styles.header}>
-            <div className={styles.headerTop}>
-              <div className={styles.headerInfo}>
-                <h1 className={styles.title}>泵站参数</h1>
-                <p className={styles.subtitle}>管理泵站设备参数信息，包括泵效率、排量和扬程等</p>
-              </div>
-              <div className={styles.headerActions}>
-                <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd} size="middle">
-                  新增泵站
-                </Button>
-              </div>
+    <AnimatedPage className={styles.page}>
+      <div className={styles.pageContent}>
+        <header className={styles.header}>
+          <div className={styles.headerTop}>
+            <div className={styles.headerInfo}>
+              <h1 className={styles.title}>泵站参数</h1>
+              <p className={styles.subtitle}>
+                管理共享泵站设备参数信息，集中维护关键运行指标。
+              </p>
             </div>
-          </header>
-
-          <Card className={styles.tableCard} bordered={false}>
-            <div className={styles.toolbar}>
-              <div className={styles.toolbarLeft}>
-                <Input
-                    placeholder="搜索泵站名称..."
-                    prefix={<SearchOutlined style={{ color: 'var(--text-muted)' }} />}
-                    value={searchText}
-                    onChange={(e) => setSearchText(e.target.value)}
-                    className={styles.searchInput}
-                    allowClear
-                />
-              </div>
-              <div className={styles.toolbarRight}>
-                <Tooltip title="刷新数据">
-                  <Button icon={<ReloadOutlined />} onClick={fetchData} loading={loading} />
-                </Tooltip>
-              </div>
+            <div className={styles.headerActions}>
+              <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd} size="middle">
+                新增泵站
+              </Button>
             </div>
+          </div>
+        </header>
 
-            <ResponsiveTable
-                columns={columns}
-                dataSource={filteredData}
-                rowKey="id"
-                loading={loading}
-                scroll={{ x: 1250 }}
-                pagination={{
-                  pageSize: 10,
-                  showSizeChanger: true,
-                  showQuickJumper: true,
-                  showTotal: (total) => `共 ${total} 条记录`,
+        <Card className={styles.tableCard} bordered={false}>
+          <div className={styles.toolbar}>
+            <div className={styles.toolbarLeft}>
+              <Input
+                placeholder="搜索泵站名称..."
+                prefix={<SearchOutlined style={{ color: 'var(--text-muted)' }} />}
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                className={styles.searchInput}
+                allowClear
+              />
+            </div>
+            <div className={styles.toolbarRight}>
+              <Tooltip title="刷新数据">
+                <Button icon={<ReloadOutlined />} onClick={() => void fetchData()} loading={loading} />
+              </Tooltip>
+            </div>
+          </div>
+
+          <ResponsiveTable
+            columns={columns}
+            dataSource={filteredData}
+            rowKey="id"
+            loading={loading}
+            scroll={{ x: 1250 }}
+            pagination={{
+              pageSize: 10,
+              showSizeChanger: true,
+              showQuickJumper: true,
+              showTotal: (total) => `共 ${total} 条记录`,
+            }}
+            cardRender={(record) => (
+              <div
+                style={{
+                  padding: 'var(--space-4)',
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 'var(--radius-lg)',
                 }}
-                cardRender={(record) => (
-                    <div
-                        style={{
-                          padding: 'var(--space-4)',
-                          background: 'var(--bg-elevated)',
-                          border: '1px solid var(--border-subtle)',
-                          borderRadius: 'var(--radius-lg)',
-                        }}
-                    >
-                      <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 15, marginBottom: 8 }}>
-                        {record.name}
-                      </div>
-                      <div
-                          style={{
-                            fontSize: 13,
-                            color: 'var(--text-tertiary)',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: 4,
-                          }}
-                      >
-                        <span>泵效率: {record.pumpEfficiency}% | 电效率: {record.electricEfficiency}%</span>
-                        <span>排量: {record.displacement} m³/h | 来压: {record.comePower} MPa</span>
-                        <span>ZMI480: {record.zmi480Lift}m | ZMI375: {record.zmi375Lift}m</span>
-                      </div>
-                    </div>
-                )}
-            />
-          </Card>
+              >
+                <div
+                  style={{
+                    fontWeight: 600,
+                    color: 'var(--text-primary)',
+                    fontSize: 15,
+                    marginBottom: 8,
+                  }}
+                >
+                  {record.name}
+                </div>
+                <div
+                  style={{
+                    fontSize: 13,
+                    color: 'var(--text-tertiary)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 4,
+                  }}
+                >
+                  <span>
+                    泵效率：{formatNumber(record.pumpEfficiency)}% | 电效率：
+                    {formatNumber(record.electricEfficiency)}%
+                  </span>
+                  <span>
+                    排量：{formatNumber(record.displacement)} m3/h | 来压：
+                    {formatNumber(record.comePower, 2)} MPa
+                  </span>
+                  <span>
+                    ZMI480：{formatNumber(record.zmi480Lift)} m | ZMI375：
+                    {formatNumber(record.zmi375Lift)} m
+                  </span>
+                </div>
+              </div>
+            )}
+          />
+        </Card>
 
-          <Modal
-              title={editingItem ? '编辑泵站' : '新增泵站'}
-              open={modalVisible}
-              onOk={handleSubmit}
-              onCancel={() => setModalVisible(false)}
-              destroyOnClose
-              className={styles.modal}
-              okText="保存"
-              cancelText="取消"
-              width={600}
-          >
-            <Form form={form} layout="vertical">
-              <Form.Item name="name" label="泵站名称" rules={[{ required: true, message: '请输入泵站名称' }]}>
-                <Input placeholder="请输入泵站名称" />
-              </Form.Item>
-              <Row gutter={16}>
-                <Col span={12}>
-                  <Form.Item name="pumpEfficiency" label="泵效率 (%)">
-                    <InputNumber min={0} max={100} precision={1} style={{ width: '100%' }} />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item name="electricEfficiency" label="电效率 (%)">
-                    <InputNumber min={0} max={100} precision={1} style={{ width: '100%' }} />
-                  </Form.Item>
-                </Col>
-              </Row>
-              <Row gutter={16}>
-                <Col span={12}>
-                  <Form.Item name="displacement" label="排量 (m³/h)">
-                    <InputNumber min={0} style={{ width: '100%' }} />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item name="comePower" label="来压 (MPa)">
-                    <InputNumber min={0} precision={2} style={{ width: '100%' }} />
-                  </Form.Item>
-                </Col>
-              </Row>
-              <Row gutter={16}>
-                <Col span={12}>
-                  <Form.Item name="zmi480Lift" label="ZMI480扬程 (m)">
-                    <InputNumber min={0} style={{ width: '100%' }} />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item name="zmi375Lift" label="ZMI375扬程 (m)">
-                    <InputNumber min={0} style={{ width: '100%' }} />
-                  </Form.Item>
-                </Col>
-              </Row>
-            </Form>
-          </Modal>
-        </div>
-      </AnimatedPage>
+        <Modal
+          title={editingItem ? '编辑泵站' : '新增泵站'}
+          open={modalVisible}
+          onOk={() => void handleSubmit()}
+          onCancel={() => setModalVisible(false)}
+          destroyOnClose
+          className={styles.modal}
+          okText="保存"
+          cancelText="取消"
+          width={600}
+        >
+          <Form form={form} layout="vertical">
+            <Form.Item
+              name="name"
+              label="泵站名称"
+              rules={[{ required: true, message: '请输入泵站名称' }]}
+            >
+              <Input placeholder="请输入泵站名称" />
+            </Form.Item>
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item name="pumpEfficiency" label="泵效率(%)">
+                  <InputNumber min={0} max={100} precision={1} style={{ width: '100%' }} />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="electricEfficiency" label="电效率(%)">
+                  <InputNumber min={0} max={100} precision={1} style={{ width: '100%' }} />
+                </Form.Item>
+              </Col>
+            </Row>
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item name="displacement" label="排量(m3/h)">
+                  <InputNumber min={0} style={{ width: '100%' }} />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="comePower" label="来压(MPa)">
+                  <InputNumber min={0} precision={2} style={{ width: '100%' }} />
+                </Form.Item>
+              </Col>
+            </Row>
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item name="zmi480Lift" label="ZMI480扬程(m)">
+                  <InputNumber min={0} style={{ width: '100%' }} />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="zmi375Lift" label="ZMI375扬程(m)">
+                  <InputNumber min={0} style={{ width: '100%' }} />
+                </Form.Item>
+              </Col>
+            </Row>
+          </Form>
+        </Modal>
+      </div>
+    </AnimatedPage>
   );
 }

@@ -153,37 +153,7 @@ CREATE TABLE `t_calculation_history` (
 
 
 -- ============================================================
--- 7. 鍒嗘瀽鎶ュ憡琛?(t_analysis_report)
--- ============================================================
-DROP TABLE IF EXISTS `t_analysis_report`;
-CREATE TABLE `t_analysis_report` (
-    `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '涓婚敭ID',
-    `pro_id` bigint(20) NOT NULL DEFAULT 0 COMMENT '椤圭洰ID',
-    `pipeline_id` bigint(20) DEFAULT NULL COMMENT '绠￠亾ID',
-    `report_no` varchar(50) NOT NULL COMMENT '鎶ュ憡缂栧彿',
-    `report_type` varchar(50) NOT NULL COMMENT '鎶ュ憡绫诲瀷',
-    `report_title` varchar(200) NOT NULL COMMENT '鎶ュ憡鏍囬',
-    `report_summary` text DEFAULT NULL COMMENT '鎶ュ憡鎽樿',
-    `file_name` varchar(200) DEFAULT NULL COMMENT '鏂囦欢鍚?,
-    `file_path` varchar(500) DEFAULT NULL COMMENT '鏂囦欢瀛樺偍璺緞',
-    `file_format` varchar(20) DEFAULT 'DOCX' COMMENT '鏂囦欢鏍煎紡',
-    `file_size` bigint(20) DEFAULT NULL COMMENT '鏂囦欢澶у皬(bytes)',
-    `history_ids` varchar(500) DEFAULT NULL COMMENT '鍏宠仈鐨勮绠楀巻鍙睮D鍒楄〃',
-    `status` tinyint(4) NOT NULL DEFAULT 0 COMMENT '鐘舵€? 0-鐢熸垚涓? 1-宸插畬鎴? 2-鐢熸垚澶辫触',
-    `error_msg` varchar(500) DEFAULT NULL COMMENT '閿欒淇℃伅',
-    `create_by` varchar(64) DEFAULT '' COMMENT '鍒涘缓浜?,
-    `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '鍒涘缓鏃堕棿',
-    `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '鏇存柊鏃堕棿',
-    PRIMARY KEY (`id`),
-    UNIQUE KEY `uk_report_no` (`report_no`),
-    KEY `idx_pro_id` (`pro_id`),
-    KEY `idx_report_type` (`report_type`),
-    KEY `idx_create_time` (`create_time`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='鍒嗘瀽鎶ュ憡琛?;
-
-
--- ============================================================
--- 8. 鏁忔劅鎬у垎鏋愮粨鏋滆〃 (t_sensitivity_analysis)
+-- 7. 鏁忔劅鎬у垎鏋愮粨鏋滆〃 (t_sensitivity_analysis)
 -- ============================================================
 DROP TABLE IF EXISTS `t_sensitivity_analysis`;
 CREATE TABLE `t_sensitivity_analysis` (
@@ -208,7 +178,7 @@ CREATE TABLE `t_sensitivity_analysis` (
 
 
 -- ============================================================
--- 9. 鎿嶄綔鏃ュ織琛?(t_operation_log)
+-- 8. 鎿嶄綔鏃ュ織琛?(t_operation_log)
 -- ============================================================
 DROP TABLE IF EXISTS `t_operation_log`;
 CREATE TABLE `t_operation_log` (
