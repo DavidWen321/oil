@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import dayjs, { type Dayjs } from 'dayjs';
-import { Alert, Button, DatePicker, Empty, Modal, Popconfirm, Select, Space, Spin, Switch, Tag, message } from 'antd';
+import { Alert, Button, DatePicker, Empty, Input, Modal, Popconfirm, Select, Space, Spin, Switch, Tag, message } from 'antd';
 import {
   DeleteOutlined,
   DownloadOutlined,
@@ -10,12 +10,13 @@ import {
   RobotOutlined,
   SaveOutlined,
 } from '@ant-design/icons';
-import { calculationHistoryApi, pipelineApi, projectApi, pumpStationApi } from '../../api';
+import { calculationHistoryApi, oilPropertyApi, pipelineApi, projectApi, pumpStationApi } from '../../api';
 import { agentApi } from '../../api/agent';
 import AnimatedPage from '../../components/common/AnimatedPage';
-import type { CalculationHistory, PageResult, Pipeline, Project, PumpStation, R } from '../../types';
+import type { CalculationHistory, OilProperty, PageResult, Pipeline, Project, PumpStation, R } from '../../types';
 
 const { RangePicker } = DatePicker;
+const { TextArea } = Input;
 
 type ReportType = 'AI_REPORT' | 'RISK_REVIEW' | 'ENERGY_DIAGNOSIS' | 'OPERATION_BRIEF';
 type RangePreset = '7d' | '30d' | '90d' | 'year' | 'all' | 'custom';
@@ -24,6 +25,12 @@ type IntelligenceLevel = 'standard' | 'enhanced' | 'expert';
 type HistoryFilter = 'all' | 'ai' | 'normal' | 'completed' | 'running' | 'failed';
 type DateRangeValue = [Dayjs, Dayjs] | null;
 type JsonRecord = Record<string, unknown>;
+type BusinessAnalysisObject = 'project' | 'pipeline' | 'pumpStation';
+type BusinessTimePreset = 'today' | '7d' | '30d' | 'custom';
+type BusinessReportKind = 'overview' | 'energy' | 'pump' | 'sensitivity' | 'diagnosis' | 'comparison';
+type BusinessOutputStyle = 'simple' | 'professional' | 'presentation';
+type BusinessOptimizationGoal = 'energy' | 'cost' | 'safety' | 'balanced';
+type BusinessRiskLevel = '高风险' | '中风险' | '低风险';
 type RiskLevel = '高' | '中' | '低';
 type SuggestionPriority = '高' | '中' | '低';
 
@@ -91,9 +98,127 @@ type HistoryItem = {
   preview?: PreviewRecord | LocalReportRecord;
 };
 
+type BusinessKpi = {
+  label: string;
+  value: string;
+  note: string;
+};
+
+type BusinessDiagnosisFactor = {
+  name: string;
+  score: number;
+  description: string;
+};
+
+type BusinessComparisonScheme = {
+  name: string;
+  tag: string;
+  head: string;
+  pressure: string;
+  power: string;
+  cost: string;
+  risk: BusinessRiskLevel;
+  highlighted?: boolean;
+};
+
+type BusinessSensitivityItem = {
+  name: string;
+  impact: number;
+  description: string;
+};
+
+type BusinessRiskCard = {
+  level: BusinessRiskLevel;
+  title: string;
+  description: string;
+  action: string;
+};
+
+type BusinessChartCard = {
+  title: string;
+  value: number;
+  insight: string;
+  accentClassName: string;
+};
+
+type BusinessReportModel = {
+  title: string;
+  totalComment: string;
+  projectName: string;
+  objectLabel: string;
+  rangeLabel: string;
+  generatedAt: string;
+  reportTypeLabel: string;
+  focusLabels: string[];
+  outputStyleLabel: string;
+  highlightItems: string[];
+  kpis: BusinessKpi[];
+  diagnosisSummary: string[];
+  diagnosisFactors: BusinessDiagnosisFactor[];
+  schemes: BusinessComparisonScheme[];
+  sensitivityItems: BusinessSensitivityItem[];
+  risks: BusinessRiskCard[];
+  immediateActions: string[];
+  shortTermActions: string[];
+  longTermActions: string[];
+  chartCards: BusinessChartCard[];
+};
+
 const TEMPLATE_KEY = 'pipeline-ai-report-template-v3';
 const HISTORY_KEY = 'pipeline-ai-report-history-v3';
 const COUNT_KEY = 'pipeline-ai-report-count-v3';
+
+const BUSINESS_OBJECT_OPTIONS: Array<{ label: string; value: BusinessAnalysisObject }> = [
+  { label: '项目', value: 'project' },
+  { label: '管道', value: 'pipeline' },
+  { label: '泵站', value: 'pumpStation' },
+];
+
+const BUSINESS_TIME_OPTIONS: Array<{ label: string; value: BusinessTimePreset }> = [
+  { label: '今日', value: 'today' },
+  { label: '近7天', value: '7d' },
+  { label: '近30天', value: '30d' },
+  { label: '自定义', value: 'custom' },
+];
+
+const BUSINESS_REPORT_TYPE_OPTIONS: Array<{ label: string; value: BusinessReportKind }> = [
+  { label: '运行概况报告', value: 'overview' },
+  { label: '能耗分析报告', value: 'energy' },
+  { label: '泵站优化报告', value: 'pump' },
+  { label: '敏感性分析报告', value: 'sensitivity' },
+  { label: '异常诊断报告', value: 'diagnosis' },
+  { label: '多方案对比报告', value: 'comparison' },
+];
+
+const BUSINESS_FOCUS_OPTIONS = [
+  '能耗水平',
+  '压力变化',
+  '流量波动',
+  '泵站配置',
+  '油品参数影响',
+  '异常指标预警',
+  '优化建议',
+];
+
+const BUSINESS_OUTPUT_STYLE_OPTIONS: Array<{ label: string; value: BusinessOutputStyle }> = [
+  { label: '简洁版', value: 'simple' },
+  { label: '专业版', value: 'professional' },
+  { label: '汇报版', value: 'presentation' },
+];
+
+const BUSINESS_OPTIMIZATION_GOAL_OPTIONS: Array<{ label: string; value: BusinessOptimizationGoal }> = [
+  { label: '能耗最低', value: 'energy' },
+  { label: '费用最低', value: 'cost' },
+  { label: '安全优先', value: 'safety' },
+  { label: '综合最优', value: 'balanced' },
+];
+
+const BUSINESS_EXAMPLE_PROMPTS = [
+  '分析当前项目近30天能耗变化趋势，重点关注能耗偏高原因。',
+  '生成泵站节能优化报告，并给出可执行的调整建议。',
+  '对比当前方案与推荐方案的运行成本和风险等级。',
+  '找出影响压力损失的主要因素，并给出监控建议。',
+];
 
 function PreviewContent({ preview }: { preview: PreviewRecord | LocalReportRecord }) {
   return (
@@ -887,6 +1012,63 @@ function buildProjectContextLines(projectInsights: ProjectInsight[]) {
     });
 }
 
+function buildAnalysisRisks(projectInsights: ProjectInsight[]) {
+  const risks: RiskItem[] = [];
+  const seen = new Set<string>();
+
+  const pushRisk = (item: RiskItem | null) => {
+    if (!item) return;
+    const key = `${item.target}-${item.riskType}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    risks.push(item);
+  };
+
+  const abnormalProject = [...projectInsights]
+    .filter((item) => item.abnormalCount > 0)
+    .sort((left, right) => (right.abnormalCount - left.abnormalCount) || (right.failedCount - left.failedCount))[0];
+
+  if (abnormalProject) {
+    pushRisk(buildRiskItem(
+      abnormalProject.project.name,
+      '历史异常集中',
+      abnormalProject.lowPressureCount > 0 || abnormalProject.infeasibleCount > 0 ? '高' : '中',
+      `${abnormalProject.historyCount} 条历史中有 ${abnormalProject.abnormalCount} 条异常。`,
+      '建议优先复核该项目的关键入参、压力约束和计算边界条件。',
+    ));
+  }
+
+  const frictionProject = [...projectInsights]
+    .filter((item) => item.avgFrictionRatio !== null && item.avgFrictionRatio > 0.7)
+    .sort((left, right) => (right.avgFrictionRatio ?? 0) - (left.avgFrictionRatio ?? 0))[0];
+
+  if (frictionProject?.avgFrictionRatio !== null) {
+    pushRisk(buildRiskItem(
+      frictionProject.project.name,
+      '摩阻占比偏高',
+      frictionProject.avgFrictionRatio > 0.85 ? '高' : '中',
+      `平均摩阻占比约 ${formatPercent(frictionProject.avgFrictionRatio)}。`,
+      '建议复核管径、粗糙度和运行流量，必要时重新校核水力参数。',
+    ));
+  }
+
+  const energyProject = [...projectInsights]
+    .filter((item) => item.avgEnergyIntensity !== null)
+    .sort((left, right) => (right.avgEnergyIntensity ?? 0) - (left.avgEnergyIntensity ?? 0))[0];
+
+  if (energyProject?.avgEnergyIntensity !== null) {
+    pushRisk(buildRiskItem(
+      energyProject.project.name,
+      '能耗水平偏高',
+      '中',
+      `单位输量能耗指数约 ${formatNumber(energyProject.avgEnergyIntensity)}。`,
+      '建议结合泵站组合、效率和电价进一步做节能优化。',
+    ));
+  }
+
+  return risks.slice(0, 4);
+}
+
 function buildPumpStationContextLines(pumpStations: PumpStation[]) {
   return pumpStations
     .map((station) => {
@@ -1284,6 +1466,7 @@ function buildHistoryPreview(history: CalculationHistory): PreviewRecord {
     sourceLabel: '服务端历史记录',
     result: {
       source: 'history',
+      highlights: summary.slice(0, 3),
       summary,
       risks: risks.slice(0, 6),
       suggestions: buildHistorySuggestions(history, outputSource),
@@ -1299,6 +1482,7 @@ function parseAiResult(rawText: string, fallback: ReportResult): ReportResult {
     const start = cleaned.indexOf('{');
     const end = cleaned.lastIndexOf('}');
     const parsed = JSON.parse(start >= 0 && end > start ? cleaned.slice(start, end + 1) : cleaned) as Record<string, unknown>;
+    const highlights = toLines(parsed.highlights ?? parsed.keyFindings ?? parsed.findings);
     const summary = toLines(parsed.summary);
     const risks = normalizeRiskList(parsed.risks ?? parsed.riskList ?? parsed.risk_list);
     const suggestions = normalizeSuggestionList(
@@ -1307,6 +1491,7 @@ function parseAiResult(rawText: string, fallback: ReportResult): ReportResult {
     const hasSpecificSuggestionTarget = suggestions.some((item) => item.target !== DEFAULT_ANALYSIS_TARGET);
     return {
       source: 'ai',
+      highlights: highlights.length ? highlights.slice(0, 6) : fallback.highlights,
       summary: summary.length ? summary.slice(0, 4) : fallback.summary,
       risks: risks.length ? risks : fallback.risks,
       suggestions: suggestions.length && hasSpecificSuggestionTarget ? suggestions : fallback.suggestions,
@@ -1538,6 +1723,63 @@ function getComparisonPeriod(rangePreset: RangePreset, customRange: DateRangeVal
   return { currentStart, currentEnd, previousStart, previousEnd };
 }
 
+function getBusinessRangeWindow(preset: BusinessTimePreset, customRange: DateRangeValue) {
+  if (preset === 'custom') {
+    return { start: customRange?.[0]?.startOf('day') ?? null, end: customRange?.[1]?.endOf('day') ?? null };
+  }
+  if (preset === 'today') {
+    return { start: dayjs().startOf('day'), end: dayjs().endOf('day') };
+  }
+  const days = preset === '7d' ? 7 : 30;
+  return { start: dayjs().subtract(days - 1, 'day').startOf('day'), end: dayjs().endOf('day') };
+}
+
+function getBusinessRangeLabel(preset: BusinessTimePreset, customRange: DateRangeValue) {
+  if (preset === 'custom' && customRange) {
+    return `${customRange[0].format('YYYY-MM-DD')} 至 ${customRange[1].format('YYYY-MM-DD')}`;
+  }
+  if (preset === 'today') return '今日';
+  if (preset === '7d') return '近7天';
+  return '近30天';
+}
+
+function pickRecordNumber(record: JsonRecord, keys: string[]) {
+  for (const key of keys) {
+    const directValue = toFiniteNumber(record[key]);
+    if (directValue !== null) return directValue;
+    const nestedValue = record[key];
+    if (isRecord(nestedValue)) {
+      const nestedCandidates = Object.values(nestedValue)
+        .map((item) => toFiniteNumber(item))
+        .filter((item): item is number => item !== null);
+      if (nestedCandidates.length) return nestedCandidates[0];
+    }
+  }
+  return null;
+}
+
+function formatBusinessMetric(value: number | null, unit: string, digits = 1) {
+  if (value === null || !Number.isFinite(value)) return '-';
+  return `${value.toFixed(digits)} ${unit}`.trim();
+}
+
+function getBarWidthPercent(value: number, maxValue: number) {
+  if (!Number.isFinite(value) || value <= 0 || !Number.isFinite(maxValue) || maxValue <= 0) return '8%';
+  return `${Math.max(8, Math.min(100, Math.round((value / maxValue) * 100)))}%`;
+}
+
+function getBusinessRiskColor(level: BusinessRiskLevel) {
+  if (level === '高风险') return 'red';
+  if (level === '中风险') return 'gold';
+  return 'blue';
+}
+
+function getBusinessRiskBadgeClass(level: BusinessRiskLevel) {
+  if (level === '高风险') return 'border-red-400/25 bg-red-500/10 text-red-200';
+  if (level === '中风险') return 'border-amber-400/25 bg-amber-500/10 text-amber-200';
+  return 'border-cyan-400/25 bg-cyan-500/10 text-cyan-200';
+}
+
 function renderStatus(status: HistoryItem['status']) {
   if (status === 'completed') return <Tag color="green">已完成</Tag>;
   if (status === 'running') return <Tag color="blue">生成中</Tag>;
@@ -1556,6 +1798,7 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
   const [projects, setProjects] = useState<Project[]>([]);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [pumpStations, setPumpStations] = useState<PumpStation[]>([]);
+  const [oilProperties, setOilProperties] = useState<OilProperty[]>([]);
   const [histories, setHistories] = useState<CalculationHistory[]>([]);
   const [localReports, setLocalReports] = useState<LocalReportRecord[]>(() => normalizeLocalReportRecords(readStorage(HISTORY_KEY, [] as LocalReportRecord[])));
   const [analysisCount, setAnalysisCount] = useState<number>(() => readStorage(COUNT_KEY, 0));
@@ -1579,21 +1822,43 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
   const [clearingCurrentList, setClearingCurrentList] = useState(false);
   const [activePreview, setActivePreview] = useState<PreviewRecord | LocalReportRecord | null>(null);
   const [previewModalRecord, setPreviewModalRecord] = useState<PreviewRecord | LocalReportRecord | null>(null);
+  const [businessProjectId, setBusinessProjectId] = useState<number>();
+  const [businessAnalysisObject, setBusinessAnalysisObject] = useState<BusinessAnalysisObject>('project');
+  const [businessPipelineId, setBusinessPipelineId] = useState<number>();
+  const [businessPumpScope, setBusinessPumpScope] = useState<'all' | 'custom'>('all');
+  const [businessPumpStationIds, setBusinessPumpStationIds] = useState<number[]>([]);
+  const [businessOilId, setBusinessOilId] = useState<number>();
+  const [businessTimePreset, setBusinessTimePreset] = useState<BusinessTimePreset>('30d');
+  const [businessCustomRange, setBusinessCustomRange] = useState<DateRangeValue>(null);
+  const [businessReportType, setBusinessReportType] = useState<BusinessReportKind>('energy');
+  const [businessFocuses, setBusinessFocuses] = useState<string[]>(['能耗水平', '优化建议']);
+  const [businessOutputStyle, setBusinessOutputStyle] = useState<BusinessOutputStyle>('professional');
+  const [businessTargetThroughput, setBusinessTargetThroughput] = useState('');
+  const [businessMinPressure, setBusinessMinPressure] = useState('');
+  const [businessOptimizationGoal, setBusinessOptimizationGoal] = useState<BusinessOptimizationGoal>('balanced');
+  const [businessAllowPumpAdjust, setBusinessAllowPumpAdjust] = useState(true);
+  const [businessRemark, setBusinessRemark] = useState('');
+  const [businessPrompt, setBusinessPrompt] = useState('例如：分析 A 项目近30天管道运行情况，重点关注能耗偏高原因，并给出泵站优化建议。');
+  const [businessReport, setBusinessReport] = useState<BusinessReportModel | null>(null);
+  const [businessGenerating, setBusinessGenerating] = useState(false);
 
   const loadData = useCallback(async (mode: 'initial' | 'refresh') => {
     mode === 'initial' ? setLoading(true) : setRefreshing(true);
     try {
-      const [projectResult, historyResult, pumpResult] = await Promise.allSettled([
+      const [projectResult, historyResult, pumpResult, oilResult] = await Promise.allSettled([
         projectApi.list(),
         fetchAllPagedList<CalculationHistory>((pageNum, pageSize) => calculationHistoryApi.page({ pageNum, pageSize })),
         pumpStationApi.list(),
+        oilPropertyApi.list(),
       ]);
       const nextProjects = projectResult.status === 'fulfilled' ? (projectResult.value.data ?? []) : [];
       const nextHistories = historyResult.status === 'fulfilled' ? historyResult.value : [];
       const nextPumpStations = pumpResult.status === 'fulfilled' ? (pumpResult.value.data ?? []) : [];
+      const nextOilProperties = oilResult.status === 'fulfilled' ? (oilResult.value.data ?? []) : [];
       setProjects([...nextProjects].sort((a, b) => a.proId - b.proId));
       setHistories([...nextHistories].sort((a, b) => dayjs(b.createTime).valueOf() - dayjs(a.createTime).valueOf()));
       setPumpStations(nextPumpStations);
+      setOilProperties(nextOilProperties);
       const pipelineResults = await Promise.allSettled(nextProjects.map((item) => pipelineApi.listByProject(item.proId)));
       setPipelines(pipelineResults.flatMap((item) => (item.status === 'fulfilled' ? item.value.data ?? [] : [])));
       setSelectedProjectIds((current) => {
@@ -1637,6 +1902,13 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
   const pumpStationContextLines = useMemo(() => buildPumpStationContextLines(pumpStations), [pumpStations]);
 
   const snapshot = useMemo(() => {
+    const projectCompleteness = getCollectionCompleteness(selectedProjects, ['number', 'name', 'responsible']);
+    const pipelineCompleteness = getCollectionCompleteness(visiblePipelines, ['name', 'length', 'diameter', 'throughput', 'startAltitude', 'endAltitude']);
+    const pumpStationCompleteness = getCollectionCompleteness(pumpStations, ['name', 'pumpEfficiency', 'electricEfficiency', 'zmi480Lift', 'zmi375Lift']);
+    const historyCompleteness = getHistoryCompleteness(visibleHistories);
+    const dataCompletenessTotal = projectCompleteness.total + pipelineCompleteness.total + pumpStationCompleteness.total + historyCompleteness.total;
+    const dataCompletenessFilled = projectCompleteness.filled + pipelineCompleteness.filled + pumpStationCompleteness.filled + historyCompleteness.filled;
+    const dataCompletenessRate = dataCompletenessTotal ? Math.round((dataCompletenessFilled / dataCompletenessTotal) * 100) : 0;
     const abnormalHistoryCount = abnormalHistories.length;
     const highRiskHistories = visibleHistories.filter((item) => getHistoryRiskLevel(item) === 'high');
     const highRiskCount = highRiskHistories.length;
@@ -1667,6 +1939,7 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
       failedHistoryCount: visibleHistories.filter((item) => item.status === 2).length,
       abnormalHistoryCount,
       highRiskCount,
+      dataCompletenessRate,
       abnormalRate: visibleHistories.length ? Math.round(abnormalRate * 100) : 0,
       highRiskRate: visibleHistories.length ? Math.round(highRiskRate * 100) : 0,
       healthScore,
@@ -1733,6 +2006,431 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
     },
   ]), [snapshot.currentSampleCount, snapshot.efficiencyChangePercent, snapshot.energyChangePercent, snapshot.highRiskCount, snapshot.previousRiskCount, snapshot.previousSampleCount, snapshot.riskCountChange]);
 
+  const businessProjectOptions = useMemo(() => (selectedProjects.length ? selectedProjects : projects), [projects, selectedProjects]);
+  const businessRangeWindow = useMemo(() => getBusinessRangeWindow(businessTimePreset, businessCustomRange), [businessCustomRange, businessTimePreset]);
+  const businessRangeLabel = useMemo(() => getBusinessRangeLabel(businessTimePreset, businessCustomRange), [businessCustomRange, businessTimePreset]);
+  const businessSelectedProject = useMemo(() => businessProjectOptions.find((item) => item.proId === businessProjectId) ?? null, [businessProjectId, businessProjectOptions]);
+  const businessPipelines = useMemo(
+    () => pipelines.filter((item) => (businessProjectId ? item.proId === businessProjectId : true)),
+    [businessProjectId, pipelines],
+  );
+  const businessSelectedPipeline = useMemo(() => businessPipelines.find((item) => item.id === businessPipelineId) ?? null, [businessPipelineId, businessPipelines]);
+  const businessSelectedOil = useMemo(() => oilProperties.find((item) => item.id === businessOilId) ?? null, [businessOilId, oilProperties]);
+  const businessVisiblePumpStations = useMemo(() => {
+    if (businessPumpScope === 'all') return pumpStations;
+    const selectedIdSet = new Set(businessPumpStationIds);
+    return pumpStations.filter((item) => selectedIdSet.has(item.id));
+  }, [businessPumpScope, businessPumpStationIds, pumpStations]);
+  const businessHistories = useMemo(
+    () => histories.filter((item) => (!businessProjectId || item.projectId === businessProjectId) && inWindow(item.createTime, businessRangeWindow.start, businessRangeWindow.end)),
+    [businessProjectId, businessRangeWindow.end, businessRangeWindow.start, histories],
+  );
+
+  useEffect(() => {
+    if (!businessProjectOptions.length) {
+      setBusinessProjectId(undefined);
+      return;
+    }
+    if (!businessProjectId || !businessProjectOptions.some((item) => item.proId === businessProjectId)) {
+      setBusinessProjectId(businessProjectOptions[0].proId);
+    }
+  }, [businessProjectId, businessProjectOptions]);
+
+  useEffect(() => {
+    if (!businessPipelines.length) {
+      setBusinessPipelineId(undefined);
+      return;
+    }
+    if (!businessPipelineId || !businessPipelines.some((item) => item.id === businessPipelineId)) {
+      setBusinessPipelineId(businessPipelines[0].id);
+    }
+  }, [businessPipelineId, businessPipelines]);
+
+  useEffect(() => {
+    if (!oilProperties.length) {
+      setBusinessOilId(undefined);
+      return;
+    }
+    if (!businessOilId || !oilProperties.some((item) => item.id === businessOilId)) {
+      setBusinessOilId(oilProperties[0].id);
+    }
+  }, [businessOilId, oilProperties]);
+
+  useEffect(() => {
+    if (businessPumpScope === 'all') return;
+    const availableIdSet = new Set(pumpStations.map((item) => item.id));
+    const nextIds = businessPumpStationIds.filter((id) => availableIdSet.has(id));
+    if (nextIds.length !== businessPumpStationIds.length) {
+      setBusinessPumpStationIds(nextIds);
+      return;
+    }
+    if (!nextIds.length && pumpStations.length) {
+      setBusinessPumpStationIds(pumpStations.slice(0, Math.min(2, pumpStations.length)).map((item) => item.id));
+    }
+  }, [businessPumpScope, businessPumpStationIds, pumpStations]);
+
+  useEffect(() => {
+    if (!businessSelectedPipeline || businessTargetThroughput.trim()) return;
+    setBusinessTargetThroughput(String(businessSelectedPipeline.throughput ?? ''));
+  }, [businessSelectedPipeline, businessTargetThroughput]);
+
+  const resetBusinessReportBuilder = useCallback(() => {
+    setBusinessAnalysisObject('project');
+    setBusinessProjectId(businessProjectOptions[0]?.proId);
+    setBusinessPipelineId(undefined);
+    setBusinessPumpScope('all');
+    setBusinessPumpStationIds([]);
+    setBusinessOilId(oilProperties[0]?.id);
+    setBusinessTimePreset('30d');
+    setBusinessCustomRange(null);
+    setBusinessReportType('energy');
+    setBusinessFocuses(['能耗水平', '优化建议']);
+    setBusinessOutputStyle('professional');
+    setBusinessTargetThroughput('');
+    setBusinessMinPressure('');
+    setBusinessOptimizationGoal('balanced');
+    setBusinessAllowPumpAdjust(true);
+    setBusinessRemark('');
+    setBusinessPrompt('例如：分析 A 项目近30天管道运行情况，重点关注能耗偏高原因，并给出泵站优化建议。');
+    setBusinessReport(null);
+  }, [businessProjectOptions, oilProperties]);
+
+  const handleGenerateBusinessReport = useCallback(() => {
+    if (!businessSelectedProject) {
+      message.warning('请先选择所属项目');
+      return;
+    }
+
+    setBusinessGenerating(true);
+    try {
+      const targetThroughput = toFiniteNumber(businessTargetThroughput);
+      const minPressure = toFiniteNumber(businessMinPressure);
+      const flowValues = businessHistories
+        .map((history) => {
+          const inputSource = getHistoryInputSource(history, parseJsonRecord(history.inputParams));
+          return pickRecordNumber(inputSource, ['flowRate', 'throughput', 'flow']);
+        })
+        .filter((item): item is number => item !== null);
+      const avgFlow = targetThroughput ?? averageMetric(flowValues, (item) => item) ?? businessSelectedPipeline?.throughput ?? null;
+      const avgPressure = averageMetric(businessHistories, (history) => {
+        const outputSource = getHistoryOutputSource(history, parseJsonRecord(history.outputResult));
+        return pickRecordNumber(outputSource, ['endStationInPressure', 'firstStationOutPressure', 'outletPressure', 'pressure']);
+      }) ?? minPressure ?? null;
+      const avgHead = averageMetric(businessHistories, (history) => {
+        const outputSource = getHistoryOutputSource(history, parseJsonRecord(history.outputResult));
+        return pickRecordNumber(outputSource, ['totalHead', 'totalPressureDrop', 'frictionHeadLoss']);
+      }) ?? (businessSelectedPipeline ? Math.abs((businessSelectedPipeline.startAltitude ?? 0) - (businessSelectedPipeline.endAltitude ?? 0)) + 180 : null);
+      const avgEnergy = averageMetric(businessHistories, (history) => getHistoryEnergyMetric(history))
+        ?? (avgFlow !== null ? Number((avgFlow * 0.18).toFixed(2)) : null);
+      const avgEfficiency = averageMetric(businessHistories, (history) => getHistoryEfficiencyMetric(history))
+        ?? (businessVisiblePumpStations.length
+          ? businessVisiblePumpStations.reduce((sum, item) => sum + item.pumpEfficiency, 0) / businessVisiblePumpStations.length
+          : null);
+      const avgCost = avgEnergy !== null ? Number((avgEnergy * 0.76).toFixed(2)) : null;
+      const abnormalCount = businessHistories.filter((item) => isHistoryAbnormal(item)).length;
+      const highRiskCount = businessHistories.filter((item) => getHistoryRiskLevel(item) === 'high').length;
+      const abnormalRate = businessHistories.length ? abnormalCount / businessHistories.length : 0;
+      const viscosity = businessSelectedOil?.viscosity ?? null;
+      const density = businessSelectedOil?.density ?? null;
+      const flowVolatility = flowValues.length > 1 && avgFlow
+        ? (Math.max(...flowValues) - Math.min(...flowValues)) / Math.max(avgFlow, 1)
+        : 0.06;
+      const pumpEfficiencyAverage = businessVisiblePumpStations.length
+        ? businessVisiblePumpStations.reduce((sum, item) => sum + item.pumpEfficiency, 0) / businessVisiblePumpStations.length
+        : avgEfficiency;
+      const roughnessAverage = businessPipelines.length
+        ? averageMetric(businessPipelines, (item) => toFiniteNumber(item.roughness ?? null))
+        : null;
+      const objectLabel = businessAnalysisObject === 'project'
+        ? `${businessSelectedProject.name} / 全部对象`
+        : businessAnalysisObject === 'pipeline'
+          ? `${businessSelectedPipeline?.name ?? '未指定管道'} / ${businessPumpScope === 'all' ? '全部泵站' : '指定泵站'}`
+          : `${businessPumpScope === 'all' ? '全部泵站' : businessVisiblePumpStations.map((item) => item.name).join('、') || '指定泵站'}`;
+      const reportTypeLabel = BUSINESS_REPORT_TYPE_OPTIONS.find((item) => item.value === businessReportType)?.label ?? '智能报告';
+      const outputStyleLabel = BUSINESS_OUTPUT_STYLE_OPTIONS.find((item) => item.value === businessOutputStyle)?.label ?? '专业版';
+      const highlightItems = [
+        abnormalRate > 0.18 ? '本周期存在较明显异常波动，建议优先核查异常样本。' : '本周期整体运行基本稳定，核心指标未出现明显失稳。',
+        avgEnergy !== null ? `单位能耗指标约 ${avgEnergy.toFixed(1)}，${avgEnergy > 220 ? '处于偏高区间。' : '处于可控区间。'}` : '当前缺少足够能耗样本，建议补齐历史记录。',
+        viscosity !== null ? `油品粘度约 ${viscosity.toFixed(1)} cP，对沿程压损${viscosity > 18 ? '影响较大。' : '影响可控。'}` : '当前未关联油品参数，建议补充油品属性。',
+        businessAllowPumpAdjust ? '建议优先从泵站启停组合和负荷分配入手做优化。' : '当前不允许调整泵站组合，优化空间主要来自运行参数校核。',
+      ].slice(0, 4);
+      const diagnosisFactors = [
+        {
+          name: '油品粘度',
+          score: clampScore(Math.min(100, ((viscosity ?? 10) / 24) * 100)),
+          description: viscosity !== null ? `当前粘度 ${viscosity.toFixed(1)} cP，粘度越高越容易抬升摩阻损失。`
+            : '当前未配置油品粘度，建议补充介质参数。',
+        },
+        {
+          name: '泵站组合',
+          score: clampScore(Math.min(100, ((100 - (pumpEfficiencyAverage ?? 75)) / 35) * 100)),
+          description: pumpEfficiencyAverage !== null ? `泵站平均泵效约 ${(pumpEfficiencyAverage).toFixed(1)}%，存在继续优化配置空间。`
+            : '当前缺少泵效数据，建议补录泵站效率。',
+        },
+        {
+          name: '流量波动',
+          score: clampScore(flowVolatility * 100),
+          description: `流量波动幅度约 ${(flowVolatility * 100).toFixed(1)}%，波动越大越容易放大运行偏差。`,
+        },
+        {
+          name: '管道粗糙度',
+          score: clampScore(Math.min(100, ((roughnessAverage ?? 0.03) / 0.08) * 100)),
+          description: roughnessAverage !== null ? `当前平均粗糙度约 ${roughnessAverage.toFixed(4)}，建议与设计值复核。`
+            : '当前未加载粗糙度参数，建议补充管段数据。',
+        },
+      ].sort((left, right) => right.score - left.score);
+      const schemes: BusinessComparisonScheme[] = [
+        {
+          name: '当前方案',
+          tag: '基线',
+          head: formatBusinessMetric(avgHead, 'm'),
+          pressure: formatBusinessMetric(avgPressure, 'MPa', 2),
+          power: formatBusinessMetric(avgEnergy, 'kWh'),
+          cost: formatBusinessMetric(avgCost, '元'),
+          risk: highRiskCount > 0 ? '高风险' : abnormalCount > 0 ? '中风险' : '低风险',
+        },
+        {
+          name: '推荐方案',
+          tag: '推荐',
+          head: formatBusinessMetric(avgHead !== null ? avgHead * 0.96 : null, 'm'),
+          pressure: formatBusinessMetric(avgPressure !== null ? Math.max(avgPressure * 1.02, minPressure ?? avgPressure) : null, 'MPa', 2),
+          power: formatBusinessMetric(avgEnergy !== null ? avgEnergy * 0.92 : null, 'kWh'),
+          cost: formatBusinessMetric(avgCost !== null ? avgCost * 0.91 : null, '元'),
+          risk: '中风险',
+          highlighted: true,
+        },
+        {
+          name: '节能优先方案',
+          tag: '节能',
+          head: formatBusinessMetric(avgHead !== null ? avgHead * 0.93 : null, 'm'),
+          pressure: formatBusinessMetric(avgPressure !== null ? avgPressure * 0.97 : null, 'MPa', 2),
+          power: formatBusinessMetric(avgEnergy !== null ? avgEnergy * 0.87 : null, 'kWh'),
+          cost: formatBusinessMetric(avgCost !== null ? avgCost * 0.85 : null, '元'),
+          risk: '中风险',
+        },
+        {
+          name: '安全优先方案',
+          tag: '安全',
+          head: formatBusinessMetric(avgHead !== null ? avgHead * 1.08 : null, 'm'),
+          pressure: formatBusinessMetric(avgPressure !== null ? Math.max(avgPressure * 1.08, (minPressure ?? avgPressure) + 0.1) : null, 'MPa', 2),
+          power: formatBusinessMetric(avgEnergy !== null ? avgEnergy * 1.05 : null, 'kWh'),
+          cost: formatBusinessMetric(avgCost !== null ? avgCost * 1.07 : null, '元'),
+          risk: '低风险',
+        },
+      ];
+      const sensitivityItems: BusinessSensitivityItem[] = [
+        {
+          name: '油品粘度',
+          impact: clampScore(Math.min(100, ((viscosity ?? 10) / 22) * 100)),
+          description: '直接影响沿程摩阻与泵站负荷，是当前最关键的敏感变量之一。',
+        },
+        {
+          name: '输量设定',
+          impact: clampScore(Math.min(100, Math.max(35, flowVolatility * 180))),
+          description: '输量变化会同步改变压损和单位能耗，需要重点关注峰谷切换工况。',
+        },
+        {
+          name: '泵站效率',
+          impact: clampScore(Math.min(100, ((100 - (pumpEfficiencyAverage ?? 75)) / 28) * 100)),
+          description: '泵效下降会快速推高电耗，建议持续跟踪高负荷泵站效率曲线。',
+        },
+        {
+          name: '出口压力约束',
+          impact: clampScore(minPressure !== null && avgPressure !== null && avgPressure > 0 ? (minPressure / avgPressure) * 100 : 48),
+          description: '压力约束越紧，优化空间越小，需要在节能与安全之间平衡。',
+        },
+      ].sort((left, right) => right.impact - left.impact);
+      const risks: BusinessRiskCard[] = [
+        {
+          level: minPressure !== null && avgPressure !== null && avgPressure < minPressure ? '高风险' : highRiskCount > 0 ? '高风险' : '中风险',
+          title: '压力约束风险',
+          description: minPressure !== null && avgPressure !== null
+            ? `当前平均压力约 ${avgPressure.toFixed(2)} MPa，约束下限为 ${minPressure.toFixed(2)} MPa。`
+            : '当前压力约束未明确，建议补充最低出口压力以形成可执行判断。',
+          action: '优先校核目标输量、首站出站压力和泵站组合，避免末站压力不足。',
+        },
+        {
+          level: avgEnergy !== null && avgEnergy > 220 ? '高风险' : avgEnergy !== null && avgEnergy > 160 ? '中风险' : '低风险',
+          title: '高能耗风险',
+          description: avgEnergy !== null ? `当前能耗指标约 ${avgEnergy.toFixed(1)}，需要结合电价和效率判断经济性。` : '当前能耗样本不足，无法形成稳定基准。',
+          action: '建议按时段拆分电耗，并对高能耗时段的泵站负荷进行专项排查。',
+        },
+        {
+          level: pumpEfficiencyAverage !== null && pumpEfficiencyAverage < 68 ? '中风险' : '低风险',
+          title: '泵站低效率运行风险',
+          description: pumpEfficiencyAverage !== null ? `当前泵站平均泵效约 ${pumpEfficiencyAverage.toFixed(1)}%。` : '当前缺少泵效数据，无法完成泵站效率评估。',
+          action: '结合启停频次和扬程配置，筛查长期低效率运行的泵站。',
+        },
+      ];
+      const immediateActions = [
+        businessAllowPumpAdjust ? '调整泵站启停组合，优先降低高负荷泵站持续满载运行时间。' : '在现有泵站组合不变前提下，先复核目标输量与压力边界条件。',
+        '优先监测油品粘度、末站压力和单位能耗三个关键指标。',
+        highRiskCount > 0 ? '对高风险历史样本做逐条复盘，确认是否存在参数录入异常。' : '继续保持当前运行窗口，并建立高风险阈值预警。 ',
+      ];
+      const shortTermActions = [
+        '对高能耗时段做专项排查，核对泵站负荷分配与电耗变化曲线。',
+        '复核关键管段压力损失与粗糙度参数，校准模型输入口径。',
+        businessFocuses.includes('敏感性分析结果') ? '结合敏感性结果建立重点变量监控列表。' : '将关键变量纳入日常运行报表，形成趋势跟踪。',
+      ];
+      const longTermActions = [
+        '建立历史能耗基准模型，形成项目级运行基线和偏差识别规则。',
+        '针对不同油品工况沉淀推荐策略，实现分介质的优化建议模板。',
+        '打通历史计算、项目主数据和报告中心，形成闭环归档与追踪机制。',
+      ];
+      const chartCards: BusinessChartCard[] = [
+        {
+          title: '能耗趋势图',
+          value: Math.max(12, avgEnergy ?? 36),
+          insight: avgEnergy !== null ? `当前能耗指数 ${avgEnergy.toFixed(1)}，建议重点对比上周期变化。` : '暂无稳定能耗样本，建议补齐历史数据。',
+          accentClassName: 'from-cyan-400 to-blue-500',
+        },
+        {
+          title: '压力变化图',
+          value: Math.max(12, (avgPressure ?? 1.2) * 35),
+          insight: avgPressure !== null ? `平均压力约 ${avgPressure.toFixed(2)} MPa，可用于判断约束余量。` : '当前压力数据不足，建议联动水力分析结果。',
+          accentClassName: 'from-emerald-400 to-teal-500',
+        },
+        {
+          title: '方案对比图',
+          value: Math.max(12, avgCost ?? 40),
+          insight: '当前方案、推荐方案与安全方案可直接对比成本和风险等级。',
+          accentClassName: 'from-amber-400 to-orange-500',
+        },
+        {
+          title: '敏感性排序图',
+          value: Math.max(12, sensitivityItems[0]?.impact ?? 55),
+          insight: `最敏感变量为 ${sensitivityItems[0]?.name ?? '油品粘度'}。`,
+          accentClassName: 'from-fuchsia-400 to-pink-500',
+        },
+        {
+          title: '风险分布图',
+          value: Math.max(12, Math.max(highRiskCount * 24, abnormalCount * 16, 20)),
+          insight: `当前识别高风险 ${highRiskCount} 条，异常 ${abnormalCount} 条。`,
+          accentClassName: 'from-rose-400 to-red-500',
+        },
+      ];
+
+      setBusinessReport({
+        title: `${businessSelectedProject.name}${businessReportType === 'energy' ? '管道能耗智能分析报告' : reportTypeLabel}`,
+        totalComment: `本次分析认为：${abnormalRate > 0.18 ? '当前系统存在异常波动，' : '当前系统运行总体稳定，'}${avgEnergy !== null && avgEnergy > 180 ? '但能耗偏高，' : '能耗总体可控，'}建议优先${businessAllowPumpAdjust ? '优化泵站组合并关注油品粘度变化。' : '复核运行边界并关注关键参数波动。'}`,
+        projectName: businessSelectedProject.name,
+        objectLabel,
+        rangeLabel: businessRangeLabel,
+        generatedAt: dayjs().format('YYYY-MM-DD HH:mm'),
+        reportTypeLabel,
+        focusLabels: businessFocuses.length ? businessFocuses : ['能耗水平', '优化建议'],
+        outputStyleLabel,
+        highlightItems,
+        kpis: [
+          { label: '平均流量', value: formatBusinessMetric(avgFlow, 'm3/h'), note: targetThroughput !== null ? '已结合目标输量约束' : '基于历史样本估算' },
+          { label: '平均压力', value: formatBusinessMetric(avgPressure, 'MPa', 2), note: minPressure !== null ? `最低出口压力约束 ${minPressure.toFixed(2)} MPa` : '建议补充压力约束' },
+          { label: '总扬程', value: formatBusinessMetric(avgHead, 'm'), note: businessSelectedPipeline ? `分析对象：${businessSelectedPipeline.name}` : '按当前项目汇总' },
+          { label: '单位能耗', value: formatBusinessMetric(avgEnergy, 'kWh'), note: businessOptimizationGoal === 'energy' ? '当前以节能优先为目标' : '用于方案经济性对比' },
+          { label: '运行费用', value: formatBusinessMetric(avgCost, '元'), note: '按综合电耗估算' },
+          { label: '油品参数', value: density !== null || viscosity !== null ? `${density?.toFixed(0) ?? '-'} kg/m3 / ${viscosity?.toFixed(1) ?? '-'} cP` : '-', note: businessSelectedOil ? businessSelectedOil.name : '未选择油品' },
+        ],
+        diagnosisSummary: [
+          `当前分析样本 ${businessHistories.length} 条，异常 ${abnormalCount} 条，高风险 ${highRiskCount} 条。`,
+          `影响能耗的主要因素排序：${diagnosisFactors.slice(0, 4).map((item) => item.name).join(' > ')}。`,
+          businessRemark.trim() ? `备注限制：${businessRemark.trim()}` : '当前未填写其他限制，报告按常规运行边界生成。',
+          businessPrompt.trim() ? `报告需求：${businessPrompt.trim()}` : '当前未填写额外自然语言要求。',
+        ].slice(0, 4),
+        diagnosisFactors,
+        schemes,
+        sensitivityItems,
+        risks,
+        immediateActions,
+        shortTermActions,
+        longTermActions,
+        chartCards,
+      });
+      message.success('智能报告已生成');
+    } finally {
+      setBusinessGenerating(false);
+    }
+  }, [
+    businessAllowPumpAdjust,
+    businessAnalysisObject,
+    businessFocuses,
+    businessHistories,
+    businessMinPressure,
+    businessOptimizationGoal,
+    businessOutputStyle,
+    businessPipelines,
+    businessPrompt,
+    businessRangeLabel,
+    businessRemark,
+    businessReportType,
+    businessSelectedOil,
+    businessSelectedPipeline,
+    businessSelectedProject,
+    businessTargetThroughput,
+    businessVisiblePumpStations,
+  ]);
+
+  const handleExportBusinessReport = useCallback(() => {
+    if (!businessReport) {
+      message.warning('请先生成智能报告');
+      return;
+    }
+
+    const content = [
+      `# ${businessReport.title}`,
+      '',
+      `- 项目名称：${businessReport.projectName}`,
+      `- 分析对象：${businessReport.objectLabel}`,
+      `- 时间范围：${businessReport.rangeLabel}`,
+      `- 生成时间：${businessReport.generatedAt}`,
+      `- 报告类型：${businessReport.reportTypeLabel}`,
+      `- 输出风格：${businessReport.outputStyleLabel}`,
+      `- 分析重点：${businessReport.focusLabels.join('、')}`,
+      '',
+      '## AI分析摘要',
+      businessReport.totalComment,
+      ...businessReport.highlightItems.map((item) => `- ${item}`),
+      '',
+      '## 运行概况',
+      ...businessReport.kpis.map((item) => `- ${item.label}：${item.value}（${item.note}）`),
+      '',
+      '## 问题诊断',
+      ...businessReport.diagnosisSummary.map((item) => `- ${item}`),
+      '',
+      '## 方案对比',
+      '| 方案 | 标签 | 总扬程 | 压力 | 电耗 | 费用 | 风险等级 |',
+      '| --- | --- | --- | --- | --- | --- | --- |',
+      ...businessReport.schemes.map((item) => `| ${item.name} | ${item.tag} | ${item.head} | ${item.pressure} | ${item.power} | ${item.cost} | ${item.risk} |`),
+      '',
+      '## 敏感性分析结果',
+      ...businessReport.sensitivityItems.map((item) => `- ${item.name}：影响程度 ${item.impact}，${item.description}`),
+      '',
+      '## 风险预警',
+      ...businessReport.risks.map((item) => `- ${item.level} / ${item.title}：${item.description} 建议：${item.action}`),
+      '',
+      '## 优化建议',
+      '### 立即可执行',
+      ...businessReport.immediateActions.map((item) => `- ${item}`),
+      '',
+      '### 短期建议',
+      ...businessReport.shortTermActions.map((item) => `- ${item}`),
+      '',
+      '### 长期建议',
+      ...businessReport.longTermActions.map((item) => `- ${item}`),
+      '',
+      '## 图表分析',
+      ...businessReport.chartCards.map((item) => `- ${item.title}：${item.insight}`),
+    ].join('\n');
+
+    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${businessReport.title.replace(/[\\/:*?"<>|]/g, '-')}.md`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  }, [businessReport]);
+
   const saveTemplate = useCallback(() => {
     writeStorage(TEMPLATE_KEY, {
       selectedProjectIds,
@@ -1771,6 +2469,7 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
       : [];
     const fallback: ReportResult = {
       source: 'fallback',
+      highlights: [],
       summary: enableSummary ? [`本次分析覆盖 ${snapshot.projectCount} 个项目、${snapshot.pipelineCount} 条管道、${snapshot.pumpStationCount} 座共享泵站。`, `已纳入 ${snapshot.historyCount} 条历史记录，其中失败记录 ${snapshot.failedHistoryCount} 条。`] : [],
       risks: fallbackRisks,
       suggestions: fallbackSuggestions,
@@ -1785,6 +2484,11 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
           `比对周期为 ${snapshot.comparisonLabel}，最近异常时间 ${formatTime(snapshot.latestAbnormalTime)}。`,
         ]
       : [];
+    fallback.highlights = [
+      `分析对象 ${snapshot.analysisObjectCount} 个`,
+      `异常记录 ${snapshot.abnormalHistoryCount} 条`,
+      `高风险记录 ${snapshot.highRiskCount} 条`,
+    ].slice(0, 3);
     fallback.risks = fallbackRisks;
     fallback.suggestions = fallbackSuggestions;
 
@@ -2177,6 +2881,433 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
           </div>
         ) : (
           <Empty description="当前筛选条件下暂无可展示的报告记录。" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        )}
+      </section>
+      <section className="overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,#0a1426_0%,#0b1220_42%,#07101d_100%)] p-6 shadow-[0_30px_90px_rgba(2,8,23,0.38)] md:p-8">
+        <div className="flex flex-col gap-4 border-b border-white/8 pb-6 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-3xl">
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-cyan-300/15 bg-cyan-300/10 px-4 py-2 text-sm text-cyan-100">
+              <FileTextOutlined />
+              智能报告
+            </div>
+            <div className="text-3xl font-semibold tracking-tight text-white">业务化智能报告工作台</div>
+            <div className="mt-3 text-sm leading-7 text-slate-300">
+              基于项目、管道、泵站、油品与历史分析记录生成摘要、诊断、方案对比、风险预警和优化建议。
+            </div>
+          </div>
+          <div className="rounded-[24px] border border-cyan-300/15 bg-cyan-400/8 px-5 py-4 text-sm leading-7 text-slate-200">
+            <div className="font-medium text-cyan-100">推荐用法</div>
+            <div className="mt-1">上面先选结构化条件，下面再用自然语言补充本次分析需求，最后点击“生成智能报告”。</div>
+          </div>
+        </div>
+
+        <div className="mt-8 grid gap-6 xl:grid-cols-3">
+          <div className="rounded-[26px] border border-white/8 bg-white/5 p-5">
+            <div className="text-lg font-semibold text-white">报告对象</div>
+            <div className="mt-1 text-sm text-slate-400">先确定本次报告面向哪个项目、管道和泵站范围。</div>
+            <div className="mt-5 space-y-4">
+              <div>
+                <div className="mb-2 text-sm text-slate-300">所属项目</div>
+                <Select
+                  style={{ width: '100%' }}
+                  value={businessProjectId}
+                  onChange={setBusinessProjectId}
+                  options={businessProjectOptions.map((item) => ({ label: `${item.number} / ${item.name}`, value: item.proId }))}
+                  placeholder="请选择所属项目"
+                />
+              </div>
+              <div>
+                <div className="mb-2 text-sm text-slate-300">分析对象</div>
+                <Select style={{ width: '100%' }} value={businessAnalysisObject} onChange={setBusinessAnalysisObject} options={BUSINESS_OBJECT_OPTIONS} />
+              </div>
+              <div>
+                <div className="mb-2 text-sm text-slate-300">管道名称</div>
+                <Select
+                  style={{ width: '100%' }}
+                  value={businessPipelineId}
+                  onChange={setBusinessPipelineId}
+                  options={businessPipelines.map((item) => ({ label: item.name, value: item.id }))}
+                  placeholder="请选择管道"
+                  allowClear
+                />
+              </div>
+              <div>
+                <div className="mb-2 text-sm text-slate-300">泵站范围</div>
+                <Select
+                  style={{ width: '100%' }}
+                  value={businessPumpScope}
+                  onChange={(value) => setBusinessPumpScope(value)}
+                  options={[
+                    { label: '全部泵站', value: 'all' },
+                    { label: '指定泵站', value: 'custom' },
+                  ]}
+                />
+              </div>
+              {businessPumpScope === 'custom' ? (
+                <div>
+                  <div className="mb-2 text-sm text-slate-300">指定泵站</div>
+                  <Select
+                    mode="multiple"
+                    maxTagCount="responsive"
+                    style={{ width: '100%' }}
+                    value={businessPumpStationIds}
+                    onChange={setBusinessPumpStationIds}
+                    options={pumpStations.map((item) => ({ label: item.name, value: item.id }))}
+                    placeholder="请选择泵站"
+                  />
+                </div>
+              ) : null}
+              <div>
+                <div className="mb-2 text-sm text-slate-300">油品类型</div>
+                <Select
+                  style={{ width: '100%' }}
+                  value={businessOilId}
+                  onChange={setBusinessOilId}
+                  options={oilProperties.map((item) => ({ label: item.name, value: item.id }))}
+                  placeholder="请选择油品"
+                />
+              </div>
+              <div>
+                <div className="mb-2 text-sm text-slate-300">时间范围</div>
+                <Select style={{ width: '100%' }} value={businessTimePreset} onChange={setBusinessTimePreset} options={BUSINESS_TIME_OPTIONS} />
+              </div>
+              {businessTimePreset === 'custom' ? (
+                <div>
+                  <div className="mb-2 text-sm text-slate-300">自定义时间</div>
+                  <RangePicker
+                    style={{ width: '100%' }}
+                    value={businessCustomRange}
+                    onChange={(value) => {
+                      const nextValue = value as [Dayjs | null, Dayjs | null] | null;
+                      if (!nextValue || !nextValue[0] || !nextValue[1]) {
+                        setBusinessCustomRange(null);
+                        return;
+                      }
+                      setBusinessCustomRange([nextValue[0], nextValue[1]]);
+                    }}
+                  />
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="rounded-[26px] border border-white/8 bg-white/5 p-5">
+            <div className="text-lg font-semibold text-white">报告目标</div>
+            <div className="mt-1 text-sm text-slate-400">明确这次报告要解决什么问题、重点看什么、输出给谁看。</div>
+            <div className="mt-5 space-y-4">
+              <div>
+                <div className="mb-2 text-sm text-slate-300">报告类型</div>
+                <Select style={{ width: '100%' }} value={businessReportType} onChange={setBusinessReportType} options={BUSINESS_REPORT_TYPE_OPTIONS} />
+              </div>
+              <div>
+                <div className="mb-2 text-sm text-slate-300">分析重点</div>
+                <Select
+                  mode="multiple"
+                  maxTagCount="responsive"
+                  style={{ width: '100%' }}
+                  value={businessFocuses}
+                  onChange={setBusinessFocuses}
+                  options={BUSINESS_FOCUS_OPTIONS.map((item) => ({ label: item, value: item }))}
+                  placeholder="请选择分析重点"
+                />
+              </div>
+              <div>
+                <div className="mb-2 text-sm text-slate-300">输出风格</div>
+                <Select style={{ width: '100%' }} value={businessOutputStyle} onChange={setBusinessOutputStyle} options={BUSINESS_OUTPUT_STYLE_OPTIONS} />
+              </div>
+              <div className="rounded-[22px] border border-cyan-300/12 bg-slate-950/40 p-4">
+                <div className="text-sm font-medium text-white">示例问题</div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {BUSINESS_EXAMPLE_PROMPTS.map((item) => (
+                    <Button key={item} size="small" onClick={() => setBusinessPrompt(item)}>
+                      {item}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-[22px] border border-white/8 bg-slate-950/35 p-4">
+                <div className="text-sm font-medium text-white">当前已选范围</div>
+                <div className="mt-3 grid gap-3 text-sm text-slate-300">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-slate-400">项目</span>
+                    <span>{businessSelectedProject?.name ?? '-'}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-slate-400">管道</span>
+                    <span>{businessSelectedPipeline?.name ?? '未指定'}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-slate-400">泵站</span>
+                    <span>{businessPumpScope === 'all' ? '全部泵站' : `${businessVisiblePumpStations.length} 座`}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-slate-400">样本</span>
+                    <span>{businessHistories.length} 条历史记录</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-[26px] border border-white/8 bg-white/5 p-5">
+            <div className="text-lg font-semibold text-white">约束条件与 AI 指令</div>
+            <div className="mt-1 text-sm text-slate-400">这里决定报告是否更像真实业务系统，而不是普通聊天页面。</div>
+            <div className="mt-5 space-y-4">
+              <div>
+                <div className="mb-2 text-sm text-slate-300">目标输量</div>
+                <Input value={businessTargetThroughput} onChange={(event) => setBusinessTargetThroughput(event.target.value)} placeholder="例如：850" suffix="m3/h" />
+              </div>
+              <div>
+                <div className="mb-2 text-sm text-slate-300">最低出口压力</div>
+                <Input value={businessMinPressure} onChange={(event) => setBusinessMinPressure(event.target.value)} placeholder="例如：1.20" suffix="MPa" />
+              </div>
+              <div>
+                <div className="mb-2 text-sm text-slate-300">优化目标</div>
+                <Select style={{ width: '100%' }} value={businessOptimizationGoal} onChange={setBusinessOptimizationGoal} options={BUSINESS_OPTIMIZATION_GOAL_OPTIONS} />
+              </div>
+              <div className="flex items-center justify-between rounded-[20px] border border-white/8 bg-slate-950/35 px-4 py-3 text-sm text-slate-300">
+                <span>运行限制：是否允许调整泵站组合</span>
+                <Switch checked={businessAllowPumpAdjust} onChange={setBusinessAllowPumpAdjust} />
+              </div>
+              <div>
+                <div className="mb-2 text-sm text-slate-300">备注说明</div>
+                <TextArea value={businessRemark} onChange={(event) => setBusinessRemark(event.target.value)} placeholder="补充特殊工况、制度限制或汇报要求" autoSize={{ minRows: 3, maxRows: 5 }} />
+              </div>
+              <div>
+                <div className="mb-2 text-sm text-slate-300">报告需求描述</div>
+                <TextArea
+                  value={businessPrompt}
+                  onChange={(event) => setBusinessPrompt(event.target.value)}
+                  placeholder="例如：在满足输量和压力要求的前提下，生成一份泵站节能优化报告。"
+                  autoSize={{ minRows: 5, maxRows: 8 }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6 flex flex-wrap gap-3 border-t border-white/8 pt-6">
+          <Button type="primary" icon={<RobotOutlined />} loading={businessGenerating} onClick={handleGenerateBusinessReport}>
+            生成智能报告
+          </Button>
+          <Button onClick={resetBusinessReportBuilder}>重置条件</Button>
+          <Button icon={<DownloadOutlined />} onClick={handleExportBusinessReport} disabled={!businessReport}>
+            导出报告
+          </Button>
+        </div>
+
+        {businessReport ? (
+          <div className="mt-8 space-y-6">
+            <section className="rounded-[26px] border border-white/8 bg-white/5 p-6">
+              <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <div className="text-2xl font-semibold text-white">{businessReport.title}</div>
+                  <div className="mt-4 grid gap-3 text-sm text-slate-300 md:grid-cols-2 xl:grid-cols-3">
+                    <div className="rounded-2xl border border-white/8 bg-slate-950/35 px-4 py-3">项目：{businessReport.projectName}</div>
+                    <div className="rounded-2xl border border-white/8 bg-slate-950/35 px-4 py-3">对象：{businessReport.objectLabel}</div>
+                    <div className="rounded-2xl border border-white/8 bg-slate-950/35 px-4 py-3">时间：{businessReport.rangeLabel}</div>
+                    <div className="rounded-2xl border border-white/8 bg-slate-950/35 px-4 py-3">生成时间：{businessReport.generatedAt}</div>
+                    <div className="rounded-2xl border border-white/8 bg-slate-950/35 px-4 py-3">报告类型：{businessReport.reportTypeLabel}</div>
+                    <div className="rounded-2xl border border-white/8 bg-slate-950/35 px-4 py-3">输出风格：{businessReport.outputStyleLabel}</div>
+                  </div>
+                </div>
+                <div className="rounded-[24px] border border-cyan-300/20 bg-cyan-400/10 px-5 py-4 text-sm leading-7 text-slate-100 lg:max-w-md">
+                  {businessReport.totalComment}
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-[26px] border border-white/8 bg-white/5 p-6">
+              <div className="mb-4 text-xl font-semibold text-white">AI分析摘要</div>
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                {businessReport.highlightItems.map((item, index) => (
+                  <div key={`${index}-${item}`} className="rounded-[22px] border border-cyan-300/15 bg-[linear-gradient(135deg,rgba(34,211,238,0.14),rgba(15,23,42,0.92))] p-4">
+                    <div className="text-xs uppercase tracking-[0.18em] text-cyan-100/70">结论 {String(index + 1).padStart(2, '0')}</div>
+                    <div className="mt-3 text-sm leading-7 text-slate-100">{item}</div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+              <div className="rounded-[26px] border border-white/8 bg-white/5 p-6">
+                <div className="mb-4 text-xl font-semibold text-white">运行概况</div>
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  {businessReport.kpis.map((item) => (
+                    <div key={item.label} className="rounded-[22px] border border-white/8 bg-slate-950/35 p-4">
+                      <div className="text-sm text-slate-400">{item.label}</div>
+                      <div className="mt-3 text-2xl font-semibold text-white">{item.value}</div>
+                      <div className="mt-2 text-sm leading-6 text-slate-400">{item.note}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-[26px] border border-white/8 bg-white/5 p-6">
+                <div className="mb-4 text-xl font-semibold text-white">问题诊断</div>
+                <div className="space-y-3">
+                  {businessReport.diagnosisSummary.map((item) => (
+                    <div key={item} className="rounded-2xl border border-white/8 bg-slate-950/35 px-4 py-3 text-sm leading-7 text-slate-200">
+                      {item}
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-5 space-y-4">
+                  {businessReport.diagnosisFactors.map((item) => (
+                    <div key={item.name}>
+                      <div className="mb-2 flex items-center justify-between gap-3 text-sm">
+                        <span className="text-slate-200">{item.name}</span>
+                        <span className="text-cyan-200">{item.score}</span>
+                      </div>
+                      <div className="h-2 rounded-full bg-white/8">
+                        <div className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-blue-500" style={{ width: getBarWidthPercent(item.score, 100) }} />
+                      </div>
+                      <div className="mt-2 text-sm leading-6 text-slate-400">{item.description}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-[26px] border border-white/8 bg-white/5 p-6">
+              <div className="mb-4 text-xl font-semibold text-white">方案对比</div>
+              <div className="hidden overflow-x-auto lg:block">
+                <table className="min-w-full divide-y divide-white/10 text-left text-sm">
+                  <thead>
+                    <tr className="text-slate-400">
+                      <th className="px-4 py-3 font-medium">方案</th>
+                      <th className="px-4 py-3 font-medium">标签</th>
+                      <th className="px-4 py-3 font-medium">总扬程</th>
+                      <th className="px-4 py-3 font-medium">压力</th>
+                      <th className="px-4 py-3 font-medium">电耗</th>
+                      <th className="px-4 py-3 font-medium">运行费用</th>
+                      <th className="px-4 py-3 font-medium">风险等级</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/8">
+                    {businessReport.schemes.map((item) => (
+                      <tr key={item.name} className={item.highlighted ? 'bg-cyan-400/6' : ''}>
+                        <td className="px-4 py-4 font-medium text-white">{item.name}</td>
+                        <td className="px-4 py-4"><Tag color={item.highlighted ? 'cyan' : 'default'}>{item.tag}</Tag></td>
+                        <td className="px-4 py-4 text-slate-200">{item.head}</td>
+                        <td className="px-4 py-4 text-slate-200">{item.pressure}</td>
+                        <td className="px-4 py-4 text-slate-200">{item.power}</td>
+                        <td className="px-4 py-4 text-slate-200">{item.cost}</td>
+                        <td className="px-4 py-4"><Tag color={getBusinessRiskColor(item.risk)}>{item.risk}</Tag></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="grid gap-4 lg:hidden">
+                {businessReport.schemes.map((item) => (
+                  <div key={item.name} className={`rounded-[22px] border p-4 ${item.highlighted ? 'border-cyan-300/20 bg-cyan-400/8' : 'border-white/8 bg-slate-950/35'}`}>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-base font-semibold text-white">{item.name}</div>
+                      <Tag color={getBusinessRiskColor(item.risk)}>{item.risk}</Tag>
+                    </div>
+                    <div className="mt-3 grid gap-2 text-sm text-slate-300">
+                      <div>标签：{item.tag}</div>
+                      <div>总扬程：{item.head}</div>
+                      <div>压力：{item.pressure}</div>
+                      <div>电耗：{item.power}</div>
+                      <div>运行费用：{item.cost}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+              <div className="rounded-[26px] border border-white/8 bg-white/5 p-6">
+                <div className="mb-4 text-xl font-semibold text-white">敏感性分析结果</div>
+                <div className="space-y-4">
+                  {businessReport.sensitivityItems.map((item) => (
+                    <div key={item.name} className="rounded-[22px] border border-white/8 bg-slate-950/35 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-base font-semibold text-white">{item.name}</div>
+                        <div className="text-cyan-200">{item.impact}</div>
+                      </div>
+                      <div className="mt-3 h-2 rounded-full bg-white/8">
+                        <div className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-cyan-500" style={{ width: getBarWidthPercent(item.impact, 100) }} />
+                      </div>
+                      <div className="mt-3 text-sm leading-6 text-slate-400">{item.description}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-[26px] border border-white/8 bg-white/5 p-6">
+                <div className="mb-4 text-xl font-semibold text-white">风险预警</div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  {businessReport.risks.map((item) => (
+                    <div key={item.title} className={`rounded-[22px] border p-4 ${getBusinessRiskBadgeClass(item.level)}`}>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-base font-semibold">{item.title}</div>
+                        <Tag color={getBusinessRiskColor(item.level)}>{item.level}</Tag>
+                      </div>
+                      <div className="mt-3 text-sm leading-7">{item.description}</div>
+                      <div className="mt-3 text-sm leading-7 text-slate-100">建议：{item.action}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-[26px] border border-white/8 bg-white/5 p-6">
+              <div className="mb-4 text-xl font-semibold text-white">优化建议</div>
+              <div className="grid gap-4 xl:grid-cols-3">
+                <div className="rounded-[22px] border border-emerald-300/20 bg-emerald-500/8 p-5">
+                  <div className="text-base font-semibold text-white">立即可执行</div>
+                  <div className="mt-4 space-y-3 text-sm leading-7 text-slate-100">
+                    {businessReport.immediateActions.map((item) => (
+                      <div key={item} className="rounded-2xl border border-emerald-200/10 bg-slate-950/30 px-4 py-3">{item}</div>
+                    ))}
+                  </div>
+                </div>
+                <div className="rounded-[22px] border border-amber-300/20 bg-amber-500/8 p-5">
+                  <div className="text-base font-semibold text-white">短期建议</div>
+                  <div className="mt-4 space-y-3 text-sm leading-7 text-slate-100">
+                    {businessReport.shortTermActions.map((item) => (
+                      <div key={item} className="rounded-2xl border border-amber-200/10 bg-slate-950/30 px-4 py-3">{item}</div>
+                    ))}
+                  </div>
+                </div>
+                <div className="rounded-[22px] border border-cyan-300/20 bg-cyan-500/8 p-5">
+                  <div className="text-base font-semibold text-white">长期建议</div>
+                  <div className="mt-4 space-y-3 text-sm leading-7 text-slate-100">
+                    {businessReport.longTermActions.map((item) => (
+                      <div key={item} className="rounded-2xl border border-cyan-200/10 bg-slate-950/30 px-4 py-3">{item}</div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-[26px] border border-white/8 bg-white/5 p-6">
+              <div className="mb-4 text-xl font-semibold text-white">图表分析</div>
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+                {businessReport.chartCards.map((item) => (
+                  <div key={item.title} className="rounded-[22px] border border-white/8 bg-slate-950/35 p-4">
+                    <div className="text-base font-semibold text-white">{item.title}</div>
+                    <div className="mt-4 h-2 rounded-full bg-white/8">
+                      <div className={`h-full rounded-full bg-gradient-to-r ${item.accentClassName}`} style={{ width: getBarWidthPercent(item.value, 100) }} />
+                    </div>
+                    <div className="mt-4 text-sm leading-7 text-slate-400">{item.insight}</div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+        ) : (
+          <div className="mt-8 rounded-[26px] border border-dashed border-white/10 px-6 py-16 text-center">
+            <div className="mx-auto max-w-2xl">
+              <div className="text-2xl font-semibold text-white">等待生成业务智能报告</div>
+              <div className="mt-3 text-sm leading-7 text-slate-400">
+                该区域会按照“报告信息、AI分析摘要、运行概况、问题诊断、方案对比、敏感性分析结果、风险预警、优化建议、图表分析”模块输出，不会是一整块聊天文字。
+              </div>
+            </div>
+          </div>
         )}
       </section>
       <Modal
