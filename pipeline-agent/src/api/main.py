@@ -12,7 +12,7 @@ from src.utils import logger
 
 from .middleware.auth import AuthMiddleware
 from .middleware.logging import LoggingMiddleware
-from .routes import health, chat, chat_v2, mcp_v2, knowledge, trace, graph_query
+from .routes import health, chat, chat_v2, mcp_v2, knowledge, trace, graph_query, reports
 
 
 @asynccontextmanager
@@ -129,6 +129,7 @@ def create_app() -> FastAPI:
     app.include_router(knowledge.router, prefix="/api/v1")
     app.include_router(trace.router, prefix="/api/v1")
     app.include_router(graph_query.router, prefix="/api/v1")
+    app.include_router(reports.router, prefix="/api/v1")
     app.include_router(chat_v2.router, prefix="/api/v2")
     app.include_router(mcp_v2.router, prefix="/api/v2")
 

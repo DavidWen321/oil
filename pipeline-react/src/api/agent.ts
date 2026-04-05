@@ -1,5 +1,7 @@
 import { useUserStore } from '../stores/userStore';
 import type {
+  DynamicReportRequestPayload,
+  DynamicReportResponsePayload,
   HITLResponse,
   KnowledgeDeleteResponse,
   KnowledgeDocumentListPayload,
@@ -171,6 +173,14 @@ export const agentApi = {
 
   async debugKnowledgeSearch(payload: KnowledgeSearchDebugRequest) {
     return requestAgent<KnowledgeSearchDebugPayload>('/knowledge/search/debug', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async generateDynamicReport(payload: DynamicReportRequestPayload) {
+    return requestAgent<DynamicReportResponsePayload>('/reports/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),

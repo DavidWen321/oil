@@ -257,6 +257,95 @@ export interface KnowledgeDocumentListPayload {
   total: number;
 }
 
+export interface DynamicReportRiskItem {
+  target: string;
+  riskType: string;
+  level: string;
+  reason: string;
+  suggestion: string;
+}
+
+export interface DynamicReportSuggestionItem {
+  target: string;
+  reason: string;
+  action: string;
+  expected: string;
+  priority: string;
+}
+
+export interface DynamicReportMetricItem {
+  label: string;
+  value: string;
+  note?: string | null;
+}
+
+export interface DynamicReportBulletItem {
+  title?: string | null;
+  content: string;
+}
+
+export interface DynamicReportTableData {
+  columns: string[];
+  rows: string[][];
+}
+
+export interface DynamicReportSectionPayload {
+  id: string;
+  kind: 'metrics' | 'bullets' | 'table' | 'markdown' | 'callout';
+  title: string;
+  summary?: string | null;
+  content?: string | null;
+  metrics: DynamicReportMetricItem[];
+  items: DynamicReportBulletItem[];
+  table?: DynamicReportTableData | null;
+}
+
+export interface DynamicReportRequestPayload {
+  selected_project_ids: number[];
+  project_names?: string[];
+  selected_pipeline_id?: number;
+  selected_pipeline_name?: string;
+  selected_pump_station_ids?: number[];
+  selected_pump_station_names?: string[];
+  selected_oil_id?: number;
+  selected_oil_name?: string;
+  report_type: string;
+  report_type_label?: string;
+  range_preset?: string;
+  range_label?: string;
+  custom_start?: string;
+  custom_end?: string;
+  intelligence_level: string;
+  output_format: string;
+  include_summary?: boolean;
+  include_risk?: boolean;
+  include_suggestions?: boolean;
+  include_conclusion?: boolean;
+  analysis_object?: string;
+  output_style?: string;
+  focuses?: string[];
+  target_throughput?: number;
+  min_pressure?: number;
+  optimization_goal?: string;
+  allow_pump_adjust?: boolean;
+  remark?: string;
+  user_prompt?: string;
+}
+
+export interface DynamicReportResponsePayload {
+  title: string;
+  abstract: string;
+  source: 'ai' | 'rules' | 'hybrid';
+  summary: string[];
+  highlights: string[];
+  risks: DynamicReportRiskItem[];
+  suggestions: DynamicReportSuggestionItem[];
+  conclusion: string;
+  sections: DynamicReportSectionPayload[];
+  metadata?: Record<string, unknown>;
+  raw_text?: string;
+}
+
 export interface KnowledgeUploadPayload {
   file: File;
   title: string;

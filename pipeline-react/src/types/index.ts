@@ -1,3 +1,5 @@
+import type { DynamicReportResponsePayload } from './agent';
+
 export interface R<T> {
   code: number;
   msg: string;
@@ -39,10 +41,11 @@ export interface ReportResultPayload {
   source?: 'ai' | 'fallback' | 'history';
   highlights?: string[];
   summary?: string[];
-  risks?: Array<Record<string, unknown>> | string[];
-  suggestions?: Array<Record<string, unknown>> | string[];
+  risks?: unknown[];
+  suggestions?: unknown[];
   conclusion?: string;
   rawText?: string;
+  report?: DynamicReportResponsePayload | null;
 }
 
 export interface SaveReportRequest {

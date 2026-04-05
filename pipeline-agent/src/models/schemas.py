@@ -227,3 +227,108 @@ class GraphQueryResponse(BaseModel):
 
     query: str
     result: dict = Field(default_factory=dict)
+
+
+class ReportRiskItem(BaseModel):
+    """Structured risk item used by the report center."""
+
+    target: str
+    riskType: str
+    level: str
+    reason: str
+    suggestion: str
+
+
+class ReportSuggestionItem(BaseModel):
+    """Structured recommendation item used by the report center."""
+
+    target: str
+    reason: str
+    action: str
+    expected: str
+    priority: str
+
+
+class ReportMetricItem(BaseModel):
+    """Single KPI metric for report rendering."""
+
+    label: str
+    value: str
+    note: Optional[str] = None
+
+
+class ReportBulletItem(BaseModel):
+    """Single bullet or action item in a dynamic section."""
+
+    title: Optional[str] = None
+    content: str
+
+
+class ReportTableData(BaseModel):
+    """Generic table block for dynamic sections."""
+
+    columns: list[str] = Field(default_factory=list)
+    rows: list[list[str]] = Field(default_factory=list)
+
+
+class DynamicReportSection(BaseModel):
+    """Dynamic report section returned to the frontend."""
+
+    id: str
+    kind: Literal["metrics", "bullets", "table", "markdown", "callout"]
+    title: str
+    summary: Optional[str] = None
+    content: Optional[str] = None
+    metrics: list[ReportMetricItem] = Field(default_factory=list)
+    items: list[ReportBulletItem] = Field(default_factory=list)
+    table: Optional[ReportTableData] = None
+
+
+class DynamicReportRequest(BaseModel):
+    """Report generation request from the report center."""
+
+    selected_project_ids: list[int] = Field(default_factory=list)
+    project_names: list[str] = Field(default_factory=list)
+    selected_pipeline_id: Optional[int] = None
+    selected_pipeline_name: Optional[str] = None
+    selected_pump_station_ids: list[int] = Field(default_factory=list)
+    selected_pump_station_names: list[str] = Field(default_factory=list)
+    selected_oil_id: Optional[int] = None
+    selected_oil_name: Optional[str] = None
+    report_type: str = "AI_REPORT"
+    report_type_label: Optional[str] = None
+    range_preset: Optional[str] = None
+    range_label: Optional[str] = None
+    custom_start: Optional[str] = None
+    custom_end: Optional[str] = None
+    intelligence_level: str = "standard"
+    output_format: str = "markdown"
+    include_summary: bool = True
+    include_risk: bool = True
+    include_suggestions: bool = True
+    include_conclusion: bool = True
+    analysis_object: Optional[str] = None
+    output_style: Optional[str] = None
+    focuses: list[str] = Field(default_factory=list)
+    target_throughput: Optional[float] = None
+    min_pressure: Optional[float] = None
+    optimization_goal: Optional[str] = None
+    allow_pump_adjust: bool = True
+    remark: Optional[str] = None
+    user_prompt: Optional[str] = None
+
+
+class DynamicReportResponse(BaseModel):
+    """Dynamic report payload consumed by the frontend."""
+
+    title: str
+    abstract: str = ""
+    source: Literal["ai", "rules", "hybrid"] = "hybrid"
+    summary: list[str] = Field(default_factory=list)
+    highlights: list[str] = Field(default_factory=list)
+    risks: list[ReportRiskItem] = Field(default_factory=list)
+    suggestions: list[ReportSuggestionItem] = Field(default_factory=list)
+    conclusion: str = ""
+    sections: list[DynamicReportSection] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    raw_text: str = ""

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import dayjs, { type Dayjs } from 'dayjs';
-import { Alert, Button, DatePicker, Empty, Input, Modal, Popconfirm, Select, Space, Spin, Switch, Tag, message } from 'antd';
+import { Button, DatePicker, Empty, Input, Modal, Popconfirm, Select, Space, Spin, Switch, Tag, message } from 'antd';
 import {
   DeleteOutlined,
   DownloadOutlined,
@@ -13,7 +13,13 @@ import {
 import { calculationHistoryApi, oilPropertyApi, pipelineApi, projectApi, pumpStationApi } from '../../api';
 import { agentApi } from '../../api/agent';
 import AnimatedPage from '../../components/common/AnimatedPage';
-import type { CalculationHistory, OilProperty, PageResult, Pipeline, Project, PumpStation, R } from '../../types';
+import DynamicReportView from '../../components/reporting/DynamicReportView';
+import type { CalculationHistory, OilProperty, PageResult, Pipeline, Project, PumpStation, R, SaveReportRequest } from '../../types';
+import type {
+  DynamicReportRequestPayload,
+  DynamicReportResponsePayload,
+  DynamicReportSectionPayload,
+} from '../../types/agent';
 
 const { RangePicker } = DatePicker;
 const { TextArea } = Input;
@@ -58,6 +64,7 @@ type ReportResult = {
   suggestions: SuggestionItem[];
   conclusion: string;
   rawText: string;
+  report?: DynamicReportResponsePayload | null;
 };
 
 type PreviewRecord = {
@@ -206,6 +213,24 @@ const BUSINESS_OUTPUT_STYLE_OPTIONS: Array<{ label: string; value: BusinessOutpu
   { label: '汇报版', value: 'presentation' },
 ];
 
+const BUSINESS_OUTPUT_STYLE_HINTS: Record<BusinessOutputStyle, { title: string; description: string; badges: string[] }> = {
+  simple: {
+    title: '简洁版',
+    description: '突出关键结论、核心指标和直接建议，适合快速查看。',
+    badges: ['短摘要', '少章节', '快速决策'],
+  },
+  professional: {
+    title: '专业版',
+    description: '保留更完整的分析结构、约束条件、对比过程和诊断说明。',
+    badges: ['完整结构', '细节充分', '技术分析'],
+  },
+  presentation: {
+    title: '汇报版',
+    description: '突出结论、风险和行动项，弱化底层过程，适合汇报场景。',
+    badges: ['结论优先', '风险突出', '汇报导向'],
+  },
+};
+
 const BUSINESS_OPTIMIZATION_GOAL_OPTIONS: Array<{ label: string; value: BusinessOptimizationGoal }> = [
   { label: '能耗最低', value: 'energy' },
   { label: '费用最低', value: 'cost' },
@@ -221,6 +246,58 @@ const BUSINESS_EXAMPLE_PROMPTS = [
 ];
 
 function PreviewContent({ preview }: { preview: PreviewRecord | LocalReportRecord }) {
+  if (preview.result.report?.sections?.length) {
+    return (
+      <div className="grid gap-4 xl:grid-cols-2">
+        <div className="rounded-[24px] border border-white/8 bg-white/5 p-5 xl:col-span-2">
+          <div className="grid gap-3 text-sm text-slate-300 md:grid-cols-2 xl:grid-cols-3">
+            <div className="rounded-2xl border border-white/8 bg-white/5 px-4 py-3">
+              <div className="text-xs uppercase tracking-[0.2em] text-slate-500">生成时间</div>
+              <div className="mt-2 text-sm text-slate-100">{formatTime(preview.createdAt)}</div>
+            </div>
+            <div className="rounded-2xl border border-white/8 bg-white/5 px-4 py-3">
+              <div className="text-xs uppercase tracking-[0.2em] text-slate-500">分析范围</div>
+              <div className="mt-2 text-sm text-slate-100">{preview.rangeLabel}</div>
+            </div>
+            <div className="rounded-2xl border border-white/8 bg-white/5 px-4 py-3">
+              <div className="text-xs uppercase tracking-[0.2em] text-slate-500">智能等级</div>
+              <div className="mt-2 text-sm text-slate-100">{preview.intelligenceLabel}</div>
+            </div>
+            <div className="rounded-2xl border border-white/8 bg-white/5 px-4 py-3">
+              <div className="text-xs uppercase tracking-[0.2em] text-slate-500">报告类型</div>
+              <div className="mt-2 text-sm text-slate-100">{preview.typeLabel}</div>
+            </div>
+            <div className="rounded-2xl border border-white/8 bg-white/5 px-4 py-3">
+              <div className="text-xs uppercase tracking-[0.2em] text-slate-500">输出格式</div>
+              <div className="mt-2 text-sm text-slate-100">{preview.outputFormat.toUpperCase()}</div>
+            </div>
+            <div className="rounded-2xl border border-white/8 bg-white/5 px-4 py-3">
+              <div className="text-xs uppercase tracking-[0.2em] text-slate-500">来源</div>
+              <div className="mt-2 text-sm text-slate-100">{preview.sourceLabel}</div>
+            </div>
+          </div>
+          <div className="mt-3 rounded-2xl border border-white/8 bg-white/5 px-4 py-3 text-sm text-slate-300">
+            <span className="text-slate-400">覆盖项目：</span>
+            {preview.projectNames.length ? preview.projectNames.join('、') : '未选择项目'}
+          </div>
+        </div>
+
+        <div className="xl:col-span-2">
+          <DynamicReportView report={preview.result.report} />
+        </div>
+
+        {preview.result.rawText ? (
+          <div className="rounded-[24px] border border-white/8 bg-white/5 p-5 xl:col-span-2">
+            <div className="text-lg font-semibold text-white">原始计算数据</div>
+            <pre className="mt-4 overflow-x-auto whitespace-pre-wrap rounded-2xl border border-white/8 bg-slate-950/60 px-4 py-4 text-xs leading-6 text-slate-200">
+              {preview.result.rawText}
+            </pre>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <div className="grid gap-4 xl:grid-cols-2">
       <div className="rounded-[24px] border border-white/8 bg-white/5 p-5 xl:col-span-2">
@@ -687,6 +764,76 @@ function normalizeSuggestionList(value: unknown): SuggestionItem[] {
   return [];
 }
 
+function normalizeDynamicReportSection(value: unknown): DynamicReportSectionPayload | null {
+  if (!isRecord(value)) return null;
+  const kind = pickFirstString(value, ['kind']);
+  const allowedKinds: DynamicReportSectionPayload['kind'][] = ['metrics', 'bullets', 'table', 'markdown', 'callout'];
+  const normalizedKind = allowedKinds.includes(kind as DynamicReportSectionPayload['kind'])
+    ? (kind as DynamicReportSectionPayload['kind'])
+    : 'bullets';
+  const metrics = Array.isArray(value.metrics)
+    ? value.metrics
+        .filter((item): item is JsonRecord => isRecord(item))
+        .map((item) => ({
+          label: pickFirstString(item, ['label']) || '-',
+          value: pickFirstString(item, ['value']) || '-',
+          note: pickFirstString(item, ['note']) || undefined,
+        }))
+    : [];
+  const items = Array.isArray(value.items)
+    ? value.items
+        .filter((item): item is JsonRecord => isRecord(item))
+        .map((item) => ({
+          title: pickFirstString(item, ['title']) || undefined,
+          content: pickFirstString(item, ['content', 'text', 'summary']) || '',
+        }))
+        .filter((item) => item.content)
+    : [];
+  const table = isRecord(value.table)
+    ? {
+        columns: Array.isArray(value.table.columns) ? value.table.columns.map((item) => String(item)) : [],
+        rows: Array.isArray(value.table.rows)
+          ? value.table.rows.map((row) => (Array.isArray(row) ? row.map((cell) => String(cell)) : [String(row)]))
+          : [],
+      }
+    : undefined;
+
+  return {
+    id: pickFirstString(value, ['id']) || `section-${Date.now()}`,
+    kind: normalizedKind,
+    title: pickFirstString(value, ['title']) || '未命名章节',
+    summary: pickFirstString(value, ['summary']) || undefined,
+    content: pickFirstString(value, ['content']) || undefined,
+    metrics,
+    items,
+    table,
+  };
+}
+
+function normalizeDynamicReport(value: unknown): DynamicReportResponsePayload | null {
+  if (!isRecord(value)) return null;
+  const source = pickFirstString(value, ['source']);
+  const sections = Array.isArray(value.sections)
+    ? value.sections
+        .map((item) => normalizeDynamicReportSection(item))
+        .filter((item): item is DynamicReportSectionPayload => Boolean(item))
+    : [];
+
+  return {
+    title: pickFirstString(value, ['title']) || '动态报告',
+    abstract: pickFirstString(value, ['abstract']) || '',
+    source: source === 'ai' || source === 'rules' || source === 'hybrid' ? source : 'rules',
+    summary: toLines(value.summary),
+    highlights: toLines(value.highlights),
+    risks: normalizeRiskList(value.risks),
+    suggestions: normalizeSuggestionList(value.suggestions),
+    conclusion: pickFirstString(value, ['conclusion']) || '',
+    sections,
+    metadata: isRecord(value.metadata) ? value.metadata : {},
+    raw_text: pickFirstString(value, ['raw_text', 'rawText']) || '',
+  };
+}
+
 function normalizePreviewRecord(record: LocalReportRecord): LocalReportRecord {
   return {
     ...record,
@@ -698,6 +845,7 @@ function normalizePreviewRecord(record: LocalReportRecord): LocalReportRecord {
       suggestions: normalizeSuggestionList(record.result.suggestions),
       conclusion: typeof record.result.conclusion === 'string' ? record.result.conclusion : '',
       rawText: typeof record.result.rawText === 'string' ? record.result.rawText : '',
+      report: normalizeDynamicReport(record.result.report),
     },
   };
 }
@@ -780,18 +928,6 @@ function inWindow(value: string | undefined, start: Dayjs | null, end: Dayjs | n
   return true;
 }
 
-function extractText(payload: Record<string, unknown>) {
-  const candidates = [payload.final_response, payload.response, payload.result, payload.output, payload.message];
-  for (const item of candidates) {
-    if (typeof item === 'string' && item.trim()) return item;
-    if (item && typeof item === 'object') {
-      const nested = item as Record<string, unknown>;
-      if (typeof nested.response === 'string' && nested.response.trim()) return nested.response;
-      if (typeof nested.final_response === 'string' && nested.final_response.trim()) return nested.final_response;
-    }
-  }
-  return '';
-}
 
 function toLines(value: unknown) {
   if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean);
@@ -1383,6 +1519,41 @@ function buildWorkbenchFallbackRisks(params: {
 function buildHistoryPreview(history: CalculationHistory): PreviewRecord {
   const input = parseJsonRecord(history.inputParams);
   const output = parseJsonRecord(history.outputResult);
+  const archivedResult: ReportResult = {
+    source: 'history',
+    highlights: toLines(output.highlights),
+    summary: toLines(output.summary),
+    risks: normalizeRiskList(output.risks),
+    suggestions: normalizeSuggestionList(output.suggestions),
+    conclusion: pickFirstString(output, ['conclusion']) || '',
+    rawText: pickFirstString(output, ['rawText', 'raw_text']) || '',
+    report: normalizeDynamicReport(output.report),
+  };
+  const archivedProjectNames = Array.isArray(input.projectNames)
+    ? input.projectNames.map((item) => String(item)).filter(Boolean)
+    : [];
+  const archivedTitle = pickFirstString(input, ['title']) || pickFirstString(output, ['title']);
+  const archivedTypeLabel = pickFirstString(input, ['reportTypeLabel']) || getHistoryTypeLabel(history);
+  const archivedRangeLabel = pickFirstString(input, ['rangeLabel']) || '单次计算记录';
+  const archivedIntelligenceLabel = pickFirstString(input, ['intelligenceLabel']) || '历史回放';
+  const archivedSourceLabel = pickFirstString(input, ['sourceLabel']) || '服务端历史记录';
+  const archivedOutputFormat = pickFirstString(input, ['outputFormat']);
+
+  if (archivedTitle && (archivedResult.report || archivedResult.summary.length || archivedResult.conclusion)) {
+    return {
+      id: `history-preview-${history.id}`,
+      title: archivedTitle,
+      typeLabel: archivedTypeLabel,
+      createdAt: history.createTime || new Date().toISOString(),
+      rangeLabel: archivedRangeLabel,
+      intelligenceLabel: archivedIntelligenceLabel,
+      projectNames: archivedProjectNames.length ? archivedProjectNames : [history.projectName || '未命名项目'],
+      outputFormat: archivedOutputFormat === 'pdf' || archivedOutputFormat === 'docx' ? archivedOutputFormat : 'markdown',
+      sourceLabel: archivedSourceLabel,
+      result: archivedResult,
+    };
+  }
+
   const inputSource = getHistoryInputSource(history, input);
   const outputSource = getHistoryOutputSource(history, output);
   const typeLabel = getHistoryTypeLabel(history);
@@ -1476,32 +1647,6 @@ function buildHistoryPreview(history: CalculationHistory): PreviewRecord {
   };
 }
 
-function parseAiResult(rawText: string, fallback: ReportResult): ReportResult {
-  try {
-    const cleaned = rawText.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim();
-    const start = cleaned.indexOf('{');
-    const end = cleaned.lastIndexOf('}');
-    const parsed = JSON.parse(start >= 0 && end > start ? cleaned.slice(start, end + 1) : cleaned) as Record<string, unknown>;
-    const highlights = toLines(parsed.highlights ?? parsed.keyFindings ?? parsed.findings);
-    const summary = toLines(parsed.summary);
-    const risks = normalizeRiskList(parsed.risks ?? parsed.riskList ?? parsed.risk_list);
-    const suggestions = normalizeSuggestionList(
-      parsed.suggestions ?? parsed.suggestionList ?? parsed.suggestion_list ?? parsed.recommendations ?? parsed.recommendation_list,
-    );
-    const hasSpecificSuggestionTarget = suggestions.some((item) => item.target !== DEFAULT_ANALYSIS_TARGET);
-    return {
-      source: 'ai',
-      highlights: highlights.length ? highlights.slice(0, 6) : fallback.highlights,
-      summary: summary.length ? summary.slice(0, 4) : fallback.summary,
-      risks: risks.length ? risks : fallback.risks,
-      suggestions: suggestions.length && hasSpecificSuggestionTarget ? suggestions : fallback.suggestions,
-      conclusion: typeof parsed.conclusion === 'string' && parsed.conclusion.trim() ? parsed.conclusion.trim() : fallback.conclusion,
-      rawText,
-    };
-  } catch {
-    return { ...fallback, source: 'fallback', rawText };
-  }
-}
 
 async function fetchAllPagedList<T>(requestPage: (pageNum: number, pageSize: number) => Promise<R<PageResult<T>>>) {
   const result: T[] = [];
@@ -1519,7 +1664,118 @@ async function fetchAllPagedList<T>(requestPage: (pageNum: number, pageSize: num
   return result;
 }
 
+function dynamicSectionToMarkdown(section: DynamicReportSectionPayload) {
+  const lines = [`## ${section.title}`];
+  if (section.summary) {
+    lines.push('', section.summary);
+  }
+
+  if (section.kind === 'metrics') {
+    lines.push(
+      '',
+      ...(section.metrics.length
+        ? section.metrics.map((item) => `- ${item.label}：${item.value}${item.note ? `（${item.note}）` : ''}`)
+        : ['- 暂无']),
+    );
+    return lines;
+  }
+
+  if (section.kind === 'table' && section.table) {
+    lines.push('');
+    if (section.table.columns.length) {
+      lines.push(`| ${section.table.columns.map((item) => escapeMarkdownTableCell(item)).join(' | ')} |`);
+      lines.push(`| ${section.table.columns.map(() => '---').join(' | ')} |`);
+      if (section.table.rows.length) {
+        lines.push(
+          ...section.table.rows.map(
+            (row) => `| ${row.map((cell) => escapeMarkdownTableCell(cell)).join(' | ')} |`,
+          ),
+        );
+      } else {
+        lines.push('| 暂无数据 |');
+      }
+    } else {
+      lines.push('- 暂无数据');
+    }
+    return lines;
+  }
+
+  if (section.kind === 'markdown' || section.kind === 'callout') {
+    lines.push('', section.content || '暂无内容');
+    return lines;
+  }
+
+  lines.push(
+    '',
+    ...(section.items.length
+      ? section.items.flatMap((item) => (item.title ? [`- ${item.title}：${item.content}`] : [`- ${item.content}`]))
+      : ['- 暂无']),
+  );
+  return lines;
+}
+
+function buildSaveReportPayload(preview: PreviewRecord, selectedProjectIds: number[]): SaveReportRequest {
+  return {
+    title: preview.title,
+    reportType: preview.result.report?.metadata?.request && typeof preview.result.report.metadata.request === 'object' && preview.result.report.metadata.request !== null && 'report_type' in preview.result.report.metadata.request
+      ? String((preview.result.report.metadata.request as Record<string, unknown>).report_type || 'AI_REPORT')
+      : preview.typeLabel,
+    reportTypeLabel: preview.typeLabel,
+    selectedProjectIds,
+    projectNames: preview.projectNames,
+    rangeLabel: preview.rangeLabel,
+    intelligenceLabel: preview.intelligenceLabel,
+    outputFormat: preview.outputFormat,
+    sourceLabel: preview.sourceLabel,
+    result: {
+      source: preview.result.source,
+      highlights: preview.result.highlights,
+      summary: preview.result.summary,
+      risks: preview.result.risks,
+      suggestions: preview.result.suggestions,
+      conclusion: preview.result.conclusion,
+      rawText: preview.result.rawText,
+      report: preview.result.report ?? undefined,
+    },
+  };
+}
+
 function downloadMarkdown(preview: PreviewRecord) {
+  if (preview.result.report?.sections?.length) {
+    const report = preview.result.report;
+    const content = [
+      `# ${report.title || preview.title}`,
+      '',
+      `- 生成时间：${formatTime(preview.createdAt)}`,
+      `- 分析范围：${preview.rangeLabel}`,
+      `- 智能等级：${preview.intelligenceLabel}`,
+      `- 覆盖项目：${preview.projectNames.join('、') || '未选择项目'}`,
+      `- 输出格式：${preview.outputFormat}`,
+      `- 来源：${preview.sourceLabel}`,
+      ...(report.abstract ? ['', report.abstract] : []),
+      ...report.sections.flatMap((section) => ['', ...dynamicSectionToMarkdown(section)]),
+      ...(preview.result.rawText
+        ? [
+            '',
+            '## 原始计算数据',
+            '```text',
+            preview.result.rawText,
+            '```',
+          ]
+        : []),
+    ].join('\n');
+    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${preview.title.replace(/[\\/:*?"<>|]/g, '-')}.md`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+    return;
+  }
+
   const content = [
     `# ${preview.title}`,
     '',
@@ -1763,6 +2019,20 @@ function formatBusinessMetric(value: number | null, unit: string, digits = 1) {
   return `${value.toFixed(digits)} ${unit}`.trim();
 }
 
+function getAnalysisObjectLabel(value: BusinessAnalysisObject | string) {
+  if (value === 'project') return '项目';
+  if (value === 'pipeline') return '管道';
+  if (value === 'pumpStation') return '泵站';
+  return value;
+}
+
+function getDynamicReportSourceLabel(value: DynamicReportResponsePayload['source'] | string) {
+  if (value === 'hybrid') return '规则 + AI';
+  if (value === 'rules') return '规则生成';
+  if (value === 'ai') return 'AI 生成';
+  return value;
+}
+
 function getBarWidthPercent(value: number, maxValue: number) {
   if (!Number.isFinite(value) || value <= 0 || !Number.isFinite(maxValue) || maxValue <= 0) return '8%';
   return `${Math.max(8, Math.min(100, Math.round((value / maxValue) * 100)))}%`;
@@ -1840,6 +2110,7 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
   const [businessRemark, setBusinessRemark] = useState('');
   const [businessPrompt, setBusinessPrompt] = useState('例如：分析 A 项目近30天管道运行情况，重点关注能耗偏高原因，并给出泵站优化建议。');
   const [businessReport, setBusinessReport] = useState<BusinessReportModel | null>(null);
+  const [businessDynamicReport, setBusinessDynamicReport] = useState<DynamicReportResponsePayload | null>(null);
   const [businessGenerating, setBusinessGenerating] = useState(false);
 
   const loadData = useCallback(async (mode: 'initial' | 'refresh') => {
@@ -1897,9 +2168,6 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
     [histories, rangeWindow.end, rangeWindow.start, selectedSet],
   );
   const abnormalHistories = useMemo(() => visibleHistories.filter((item) => isHistoryAbnormal(item)), [visibleHistories]);
-  const projectInsights = useMemo(() => buildProjectInsights(selectedProjects, visiblePipelines, visibleHistories), [selectedProjects, visiblePipelines, visibleHistories]);
-  const projectContextLines = useMemo(() => buildProjectContextLines(projectInsights), [projectInsights]);
-  const pumpStationContextLines = useMemo(() => buildPumpStationContextLines(pumpStations), [pumpStations]);
 
   const snapshot = useMemo(() => {
     const projectCompleteness = getCollectionCompleteness(selectedProjects, ['number', 'name', 'responsible']);
@@ -2093,9 +2361,10 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
     setBusinessRemark('');
     setBusinessPrompt('例如：分析 A 项目近30天管道运行情况，重点关注能耗偏高原因，并给出泵站优化建议。');
     setBusinessReport(null);
+    setBusinessDynamicReport(null);
   }, [businessProjectOptions, oilProperties]);
 
-  const handleGenerateBusinessReport = useCallback(() => {
+  const handleGenerateBusinessReport = useCallback(async () => {
     if (!businessSelectedProject) {
       message.warning('请先选择所属项目');
       return;
@@ -2105,6 +2374,92 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
     try {
       const targetThroughput = toFiniteNumber(businessTargetThroughput);
       const minPressure = toFiniteNumber(businessMinPressure);
+      const dynamicRequest: DynamicReportRequestPayload = {
+        selected_project_ids: [businessSelectedProject.proId],
+        project_names: [businessSelectedProject.name],
+        selected_pipeline_id: businessSelectedPipeline?.id,
+        selected_pipeline_name: businessSelectedPipeline?.name,
+        selected_pump_station_ids: businessPumpScope === 'all' ? [] : businessPumpStationIds,
+        selected_pump_station_names: businessPumpScope === 'all' ? [] : businessVisiblePumpStations.map((item) => item.name),
+        selected_oil_id: businessSelectedOil?.id,
+        selected_oil_name: businessSelectedOil?.name,
+        report_type: businessReportType,
+        report_type_label: BUSINESS_REPORT_TYPE_OPTIONS.find((item) => item.value === businessReportType)?.label,
+        range_preset: businessTimePreset,
+        range_label: businessRangeLabel,
+        custom_start: businessRangeWindow.start?.format('YYYY-MM-DD'),
+        custom_end: businessRangeWindow.end?.format('YYYY-MM-DD'),
+        intelligence_level: businessOutputStyle === 'professional' ? 'expert' : 'enhanced',
+        output_format: 'markdown',
+        include_summary: true,
+        include_risk: true,
+        include_suggestions: true,
+        include_conclusion: true,
+        analysis_object: businessAnalysisObject,
+        output_style: businessOutputStyle,
+        focuses: businessFocuses,
+        target_throughput: targetThroughput ?? undefined,
+        min_pressure: minPressure ?? undefined,
+        optimization_goal: businessOptimizationGoal,
+        allow_pump_adjust: businessAllowPumpAdjust,
+        remark: businessRemark.trim() || undefined,
+        user_prompt: [
+          businessPrompt.trim(),
+          businessSelectedPipeline ? `聚焦管道：${businessSelectedPipeline.name}` : '',
+          businessPumpScope === 'all'
+            ? '泵站范围：全部泵站'
+            : `泵站范围：${businessVisiblePumpStations.map((item) => item.name).join('、') || '指定泵站'}`,
+          businessSelectedOil ? `油品：${businessSelectedOil.name}` : '',
+          targetThroughput !== null ? `目标输量：${targetThroughput} m3/h` : '',
+          minPressure !== null ? `最低出口压力：${minPressure} MPa` : '',
+          businessRemark.trim() ? `备注：${businessRemark.trim()}` : '',
+        ]
+          .filter(Boolean)
+          .join('\n'),
+      };
+
+      try {
+        const dynamicResponse = normalizeDynamicReport(await agentApi.generateDynamicReport(dynamicRequest));
+        if (dynamicResponse) {
+          try {
+            const response = await calculationHistoryApi.saveReport({
+              title: dynamicResponse.title || `${businessSelectedProject.name} ${BUSINESS_REPORT_TYPE_OPTIONS.find((item) => item.value === businessReportType)?.label ?? '智能报告'}`,
+              reportType: businessReportType,
+              reportTypeLabel: BUSINESS_REPORT_TYPE_OPTIONS.find((item) => item.value === businessReportType)?.label ?? '智能报告',
+              selectedProjectIds: [businessSelectedProject.proId],
+              projectNames: [businessSelectedProject.name],
+              rangeLabel: businessRangeLabel,
+              intelligenceLabel: '业务智能报告',
+              outputFormat: 'markdown',
+              sourceLabel: getDynamicReportSourceLabel(dynamicResponse.source),
+              result: {
+                source: 'ai',
+                highlights: dynamicResponse.highlights,
+                summary: dynamicResponse.summary,
+                risks: dynamicResponse.risks,
+                suggestions: dynamicResponse.suggestions,
+                conclusion: dynamicResponse.conclusion,
+                rawText: dynamicResponse.raw_text,
+                report: dynamicResponse,
+              },
+            });
+            setHistories((current) => {
+              const saved = response.data;
+              const next = [saved, ...current.filter((item) => item.id !== saved.id)];
+              return next.sort((a, b) => dayjs(b.createTime).valueOf() - dayjs(a.createTime).valueOf());
+            });
+          } catch (error) {
+            console.error('Save business report failed:', error);
+          }
+          setBusinessDynamicReport(dynamicResponse);
+          setBusinessReport(null);
+          message.success('智能报告已生成并归档');
+          return;
+        }
+      } catch (error) {
+        console.error('Dynamic business report generation failed:', error);
+      }
+
       const flowValues = businessHistories
         .map((history) => {
           const inputSource = getHistoryInputSource(history, parseJsonRecord(history.inputParams));
@@ -2310,7 +2665,8 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
         },
       ];
 
-      setBusinessReport({
+      setBusinessDynamicReport(null);
+      const fallbackBusinessReport: BusinessReportModel = {
         title: `${businessSelectedProject.name}${businessReportType === 'energy' ? '管道能耗智能分析报告' : reportTypeLabel}`,
         totalComment: `本次分析认为：${abnormalRate > 0.18 ? '当前系统存在异常波动，' : '当前系统运行总体稳定，'}${avgEnergy !== null && avgEnergy > 180 ? '但能耗偏高，' : '能耗总体可控，'}建议优先${businessAllowPumpAdjust ? '优化泵站组合并关注油品粘度变化。' : '复核运行边界并关注关键参数波动。'}`,
         projectName: businessSelectedProject.name,
@@ -2343,7 +2699,8 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
         shortTermActions,
         longTermActions,
         chartCards,
-      });
+      };
+      setBusinessReport(fallbackBusinessReport);
       message.success('智能报告已生成');
     } finally {
       setBusinessGenerating(false);
@@ -2356,8 +2713,12 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
     businessMinPressure,
     businessOptimizationGoal,
     businessOutputStyle,
+    businessPumpScope,
+    businessPumpStationIds,
     businessPipelines,
     businessPrompt,
+    businessRangeWindow.end,
+    businessRangeWindow.start,
     businessRangeLabel,
     businessRemark,
     businessReportType,
@@ -2365,10 +2726,44 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
     businessSelectedPipeline,
     businessSelectedProject,
     businessTargetThroughput,
+    businessTimePreset,
     businessVisiblePumpStations,
   ]);
 
   const handleExportBusinessReport = useCallback(() => {
+    if (businessDynamicReport) {
+      const content = [
+        `# ${businessDynamicReport.title || '智能报告'}`,
+        '',
+        `- 项目名称：${businessSelectedProject?.name ?? '-'}`,
+        `- 分析对象：${businessAnalysisObject}`,
+        `- 时间范围：${businessRangeLabel}`,
+        `- 输出风格：${businessOutputStyle}`,
+        ...(businessDynamicReport.abstract ? ['', businessDynamicReport.abstract] : []),
+        ...businessDynamicReport.sections.flatMap((section) => ['', ...dynamicSectionToMarkdown(section)]),
+        ...(businessDynamicReport.raw_text
+          ? [
+              '',
+              '## 原始计算数据',
+              '```text',
+              businessDynamicReport.raw_text,
+              '```',
+            ]
+          : []),
+      ].join('\n');
+
+      const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${(businessDynamicReport.title || '智能报告').replace(/[\\/:*?"<>|]/g, '-')}.md`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      return;
+    }
+
     if (!businessReport) {
       message.warning('请先生成智能报告');
       return;
@@ -2429,7 +2824,14 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
     link.click();
     document.body.removeChild(link);
     window.URL.revokeObjectURL(url);
-  }, [businessReport]);
+  }, [
+    businessAnalysisObject,
+    businessDynamicReport,
+    businessOutputStyle,
+    businessRangeLabel,
+    businessReport,
+    businessSelectedProject,
+  ]);
 
   const saveTemplate = useCallback(() => {
     writeStorage(TEMPLATE_KEY, {
@@ -2452,6 +2854,7 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
       message.warning('请至少选择一个项目');
       return null;
     }
+
     const projectInsights = buildProjectInsights(selectedProjects, visiblePipelines, visibleHistories);
     const projectContextLines = buildProjectContextLines(projectInsights);
     const pumpStationContextLines = buildPumpStationContextLines(pumpStations);
@@ -2467,61 +2870,83 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
           snapshot.dataCompletenessRate,
         )
       : [];
+
     const fallback: ReportResult = {
       source: 'fallback',
-      highlights: [],
-      summary: enableSummary ? [`本次分析覆盖 ${snapshot.projectCount} 个项目、${snapshot.pipelineCount} 条管道、${snapshot.pumpStationCount} 座共享泵站。`, `已纳入 ${snapshot.historyCount} 条历史记录，其中失败记录 ${snapshot.failedHistoryCount} 条。`] : [],
+      highlights: [
+        `分析对象 ${snapshot.analysisObjectCount} 个`,
+        `异常记录 ${snapshot.abnormalHistoryCount} 条`,
+        `高风险记录 ${snapshot.highRiskCount} 条`,
+      ].slice(0, 3),
+      summary: enableSummary
+        ? [
+            `本次分析依据覆盖 ${snapshot.projectCount} 个项目、${snapshot.pipelineCount} 条管道、${snapshot.pumpStationCount} 座泵站。`,
+            `当前样本池纳入 ${snapshot.historyCount} 条记录，识别异常 ${snapshot.abnormalHistoryCount} 条，数据完整率 ${snapshot.dataCompletenessRate}%。`,
+            `比对周期为 ${snapshot.comparisonLabel}，最近异常时间 ${formatTime(snapshot.latestAbnormalTime)}。`,
+          ]
+        : [],
       risks: fallbackRisks,
       suggestions: fallbackSuggestions,
       conclusion: enableConclusion ? '系统已经具备智能报告基础能力，但正式结论仍建议结合更多历史样本和现场工况复核。' : '',
       rawText: '',
+      report: null,
     };
-
-    fallback.summary = enableSummary
-      ? [
-          `本次分析依据覆盖 ${snapshot.projectCount} 个项目、${snapshot.pipelineCount} 条管道、${snapshot.pumpStationCount} 座泵站。`,
-          `当前样本池纳入 ${snapshot.historyCount} 条记录，识别异常 ${snapshot.abnormalHistoryCount} 条，数据完整率 ${snapshot.dataCompletenessRate}%。`,
-          `比对周期为 ${snapshot.comparisonLabel}，最近异常时间 ${formatTime(snapshot.latestAbnormalTime)}。`,
-        ]
-      : [];
-    fallback.highlights = [
-      `分析对象 ${snapshot.analysisObjectCount} 个`,
-      `异常记录 ${snapshot.abnormalHistoryCount} 条`,
-      `高风险记录 ${snapshot.highRiskCount} 条`,
-    ].slice(0, 3);
-    fallback.risks = fallbackRisks;
-    fallback.suggestions = fallbackSuggestions;
 
     setAnalysing(true);
     let result = fallback;
     try {
-      const prompt = [
-        '你是管道能耗分析系统的报告助手。',
-        '请严格输出 JSON，格式为 {"summary":["..."],"risks":[{"target":"风险对象","riskType":"风险类型","level":"高/中/低","reason":"原因","suggestion":"建议"}],"suggestions":[{"target":"对象","reason":"原因","action":"措施","expected":"预期","priority":"高/中/低"}],"conclusion":"..."}。',
-        '风险提示必须写成风险列表，逐条具体到对象，不要写成段落；如果没有明确风险，risks 返回空数组。',
-        '优化建议必须与具体对象绑定，不要输出泛化建议。每条 suggestions 都要明确对象、原因、措施、预期和优先级；对象可以是项目、管道、共享泵站或当前分析范围。',
-        '原因只能引用当前提供的数据和对象，不要编造未提供的天数、趋势或现场事件。',
-        `报告类型：${REPORT_TYPE_OPTIONS.find((item) => item.value === reportType)?.label ?? '智能分析报告'}`,
-        `分析范围：${rangeLabel}`,
-        `智能等级：${INTELLIGENCE_OPTIONS.find((item) => item.value === intelligenceLevel)?.label ?? '增强'}`,
-        `项目数量：${snapshot.projectCount}，管道数量：${snapshot.pipelineCount}，共享泵站数量：${snapshot.pumpStationCount}，历史记录数量：${snapshot.historyCount}，失败历史数量：${snapshot.failedHistoryCount}`,
-        `项目列表：${selectedProjects.map((item) => `${item.number || '-'} ${item.name}`).join('；')}`,
-        `分析依据快照：覆盖项目 ${snapshot.projectCount}，覆盖管道 ${snapshot.pipelineCount}，覆盖泵站 ${snapshot.pumpStationCount}，记录总量 ${snapshot.historyCount}，异常记录 ${snapshot.abnormalHistoryCount}，数据完整率 ${snapshot.dataCompletenessRate}% ，最近异常时间 ${formatTime(snapshot.latestAbnormalTime)}，比对周期 ${snapshot.comparisonLabel}`,
-        `项目画像：${projectContextLines.length ? projectContextLines.join('；') : '暂无项目画像'}`,
-        `泵站画像：${pumpStationContextLines.length ? pumpStationContextLines.join('；') : '暂无泵站画像'}`,
-        `本地对象绑定建议参考：${fallbackSuggestions.length ? fallbackSuggestions.map((item, index) => `优先建议 ${index + 1}：对象=${item.target}；原因=${item.reason}；措施=${item.action}；预期=${item.expected}；优先级=${item.priority}`).join('；') : '暂无'}`,
-        `候选风险对象：${[
-          ...selectedProjects.map((item) => item.name),
-          ...visiblePipelines.slice(0, 6).map((item) => item.name),
-          ...pumpStations.slice(0, 6).map((item) => item.name),
-        ].join('；')}`,
-      ].join('\n');
-      const response = await agentApi.chat(prompt, `report-workbench-${Date.now()}`);
-      const rawText = extractText(response);
-      result = rawText ? parseAiResult(rawText, fallback) : fallback;
-      if (!rawText) message.warning('AI 未返回可解析内容，已回退到本地分析');
+      const requestPayload: DynamicReportRequestPayload = {
+        selected_project_ids: selectedProjects.map((item) => item.proId),
+        project_names: selectedProjects.map((item) => item.name),
+        report_type: reportType,
+        report_type_label: REPORT_TYPE_OPTIONS.find((item) => item.value === reportType)?.label,
+        range_preset: rangePreset,
+        range_label: rangeLabel,
+        custom_start: customRange?.[0]?.format('YYYY-MM-DD'),
+        custom_end: customRange?.[1]?.format('YYYY-MM-DD'),
+        intelligence_level: intelligenceLevel,
+        output_format: outputFormat,
+        include_summary: enableSummary,
+        include_risk: enableRisk,
+        include_suggestions: enableSuggestions,
+        include_conclusion: enableConclusion,
+        analysis_object: 'project',
+        output_style: intelligenceLevel === 'expert' ? 'professional' : intelligenceLevel === 'enhanced' ? 'presentation' : 'simple',
+        focuses: [
+          enableSummary ? '摘要' : '',
+          enableRisk ? '风险' : '',
+          enableSuggestions ? '建议' : '',
+          reportType === 'ENERGY_DIAGNOSIS' ? '能耗水平' : '',
+          reportType === 'RISK_REVIEW' ? '异常识别' : '',
+        ].filter(Boolean),
+        user_prompt: [
+          projectContextLines.length ? `项目画像：${projectContextLines.join('；')}` : '',
+          pumpStationContextLines.length ? `泵站画像：${pumpStationContextLines.join('；')}` : '',
+          fallbackSuggestions.length
+            ? `本地建议参考：${fallbackSuggestions.map((item, index) => `建议${index + 1} 对象=${item.target} 原因=${item.reason} 措施=${item.action}`).join('；')}`
+            : '',
+        ].filter(Boolean).join('\n'),
+      };
+
+      const generatedReport = normalizeDynamicReport(await agentApi.generateDynamicReport(requestPayload));
+      if (generatedReport) {
+        const normalizedRisks = normalizeRiskList(generatedReport.risks);
+        const normalizedSuggestions = normalizeSuggestionList(generatedReport.suggestions);
+        result = {
+          source: generatedReport.source === 'rules' ? 'fallback' : 'ai',
+          highlights: generatedReport.highlights.length ? generatedReport.highlights.slice(0, 6) : fallback.highlights,
+          summary: enableSummary ? (generatedReport.summary.length ? generatedReport.summary.slice(0, 6) : fallback.summary) : [],
+          risks: enableRisk ? (normalizedRisks.length ? normalizedRisks : fallback.risks) : [],
+          suggestions: enableSuggestions ? (normalizedSuggestions.length ? normalizedSuggestions : fallback.suggestions) : [],
+          conclusion: enableConclusion ? (generatedReport.conclusion || fallback.conclusion) : '',
+          rawText: generatedReport.raw_text || '',
+          report: generatedReport,
+        };
+      } else {
+        message.warning('动态报告接口未返回可解析内容，已回退到本地分析');
+      }
     } catch {
-      message.warning('AI 服务暂不可用，已回退到本地分析');
+      message.warning('动态报告服务暂不可用，已回退到本地分析');
     } finally {
       setAnalysing(false);
     }
@@ -2535,21 +2960,33 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
       intelligenceLabel: INTELLIGENCE_OPTIONS.find((item) => item.value === intelligenceLevel)?.label ?? '增强',
       projectNames: selectedProjects.map((item) => item.name),
       outputFormat,
-      sourceLabel: result.source === 'ai' ? 'AI 结构化输出' : '规则回退分析',
+      sourceLabel: result.report?.source === 'hybrid' ? '规则 + AI 动态生成' : result.source === 'ai' ? 'AI 结构化输出' : '规则回退分析',
       result,
     };
     setActivePreview(preview);
     setAnalysisCount((current) => current + 1);
     return preview;
-  }, [enableConclusion, enableRisk, enableSuggestions, enableSummary, intelligenceLevel, outputFormat, projectContextLines, projectInsights, pumpStationContextLines, pumpStations, rangeLabel, reportType, selectedProjects, snapshot.abnormalHistoryCount, snapshot.comparisonLabel, snapshot.dataCompletenessRate, snapshot.failedHistoryCount, snapshot.historyCount, snapshot.latestAbnormalTime, snapshot.pipelineCount, snapshot.projectCount, snapshot.pumpStationCount, visibleHistories, visiblePipelines]);
+  }, [customRange, enableConclusion, enableRisk, enableSuggestions, enableSummary, intelligenceLevel, outputFormat, pumpStations, rangeLabel, rangePreset, reportType, selectedProjects, snapshot.abnormalHistoryCount, snapshot.analysisObjectCount, snapshot.comparisonLabel, snapshot.dataCompletenessRate, snapshot.failedHistoryCount, snapshot.highRiskCount, snapshot.historyCount, snapshot.latestAbnormalTime, snapshot.pipelineCount, snapshot.projectCount, snapshot.pumpStationCount, visibleHistories, visiblePipelines]);
 
   const generateReport = useCallback(async () => {
     const preview = activePreview ?? (await runAnalysis());
     if (!preview) return;
-    const record: LocalReportRecord = { ...preview, id: `local-${Date.now()}`, selectedProjectIds: [...selectedProjectIds] };
-    setLocalReports((current) => [record, ...current].slice(0, 30));
-    setActivePreview(record);
-    message.success('已加入历史报告区');
+    try {
+      const response = await calculationHistoryApi.saveReport(buildSaveReportPayload(preview, selectedProjectIds));
+      const saved = response.data;
+      const savedPreview = buildHistoryPreview(saved);
+      setHistories((current) => {
+        const next = [saved, ...current.filter((item) => item.id !== saved.id)];
+        return next.sort((a, b) => dayjs(b.createTime).valueOf() - dayjs(a.createTime).valueOf());
+      });
+      setActivePreview(savedPreview);
+      message.success('报告已保存到历史报告区');
+    } catch (error) {
+      const record: LocalReportRecord = { ...preview, id: `local-${Date.now()}`, selectedProjectIds: [...selectedProjectIds] };
+      setLocalReports((current) => [record, ...current].slice(0, 30));
+      setActivePreview(record);
+      message.warning(error instanceof Error ? `数据库保存失败，已暂存本地：${error.message}` : '数据库保存失败，已暂存本地');
+    }
   }, [activePreview, runAnalysis, selectedProjectIds]);
 
   const openPreview = useCallback((preview: PreviewRecord | LocalReportRecord) => {
@@ -2668,7 +3105,7 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
   }
   return (
     <AnimatedPage className="mx-auto flex w-full max-w-[1480px] flex-col gap-6 px-4 py-6 text-slate-100 md:px-6">
-      <section className="overflow-hidden rounded-[30px] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.18),transparent_35%),linear-gradient(145deg,#0f172a_0%,#111827_50%,#020617_100%)] p-6 shadow-[0_28px_80px_rgba(2,8,23,0.4)] md:p-8">
+      {false ? <section className="overflow-hidden rounded-[30px] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.18),transparent_35%),linear-gradient(145deg,#0f172a_0%,#111827_50%,#020617_100%)] p-6 shadow-[0_28px_80px_rgba(2,8,23,0.4)] md:p-8">
         <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
           <div className="max-w-3xl">
             <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-4 py-2 text-sm text-cyan-100"><RobotOutlined />智能报告中心</div>
@@ -2682,10 +3119,7 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
             <Button type="primary" ghost icon={<FileTextOutlined />} onClick={() => void generateReport()}>生成智能报告</Button>
           </Space>
         </div>
-        <div className="mt-6">
-          <Alert type="info" showIcon message="安全说明" description="前端不会存储 API Key。页面只调用现有后端 agent 服务，密钥必须配置在服务端。" />
-        </div>
-      </section>
+      </section> : null}
 
       {false ? (
         <>
@@ -2825,11 +3259,14 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
         )}
       </section>
 
-      <section className="rounded-[28px] border border-white/10 bg-[#08111f]/92 p-6 shadow-[0_24px_60px_rgba(2,8,23,0.35)]">
+      <section className="rounded-[28px] border border-cyan-300/20 bg-[linear-gradient(180deg,rgba(8,17,31,0.96)_0%,rgba(9,18,34,0.96)_100%)] p-6 shadow-[0_24px_60px_rgba(2,8,23,0.35)]">
         <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <div className="text-xl font-semibold text-white">历史报告区</div>
-            <div className="mt-1 text-sm text-slate-400">保留 AI 报告、普通记录、完成状态和失败状态的管理入口。</div>
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="text-xl font-semibold text-white">历史报告管理区</div>
+              <Tag color="cyan">{historyItems.length} 条</Tag>
+            </div>
+            <div className="mt-1 text-sm text-slate-400">这里集中查看已归档报告，支持预览、导出、删除和筛选。</div>
           </div>
           <Space wrap>
             {HISTORY_FILTER_OPTIONS.map((item) => <Button key={item.value} size="small" type={historyFilter === item.value ? 'primary' : 'default'} onClick={() => setHistoryFilter(item.value)}>{item.label}</Button>)}
@@ -2882,12 +3319,14 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
             ))}
           </div>
         ) : (
-          <Empty description="当前筛选条件下暂无可展示的报告记录。" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          <div className="rounded-[24px] border border-dashed border-cyan-300/20 bg-cyan-400/5 px-6 py-12">
+            <Empty description="历史报告管理区当前还没有可展示的报告。先点击上方“生成智能报告”，生成后会自动进入这里。" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          </div>
         )}
       </section>
         </>
       ) : null}
-      <section className="overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,#0a1426_0%,#0b1220_42%,#07101d_100%)] p-6 shadow-[0_30px_90px_rgba(2,8,23,0.38)] md:p-8">
+      <section className="report-light-surface overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,#0a1426_0%,#0b1220_42%,#07101d_100%)] p-6 shadow-[0_30px_90px_rgba(2,8,23,0.38)] md:p-8">
         <div className="flex flex-col gap-4 border-b border-white/8 pb-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-3xl">
             <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-cyan-300/15 bg-cyan-300/10 px-4 py-2 text-sm text-cyan-100">
@@ -3020,6 +3459,17 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
                 <Select style={{ width: '100%' }} value={businessOutputStyle} onChange={setBusinessOutputStyle} options={BUSINESS_OUTPUT_STYLE_OPTIONS} />
               </div>
               <div className="rounded-[22px] border border-cyan-300/12 bg-slate-950/40 p-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="text-sm font-medium text-white">{BUSINESS_OUTPUT_STYLE_HINTS[businessOutputStyle].title}</div>
+                  {BUSINESS_OUTPUT_STYLE_HINTS[businessOutputStyle].badges.map((item) => (
+                    <Tag key={item} color="cyan">
+                      {item}
+                    </Tag>
+                  ))}
+                </div>
+                <div className="mt-2 text-sm leading-6 text-slate-300">{BUSINESS_OUTPUT_STYLE_HINTS[businessOutputStyle].description}</div>
+              </div>
+              <div className="rounded-[22px] border border-cyan-300/12 bg-slate-950/40 p-4">
                 <div className="text-sm font-medium text-white">示例问题</div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {BUSINESS_EXAMPLE_PROMPTS.map((item) => (
@@ -3095,12 +3545,51 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
             生成智能报告
           </Button>
           <Button onClick={resetBusinessReportBuilder}>重置条件</Button>
-          <Button icon={<DownloadOutlined />} onClick={handleExportBusinessReport} disabled={!businessReport}>
+          <Button icon={<DownloadOutlined />} onClick={handleExportBusinessReport} disabled={!businessReport && !businessDynamicReport}>
             导出报告
           </Button>
         </div>
 
-        {businessReport ? (
+        {businessDynamicReport ? (
+          <div className="mt-8 space-y-6">
+            <section className="rounded-[26px] border border-white/8 bg-white/5 p-6">
+              <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <div className="text-2xl font-semibold text-white">{businessDynamicReport.title}</div>
+                  <div className="mt-4 grid gap-3 text-sm text-slate-300 md:grid-cols-2 xl:grid-cols-3">
+                    <div className="rounded-2xl border border-white/8 bg-slate-950/35 px-4 py-3">项目：{businessSelectedProject?.name ?? '-'}</div>
+                    <div className="rounded-2xl border border-white/8 bg-slate-950/35 px-4 py-3">对象：{getAnalysisObjectLabel(businessAnalysisObject)}</div>
+                    <div className="rounded-2xl border border-white/8 bg-slate-950/35 px-4 py-3">时间：{businessRangeLabel}</div>
+                    <div className="rounded-2xl border border-white/8 bg-slate-950/35 px-4 py-3">报告类型：{BUSINESS_REPORT_TYPE_OPTIONS.find((item) => item.value === businessReportType)?.label ?? businessReportType}</div>
+                    <div className="rounded-2xl border border-white/8 bg-slate-950/35 px-4 py-3">输出风格：{BUSINESS_OUTPUT_STYLE_OPTIONS.find((item) => item.value === businessOutputStyle)?.label ?? businessOutputStyle}</div>
+                    <div className="rounded-2xl border border-white/8 bg-slate-950/35 px-4 py-3">来源：{getDynamicReportSourceLabel(businessDynamicReport.source)}</div>
+                  </div>
+                </div>
+                {businessDynamicReport.conclusion ? (
+                  <div className="rounded-[24px] border border-cyan-300/20 bg-cyan-400/10 px-5 py-4 text-sm leading-7 text-slate-100 lg:max-w-md">
+                    {businessDynamicReport.conclusion}
+                  </div>
+                ) : null}
+              </div>
+            </section>
+
+            {businessDynamicReport.highlights.length ? (
+              <section className="rounded-[26px] border border-white/8 bg-white/5 p-6">
+                <div className="mb-4 text-xl font-semibold text-white">动态摘要</div>
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  {businessDynamicReport.highlights.map((item, index) => (
+                    <div key={`${index}-${item}`} className="rounded-[22px] border border-cyan-300/15 bg-[linear-gradient(135deg,rgba(34,211,238,0.14),rgba(15,23,42,0.92))] p-4">
+                      <div className="text-xs uppercase tracking-[0.18em] text-cyan-100/70">结论 {String(index + 1).padStart(2, '0')}</div>
+                      <div className="mt-3 text-sm leading-7 text-slate-100">{item}</div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ) : null}
+
+            <DynamicReportView report={businessDynamicReport} />
+          </div>
+        ) : businessReport ? (
           <div className="mt-8 space-y-6">
             <section className="rounded-[26px] border border-white/8 bg-white/5 p-6">
               <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
@@ -3311,6 +3800,92 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
                 该区域会按照“报告信息、AI分析摘要、运行概况、问题诊断、方案对比、敏感性分析结果、风险预警、优化建议、图表分析”模块输出，不会是一整块聊天文字。
               </div>
             </div>
+          </div>
+        )}
+      </section>
+      <section className="report-light-surface overflow-hidden rounded-[30px] border border-cyan-300/20 bg-[linear-gradient(180deg,#08111f_0%,#0b1220_45%,#07101d_100%)] p-6 shadow-[0_30px_90px_rgba(2,8,23,0.42)] md:p-8">
+        <div className="flex flex-col gap-4 border-b border-cyan-200/10 pb-6 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-4 py-2 text-sm text-cyan-100">
+              <FileSearchOutlined />
+              历史报告区
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="text-3xl font-semibold tracking-tight text-white">报告历史档案</div>
+              <Tag color="cyan">{historyItems.length} 条</Tag>
+            </div>
+            <div className="mt-3 max-w-3xl text-sm leading-7 text-slate-300">
+              这里单独展示已经生成并归档的历史报告，支持预览、导出、删除和筛选。新生成的报告会自动进入这里。
+            </div>
+          </div>
+          <Space wrap>
+            {HISTORY_FILTER_OPTIONS.map((item) => (
+              <Button key={item.value} size="small" type={historyFilter === item.value ? 'primary' : 'default'} onClick={() => setHistoryFilter(item.value)}>
+                {item.label}
+              </Button>
+            ))}
+            {historyItems.length ? (
+              <Popconfirm
+                title="清空当前筛选结果？"
+                description={`将删除 ${currentHistoryStats.localIds.length} 条本地报告和 ${currentHistoryStats.serverIds.length} 条数据库记录，删除后不可恢复。`}
+                okText="清空"
+                cancelText="取消"
+                onConfirm={() => void handleClearCurrentHistory()}
+              >
+                <Button danger icon={<DeleteOutlined />} loading={clearingCurrentList}>
+                  清空当前列表
+                </Button>
+              </Popconfirm>
+            ) : null}
+          </Space>
+        </div>
+        {historyItems.length ? (
+          <div className="mt-6 grid gap-4">
+            {historyItems.map((item) => (
+              <div key={item.id} className="rounded-[24px] border border-white/8 bg-white/5 p-5 shadow-[0_18px_40px_rgba(15,23,42,0.24)]">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="text-base font-semibold text-white">{item.title}</div>
+                      <Tag color={item.kind === 'ai' ? 'blue' : 'default'}>{item.kind === 'ai' ? 'AI 报告' : '普通报告'}</Tag>
+                      {renderStatus(item.status)}
+                    </div>
+                    <div className="mt-2 text-sm text-slate-400">{formatTime(item.time)}</div>
+                    <div className="mt-3 text-sm leading-7 text-slate-300">{item.summary}</div>
+                  </div>
+                  <Space wrap>
+                    {item.preview ? (
+                      <Button icon={<FileSearchOutlined />} onClick={() => openPreview(item.preview!)}>
+                        预览
+                      </Button>
+                    ) : null}
+                    {item.preview ? (
+                      <Button icon={<DownloadOutlined />} onClick={() => downloadMarkdown(item.preview!)}>
+                        导出
+                      </Button>
+                    ) : null}
+                    <Popconfirm
+                      title={item.preview ? '删除这条本地报告？' : '删除这条数据库历史记录？'}
+                      description={item.preview ? '删除后会从当前浏览器本地记录中移除。' : '删除后会从数据库历史记录中移除，且不可恢复。'}
+                      okText="删除"
+                      cancelText="取消"
+                      onConfirm={() => void handleDeleteHistoryItem(item)}
+                    >
+                      <Button danger icon={<DeleteOutlined />} loading={deletingIdSet.has(item.id)}>
+                        删除
+                      </Button>
+                    </Popconfirm>
+                  </Space>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-6 rounded-[24px] border border-dashed border-cyan-300/20 bg-cyan-400/5 px-6 py-14">
+            <Empty
+              description="历史报告区当前还没有可展示的报告。点击上方“生成智能报告”后，报告会自动保存到这里。"
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+            />
           </div>
         )}
       </section>
