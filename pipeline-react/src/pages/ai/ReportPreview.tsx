@@ -235,6 +235,45 @@ const BUSINESS_OUTPUT_STYLE_HINTS: Record<BusinessOutputStyle, { title: string; 
   },
 };
 
+const COMMON_HISTORY_INPUT_FIELDS: Array<{ label: string; keys: string[] }> = [
+  { label: '流量', keys: ['flowRate', 'throughput', 'flow'] },
+  { label: '密度', keys: ['density'] },
+  { label: '粘度', keys: ['viscosity'] },
+  { label: '长度', keys: ['length', 'pipelineLength'] },
+  { label: '管径', keys: ['diameter', 'pipeDiameter'] },
+  { label: '壁厚', keys: ['thickness', 'wallThickness'] },
+  { label: '粗糙度', keys: ['roughness'] },
+  { label: '起点高程', keys: ['startAltitude', 'startElevation'] },
+  { label: '终点高程', keys: ['endAltitude', 'endElevation'] },
+  { label: '首站进站压头', keys: ['inletPressure', 'firstStationInPressure', 'stationInPressure'] },
+  { label: '泵数量/扬程', keys: ['pumpCombination', 'pumpHeads', 'pumpHead', 'pump375Head', 'pump480Head'] },
+  { label: '效率', keys: ['pumpEfficiency', 'motorEfficiency', 'electricEfficiency', 'efficiency'] },
+  { label: '电价', keys: ['electricityPrice', 'powerPrice'] },
+  { label: '工作天数', keys: ['workingDays'] },
+  { label: '敏感变量类型', keys: ['sensitiveVariableType', 'sensitivityVariableType', 'variableType'] },
+];
+
+const HYDRAULIC_RESULT_FIELDS: Array<{ label: string; keys: string[] }> = [
+  { label: '雷诺数', keys: ['reynoldsNumber', 'reynolds'] },
+  { label: '流态', keys: ['flowRegime', 'regime'] },
+  { label: '摩阻损失', keys: ['frictionHeadLoss', 'frictionLoss'] },
+  { label: '水力坡降', keys: ['hydraulicSlope', 'slope'] },
+  { label: '总扬程', keys: ['totalHead'] },
+  { label: '首站出站压头', keys: ['firstStationOutPressure', 'outletPressure'] },
+  { label: '末站进站压头', keys: ['endStationInPressure', 'terminalInPressure'] },
+];
+
+const OPTIMIZATION_RESULT_FIELDS: Array<{ label: string; keys: string[] }> = [
+  { label: '推荐泵组合', keys: ['recommendedPumpCombination', 'pumpCombination', 'description'] },
+  { label: '总扬程', keys: ['totalHead'] },
+  { label: '总压降', keys: ['totalPressureDrop', 'pressureDrop'] },
+  { label: '末站进站压头', keys: ['endStationInPressure', 'terminalInPressure'] },
+  { label: '可行性', keys: ['isFeasible', 'feasible'] },
+  { label: '年能耗', keys: ['totalEnergyConsumption', 'annualEnergyConsumption', 'energyConsumption'] },
+  { label: '总成本', keys: ['totalCost', 'annualCost'] },
+  { label: '推荐说明', keys: ['description', 'recommendation', 'remark'] },
+];
+
 function resolveOutputStyle(style?: string | null, label?: string | null): BusinessOutputStyle | undefined {
   if (style === 'simple' || style === 'professional' || style === 'presentation') return style;
   if (label === '简洁版') return 'simple';
@@ -386,7 +425,7 @@ function PreviewContent({ preview }: { preview: PreviewRecord | LocalReportRecor
         {preview.result.rawText ? (
           <div className="rounded-[24px] border border-white/8 bg-white/5 p-5 xl:col-span-2">
             <div className="text-lg font-semibold text-white">原始计算数据</div>
-            <pre className="mt-4 overflow-x-auto whitespace-pre-wrap rounded-2xl border border-white/8 bg-slate-950/60 px-4 py-4 text-xs leading-6 text-slate-200">
+            <pre className="report-raw-code mt-4 overflow-x-auto whitespace-pre-wrap rounded-2xl border border-white/8 bg-slate-950/60 px-4 py-4 text-xs leading-6 text-slate-200">
               {preview.result.rawText}
             </pre>
           </div>
@@ -575,7 +614,7 @@ function PreviewContent({ preview }: { preview: PreviewRecord | LocalReportRecor
       {preview.result.rawText ? (
         <div className="rounded-[24px] border border-white/8 bg-white/5 p-5 xl:col-span-2">
           <div className="text-lg font-semibold text-white">原始计算数据</div>
-          <pre className="mt-4 overflow-x-auto whitespace-pre-wrap rounded-2xl border border-white/8 bg-slate-950/60 px-4 py-4 text-xs leading-6 text-slate-200">
+          <pre className="report-raw-code mt-4 overflow-x-auto whitespace-pre-wrap rounded-2xl border border-white/8 bg-slate-950/60 px-4 py-4 text-xs leading-6 text-slate-200">
             {preview.result.rawText}
           </pre>
         </div>
@@ -933,34 +972,6 @@ function normalizeDynamicReport(value: unknown): DynamicReportResponsePayload | 
   };
 }
 
-function normalizePreviewRecord(record: LocalReportRecord): LocalReportRecord {
-  return {
-    ...record,
-    outputStyle:
-      record.outputStyle === 'simple' || record.outputStyle === 'professional' || record.outputStyle === 'presentation'
-        ? record.outputStyle
-        : undefined,
-    outputStyleLabel:
-      typeof record.outputStyleLabel === 'string' && record.outputStyleLabel.trim()
-        ? record.outputStyleLabel
-        : undefined,
-    result: {
-      ...record.result,
-      highlights: toLines(record.result.highlights),
-      summary: toLines(record.result.summary),
-      risks: normalizeRiskList(record.result.risks),
-      suggestions: normalizeSuggestionList(record.result.suggestions),
-      conclusion: typeof record.result.conclusion === 'string' ? record.result.conclusion : '',
-      rawText: typeof record.result.rawText === 'string' ? record.result.rawText : '',
-      report: normalizeDynamicReport(record.result.report),
-    },
-  };
-}
-
-function normalizeLocalReportRecords(records: LocalReportRecord[]) {
-  return records.map((item) => normalizePreviewRecord(item));
-}
-
 function getOutputStyleLabel(style?: string | null) {
   if (style === 'simple') return '简洁版';
   if (style === 'professional') return '专业版';
@@ -1197,6 +1208,271 @@ function getHistoryInputSource(history: CalculationHistory, input: JsonRecord) {
 
 function getHistoryOutputSource(history: CalculationHistory, output: JsonRecord) {
   return history.calcType?.toUpperCase() === 'SENSITIVITY' && isRecord(output.baseResult) ? output.baseResult : output;
+}
+
+function getHistoryCalcTypeKey(history: CalculationHistory) {
+  const calcType = history.calcType?.toUpperCase();
+  if (calcType === 'HYDRAULIC' || calcType === 'OPTIMIZATION' || calcType === 'SENSITIVITY') return calcType;
+  const typeLabel = getHistoryTypeLabel(history);
+  if (typeLabel.includes('水力')) return 'HYDRAULIC';
+  if (typeLabel.includes('优化')) return 'OPTIMIZATION';
+  if (typeLabel.includes('敏感')) return 'SENSITIVITY';
+  return 'NORMAL';
+}
+
+function pickRecordValue(record: JsonRecord, keys: string[]) {
+  for (const key of keys) {
+    const value = record[key];
+    if (value === null || value === undefined || value === '') continue;
+    return value;
+  }
+  return undefined;
+}
+
+function buildHistoryFieldRows(record: JsonRecord, fields: Array<{ label: string; keys: string[] }>) {
+  return fields
+    .map((field) => {
+      const value = pickRecordValue(record, field.keys);
+      if (value === undefined) return null;
+      return [field.label, formatFieldValue(value)];
+    })
+    .filter((item): item is [string, string] => Boolean(item));
+}
+
+function buildOptimizationPumpCombination(output: JsonRecord) {
+  const direct = pickFirstString(output, ['recommendedPumpCombination', 'pumpCombination']);
+  if (direct) return direct;
+
+  const pump375Num = toFiniteNumber(output.pump375Num);
+  const pump480Num = toFiniteNumber(output.pump480Num);
+  if (pump375Num !== null || pump480Num !== null) {
+    return `ZMB375 开启 ${pump375Num ?? 0} 台，ZMB480 开启 ${pump480Num ?? 0} 台`;
+  }
+
+  return '';
+}
+
+function buildSensitivitySummaryRows(output: JsonRecord) {
+  const baseResult = isRecord(output.baseResult) ? output.baseResult : output;
+  const rows: Array<[string, string]> = [];
+
+  const baseValue =
+    pickRecordValue(baseResult, ['endStationInPressure', 'frictionHeadLoss', 'totalHead']) ??
+    pickRecordValue(output, ['baseResultValue']);
+  if (baseValue !== undefined) rows.push(['基准结果', formatFieldValue(baseValue)]);
+
+  const sensitivityCoefficient = pickRecordValue(output, ['sensitivityCoefficient', 'coefficient']);
+  if (sensitivityCoefficient !== undefined) rows.push(['敏感系数', formatFieldValue(sensitivityCoefficient)]);
+
+  const maxImpact = pickRecordValue(output, ['maxImpactAmplitude', 'maxImpact', 'maximumImpact']);
+  if (maxImpact !== undefined) rows.push(['最大影响幅度', formatFieldValue(maxImpact)]);
+
+  const ranking = pickRecordValue(output, ['ranking', 'rank']);
+  if (ranking !== undefined) rows.push(['排名', formatFieldValue(ranking)]);
+
+  return rows;
+}
+
+function buildSensitivityDetailRows(output: JsonRecord) {
+  const details = Array.isArray(output.details)
+    ? output.details
+    : Array.isArray(output.detailList)
+      ? output.detailList
+      : Array.isArray(output.sensitivityDetails)
+        ? output.sensitivityDetails
+        : [];
+
+  return details
+    .filter((item): item is JsonRecord => isRecord(item))
+    .map((item) => [
+      formatFieldValue(pickRecordValue(item, ['changePercent', 'ratio', 'changeRate'])),
+      formatFieldValue(pickRecordValue(item, ['pressure', 'endStationInPressure'])),
+      formatFieldValue(pickRecordValue(item, ['frictionHeadLoss', 'frictionLoss'])),
+      formatFieldValue(pickRecordValue(item, ['flowRegime', 'regime'])),
+    ]);
+}
+
+function buildHistoryStructuredReport(
+  history: CalculationHistory,
+  inputSource: JsonRecord,
+  outputSource: JsonRecord,
+  summary: string[],
+  risks: RiskItem[],
+  suggestions: SuggestionItem[],
+  conclusion: string,
+  rawText: string,
+): DynamicReportResponsePayload {
+  const typeKey = getHistoryCalcTypeKey(history);
+  const sections: DynamicReportSectionPayload[] = [
+    {
+      id: 'history-summary',
+      kind: 'bullets',
+      title: '记录概览',
+      summary: '普通报告基于历史计算记录回放生成。',
+      content: undefined,
+      metrics: [],
+      items: summary.map((item, index) => ({ title: `要点 ${index + 1}`, content: item })),
+      table: null,
+    },
+  ];
+
+  const inputRows = buildHistoryFieldRows(inputSource, COMMON_HISTORY_INPUT_FIELDS);
+  if (inputRows.length) {
+    sections.push({
+      id: 'history-inputs',
+      kind: 'table',
+      title: '计算入参',
+      summary: '报告统一展示本次普通计算使用的关键输入参数。',
+      content: undefined,
+      metrics: [],
+      items: [],
+      table: {
+        columns: ['参数项', '参数值'],
+        rows: inputRows,
+      },
+    });
+  }
+
+  if (typeKey === 'HYDRAULIC') {
+    const hydraulicRows = buildHistoryFieldRows(outputSource, HYDRAULIC_RESULT_FIELDS);
+    if (hydraulicRows.length) {
+      sections.push({
+        id: 'history-hydraulic-results',
+        kind: 'table',
+        title: '水力结果',
+        summary: '展示水力分析对应的核心计算结果。',
+        content: undefined,
+        metrics: [],
+        items: [],
+        table: {
+          columns: ['结果项', '结果值'],
+          rows: hydraulicRows,
+        },
+      });
+    }
+  }
+
+  if (typeKey === 'OPTIMIZATION') {
+    const optimizationRecord: JsonRecord = {
+      ...outputSource,
+      recommendedPumpCombination: buildOptimizationPumpCombination(outputSource) || outputSource.recommendedPumpCombination,
+    };
+    const optimizationRows = buildHistoryFieldRows(optimizationRecord, OPTIMIZATION_RESULT_FIELDS);
+    if (optimizationRows.length) {
+      sections.push({
+        id: 'history-optimization-results',
+        kind: 'table',
+        title: '优化结果',
+        summary: '展示泵组优化计算输出的方案与经济性结果。',
+        content: undefined,
+        metrics: [],
+        items: [],
+        table: {
+          columns: ['结果项', '结果值'],
+          rows: optimizationRows,
+        },
+      });
+    }
+  }
+
+  if (typeKey === 'SENSITIVITY') {
+    const sensitivityRows = buildSensitivitySummaryRows(parseJsonRecord(history.outputResult));
+    if (sensitivityRows.length) {
+      sections.push({
+        id: 'history-sensitivity-results',
+        kind: 'table',
+        title: '敏感性结果',
+        summary: '展示敏感性分析的基准结果、敏感系数和影响排序。',
+        content: undefined,
+        metrics: [],
+        items: [],
+        table: {
+          columns: ['结果项', '结果值'],
+          rows: sensitivityRows,
+        },
+      });
+    }
+
+    const sensitivityDetailRows = buildSensitivityDetailRows(parseJsonRecord(history.outputResult));
+    if (sensitivityDetailRows.length) {
+      sections.push({
+        id: 'history-sensitivity-detail',
+        kind: 'table',
+        title: '各变化比例下的压力/摩阻/流态明细',
+        summary: '展示不同变化比例下的压力、摩阻与流态明细。',
+        content: undefined,
+        metrics: [],
+        items: [],
+        table: {
+          columns: ['变化比例', '压力', '摩阻', '流态'],
+          rows: sensitivityDetailRows,
+        },
+      });
+    }
+  }
+
+  if (risks.length) {
+    sections.push({
+      id: 'history-risks',
+      kind: 'bullets',
+      title: '主要风险',
+      summary: '基于本次计算结果识别出的重点风险。',
+      content: undefined,
+      metrics: [],
+      items: risks.map((item) => ({
+        title: `${item.riskType}（${item.level}）`,
+        content: `${item.reason} 建议：${item.suggestion}`,
+      })),
+      table: null,
+    });
+  }
+
+  if (suggestions.length) {
+    sections.push({
+      id: 'history-suggestions',
+      kind: 'bullets',
+      title: '优化建议',
+      summary: '根据本次普通计算结果整理出的建议动作。',
+      content: undefined,
+      metrics: [],
+      items: suggestions.map((item) => ({
+        title: `${item.target}（${item.priority}）`,
+        content: `${item.action} 预期：${item.expected}`,
+      })),
+      table: null,
+    });
+  }
+
+  if (conclusion) {
+    sections.push({
+      id: 'history-conclusion',
+      kind: 'callout',
+      title: '报告结论',
+      summary: undefined,
+      content: conclusion,
+      metrics: [],
+      items: [],
+      table: null,
+    });
+  }
+
+  return {
+    title: `${history.projectName || '未命名项目'} ${getHistoryTypeLabel(history)}`,
+    abstract: summary[0] || '普通计算记录结构化报告。',
+    source: 'rules',
+    summary,
+    highlights: summary.slice(0, 3),
+    risks,
+    suggestions,
+    conclusion,
+    sections,
+    metadata: {
+      history_id: history.id,
+      calc_type: history.calcType || '',
+      structured_from_history: true,
+    },
+    raw_text: rawText,
+  };
 }
 
 function isHistoryAbnormal(history: CalculationHistory) {
@@ -1497,71 +1773,145 @@ function buildAnalysisSuggestions(
   return suggestions.slice(0, 4);
 }
 
-function buildHistorySuggestions(history: CalculationHistory, outputSource: JsonRecord) {
+function buildHistorySuggestions(history: CalculationHistory, inputSource: JsonRecord, outputSource: JsonRecord) {
   const calcType = history.calcType?.toUpperCase();
   const projectName = history.projectName || DEFAULT_ANALYSIS_TARGET;
   const suggestions: SuggestionItem[] = [];
 
+  const pushSuggestion = (item: SuggestionItem | null) => {
+    if (!item) return;
+    const key = `${item.target}-${item.reason}-${item.action}`;
+    if (suggestions.some((current) => `${current.target}-${current.reason}-${current.action}` === key)) return;
+    suggestions.push(item);
+  };
+
   if (calcType === 'HYDRAULIC') {
-    if (typeof outputSource.endStationInPressure === 'number' && outputSource.endStationInPressure <= 0) {
-      suggestions.push(buildSuggestionItem(
+    const endPressure = toFiniteNumber(outputSource.endStationInPressure);
+    const totalHead = toFiniteNumber(outputSource.totalHead);
+    const frictionLoss = toFiniteNumber(outputSource.frictionHeadLoss);
+    const frictionRatio = totalHead && frictionLoss !== null && totalHead > 0 ? frictionLoss / totalHead : null;
+    const reynoldsNumber = toFiniteNumber(outputSource.reynoldsNumber);
+    const flowRegime = pickFirstString(outputSource, ['flowRegime', 'regime']);
+
+    if (endPressure !== null && endPressure <= 0) {
+      pushSuggestion(buildSuggestionItem(
         projectName,
-        '末站进站压头小于等于 0，当前输送工况存在不可行风险。',
-        '优先复核首站进站压头、泵扬程和沿程摩阻参数。',
-        '恢复末站正压后可重新校核工况可行性。',
+        `末站进站压头为 ${formatFieldValue(endPressure)}，当前工况无法保证末站正压。`,
+        '优先复核首站进站压头、泵扬程和沿程参数，再重新执行本次水力计算。',
+        '恢复末站正压后再校核工况可行性，避免不可行工况直接进入运行。',
         '高',
       ));
-    } else {
-      suggestions.push(buildSuggestionItem(
+    }
+
+    if (frictionRatio !== null && frictionRatio >= 0.7) {
+      pushSuggestion(buildSuggestionItem(
         projectName,
-        '当前水力分析已形成有效结果，仍需持续跟踪末站压力与摩阻损失。',
-        '结合末站进站压头和摩阻损失持续复核当前输送工况。',
+        `摩阻损失占总扬程 ${formatPercent(frictionRatio)}，沿程压降偏高。`,
+        '复核管道粗糙度、长度口径和当前流量设定，必要时拆分峰值工况后重算。',
+        '有助于回收部分扬程裕度并降低压降风险。',
+        frictionRatio >= 0.85 ? '高' : '中',
+      ));
+    }
+
+    if (reynoldsNumber !== null && reynoldsNumber < 4000) {
+      pushSuggestion(buildSuggestionItem(
+        projectName,
+        `雷诺数为 ${formatFieldValue(reynoldsNumber)}，当前流态接近或处于非充分湍流状态。`,
+        '结合流量、粘度和管径参数复核当前工况，确认模型输入是否与现场工况一致。',
+        `可避免在 ${flowRegime || '当前'} 流态下误判摩阻与压力结果。`,
+        '中',
+      ));
+    }
+
+    if (!suggestions.length) {
+      pushSuggestion(buildSuggestionItem(
+        projectName,
+        '当前水力分析结果整体可用，建议继续围绕压力与摩阻做趋势跟踪。',
+        '持续跟踪末站进站压头、总扬程和摩阻损失变化，并按周期复算。',
         '有助于提前发现压降抬升趋势。',
         '中',
       ));
     }
   } else if (calcType === 'OPTIMIZATION') {
-    if (outputSource.isFeasible === false) {
-      suggestions.push(buildSuggestionItem(
+    const feasible = outputSource.isFeasible === false ? false : outputSource.isFeasible === true ? true : null;
+    const endPressure = toFiniteNumber(outputSource.endStationInPressure);
+    const totalCost = toFiniteNumber(outputSource.totalCost);
+    const totalEnergy = toFiniteNumber(outputSource.totalEnergyConsumption);
+    const totalPressureDrop = toFiniteNumber(outputSource.totalPressureDrop);
+    const pump480Num = toFiniteNumber(outputSource.pump480Num);
+    const pump375Num = toFiniteNumber(outputSource.pump375Num);
+
+    if (feasible === false) {
+      pushSuggestion(buildSuggestionItem(
         projectName,
-        '当前泵机组合未满足末站压力约束，优化结果不可行。',
-        '调整泵机组合或运行流量后重新执行优化计算。',
-        '优先筛出可行方案，减少无效调度试算。',
+        `当前推荐泵组合不可行${endPressure !== null ? `，末站进站压头仅 ${formatFieldValue(endPressure)}` : ''}。`,
+        `结合当前泵组合${pump480Num !== null || pump375Num !== null ? `（480 型 ${pump480Num ?? 0} 台，375 型 ${pump375Num ?? 0} 台）` : ''}重新约束流量与压力后再执行优化。`,
+        '先筛出可行组合，再对能耗和成本做二次优化，避免无效调度试算。',
         '高',
       ));
-    } else {
-      suggestions.push(buildSuggestionItem(
+    }
+
+    if (feasible === true && totalEnergy !== null) {
+      pushSuggestion(buildSuggestionItem(
         projectName,
-        '当前优化记录已给出可行泵机组合，具备继续压缩电耗的基础。',
-        '优先落地当前可行泵机组合，并结合电价继续校核总成本。',
-        '在满足末站压力前提下降低综合运行成本。',
+        `当前优化方案可行，年能耗约 ${formatFieldValue(totalEnergy)}${totalCost !== null ? `，总成本约 ${formatFieldValue(totalCost)}` : ''}。`,
+        '优先落地当前可行泵组合，并结合电价、工作天数和末站压力做经济性复核。',
+        '在满足压力约束的前提下继续压降综合运行成本。',
+        '中',
+      ));
+    }
+
+    if (totalPressureDrop !== null && totalPressureDrop > 0) {
+      pushSuggestion(buildSuggestionItem(
+        projectName,
+        `本次优化结果总压降为 ${formatFieldValue(totalPressureDrop)}。`,
+        '对高压降工况单独建立监测口径，联动复核粗糙度、流量和扬程配置。',
+        '可减少后续重复优化中由压降抬升带来的偏差。',
         '中',
       ));
     }
   } else if (calcType === 'SENSITIVITY') {
-    suggestions.push(buildSuggestionItem(
+    const fullOutput = parseJsonRecord(history.outputResult);
+    const variableType = pickFirstString(fullOutput, ['variableType', 'sensitiveVariableType'])
+      || pickFirstString(inputSource, ['variableType', 'sensitiveVariableType']);
+    const coefficient = pickRecordValue(fullOutput, ['sensitivityCoefficient', 'coefficient']);
+    const maxImpact = pickRecordValue(fullOutput, ['maxImpactAmplitude', 'maxImpact', 'maximumImpact']);
+    const ranking = pickRecordValue(fullOutput, ['ranking', 'rank']);
+    const details = buildSensitivityDetailRows(fullOutput);
+
+    pushSuggestion(buildSuggestionItem(
       projectName,
-      '敏感性分析已识别关键变量，后续优化应优先围绕高敏感参数展开。',
-      '优先关注敏感度排名靠前的变量，并复核其现场测量值。',
-      '可提升参数校核效率并减少重复试算。',
+      `${variableType ? `${variableType} ` : ''}敏感性结果已生成${coefficient !== undefined ? `，敏感系数为 ${formatFieldValue(coefficient)}` : ''}${maxImpact !== undefined ? `，最大影响幅度为 ${formatFieldValue(maxImpact)}` : ''}。`,
+      `优先跟踪${ranking !== undefined ? `排名 ${formatFieldValue(ranking)} 的` : '高敏感'}变量，并复核其现场测量值与计算入参口径。`,
+      '可优先锁定真正影响压力、摩阻和流态变化的关键参数。',
       '中',
     ));
+
+    if (details.length) {
+      pushSuggestion(buildSuggestionItem(
+        projectName,
+        `当前已得到 ${details.length} 组变化比例下的压力/摩阻/流态明细。`,
+        '将变化比例与压力、摩阻明细联动建成监控阈值，优先对拐点变化区间做复算。',
+        '后续复算时可直接聚焦高影响区间，减少全量试算次数。',
+        '中',
+      ));
+    }
   } else {
-    suggestions.push(buildSuggestionItem(
+    pushSuggestion(buildSuggestionItem(
       projectName,
-      '该历史记录缺少可直接执行的专项优化动作，需要先回放关键入参与结果。',
-      '结合原始入参与输出结果复核该历史记录，并按需重新计算。',
-      '为后续形成专项整改建议提供依据。',
+      '该历史记录缺少专项诊断类型，暂无法直接给出针对性优化动作。',
+      '先回放本次真实输入参数和输出结果，再决定是否重跑水力、优化或敏感性分析。',
+      '保证后续建议建立在真实计算结果而不是摘要文本之上。',
       '中',
     ));
   }
 
   if (history.remark?.trim()) {
-    suggestions.push(buildSuggestionItem(
+    pushSuggestion(buildSuggestionItem(
       projectName,
-      '该记录附带人工备注，需要纳入后续跟踪。',
+      '该记录附带人工备注，需要和本次真实计算结果一起纳入闭环处理。',
       `跟踪备注事项：${history.remark.trim()}`,
-      '补齐现场反馈后可形成闭环处置记录。',
+      '补充现场反馈后形成处置记录，并与本次参数及结果做关联留档。',
       '中',
     ));
   }
@@ -1801,6 +2151,18 @@ function buildHistoryPreview(history: CalculationHistory): PreviewRecord {
     Object.keys(input).length ? `输入参数\n${JSON.stringify(input, null, 2)}` : '',
     Object.keys(output).length ? `输出结果\n${JSON.stringify(output, null, 2)}` : '',
   ].filter(Boolean);
+  const rawText = rawSections.join('\n\n');
+  const suggestions = buildHistorySuggestions(history, inputSource, outputSource);
+  const structuredReport = buildHistoryStructuredReport(
+    history,
+    inputSource,
+    outputSource,
+    summary,
+    risks.slice(0, 6),
+    suggestions,
+    conclusion,
+    rawText,
+  );
 
   return {
     id: `history-preview-${history.id}`,
@@ -1817,9 +2179,10 @@ function buildHistoryPreview(history: CalculationHistory): PreviewRecord {
       highlights: summary.slice(0, 3),
       summary,
       risks: risks.slice(0, 6),
-      suggestions: buildHistorySuggestions(history, outputSource),
+      suggestions,
       conclusion,
-      rawText: rawSections.join('\n\n'),
+      rawText,
+      report: structuredReport,
     },
   };
 }
@@ -2250,7 +2613,7 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
   const [pumpStations, setPumpStations] = useState<PumpStation[]>([]);
   const [oilProperties, setOilProperties] = useState<OilProperty[]>([]);
   const [histories, setHistories] = useState<CalculationHistory[]>([]);
-  const [localReports, setLocalReports] = useState<LocalReportRecord[]>(() => normalizeLocalReportRecords(readStorage(HISTORY_KEY, [] as LocalReportRecord[])));
+  const [localReports, setLocalReports] = useState<LocalReportRecord[]>([]);
   const [analysisCount, setAnalysisCount] = useState<number>(() => readStorage(COUNT_KEY, 0));
   const [selectedProjectIds, setSelectedProjectIds] = useState<number[]>(
     Array.isArray(savedTemplate?.selectedProjectIds) ? (savedTemplate.selectedProjectIds as number[]) : [],
@@ -2640,6 +3003,10 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
         }
       } catch (error) {
         console.error('Dynamic business report generation failed:', error);
+        setBusinessDynamicReport(null);
+        setBusinessReport(null);
+        message.error(error instanceof Error ? `智能报告生成失败：${error.message}` : '智能报告生成失败，请检查服务端接口和数据库数据');
+        return;
       }
 
       const flowValues = businessHistories
@@ -3133,6 +3500,10 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
       setAnalysing(false);
     }
 
+    if (!result.report) {
+      return null;
+    }
+
     const preview: PreviewRecord = {
       id: `preview-${Date.now()}`,
       title: `${selectedProjects.map((item) => item.name).join('、')} ${REPORT_TYPE_OPTIONS.find((item) => item.value === reportType)?.label ?? '智能分析报告'}`,
@@ -3168,10 +3539,7 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
       setActivePreview(savedPreview);
       message.success('报告已保存到历史报告区');
     } catch (error) {
-      const record: LocalReportRecord = { ...preview, id: `local-${Date.now()}`, selectedProjectIds: [...selectedProjectIds] };
-      setLocalReports((current) => [record, ...current].slice(0, 30));
-      setActivePreview(record);
-      message.warning(error instanceof Error ? `数据库保存失败，已暂存本地：${error.message}` : '数据库保存失败，已暂存本地');
+      message.error(error instanceof Error ? `数据库保存失败：${error.message}` : '数据库保存失败');
     }
   }, [activePreview, runAnalysis, selectedProjectIds]);
 

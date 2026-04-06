@@ -247,46 +247,79 @@ class DiagnosisEngine:
     ) -> list[RecommendationFinding]:
         recommendations: list[RecommendationFinding] = []
         goal_label = optimization_goal_label(request.optimization_goal)
+        constraint_map = {item.name: item for item in constraints}
 
         for cause in causes:
+            evidence_text = '?'.join(cause.evidence[:2]) if cause.evidence else ''
             if cause.metric == "pump_efficiency":
-                action = "优先复核低效率泵组的启停组合，并核查当前输量下是否存在低负荷运行"
+                action = "????????????????????????????????"
                 if request.optimization_goal == "safety":
-                    action = "在保证出口压力冗余的前提下，逐步收敛低效率泵组组合"
+                    action = "??????????????????????????????????????"
+                expected = f"???????????{goal_label or '??????'}"
+                if evidence_text:
+                    expected = f"?? {evidence_text}??????????????"
                 recommendations.append(
                     RecommendationFinding(
                         target=cause.target,
-                        priority="高",
-                        reason=cause.primary_cause,
+                        priority="?",
+                        reason=f"{cause.primary_cause}{f'?{evidence_text}?' if evidence_text else ''}",
                         action=action,
-                        expected=f"降低单位输量能耗，贴近 {goal_label or '当前优化目标'}",
+                        expected=expected,
                     )
                 )
             elif cause.metric == "pressure_loss_risk":
-                action = "优先校核高输量工况下的粗糙度和压损参数，并评估分段调度或调泵方案"
+                action = "??????????????????????????"
                 if not request.allow_pump_adjust:
-                    action = "先评估适度下调输量是否能恢复压力余量，再决定是否放开调泵限制"
+                    action = "???????????????????????????????"
+                expected = "??????????????????"
+                if evidence_text:
+                    expected = f"?? {evidence_text}????????????????"
                 recommendations.append(
                     RecommendationFinding(
                         target=cause.target,
-                        priority="高",
-                        reason=cause.primary_cause,
+                        priority="?",
+                        reason=f"{cause.primary_cause}{f'?{evidence_text}?' if evidence_text else ''}",
                         action=action,
-                        expected="降低高输量工况下的压损和约束冲突风险",
+                        expected=expected,
                     )
                 )
 
-        for item in constraints:
-            if item.name == "输量目标缺口":
-                recommendations.append(
-                    RecommendationFinding(
-                        target="运行目标",
-                        priority="中",
-                        reason=item.summary,
-                        action="补充对象级时序样本后重新评估目标输量，必要时分阶段逼近目标",
-                        expected="减少目标设定与实际工况的偏差",
-                    )
+        flow_gap = constraint_map.get("??????")
+        if flow_gap is not None:
+            recommendations.append(
+                RecommendationFinding(
+                    target="????",
+                    priority="?",
+                    reason=flow_gap.summary,
+                    action="?????????????????????????????????????????",
+                    expected="???????????????????",
                 )
+            )
+
+        pressure_gap = constraint_map.get("??????")
+        if pressure_gap is not None:
+            recommendations.append(
+                RecommendationFinding(
+                    target="????",
+                    priority="?" if pressure_gap.severity == "high" else "?",
+                    reason=pressure_gap.summary,
+                    action="?????????????????????????????????????????",
+                    expected="??????????????????????",
+                )
+            )
+
+        pump_limit = constraint_map.get("????")
+        if pump_limit is not None:
+            recommendations.append(
+                RecommendationFinding(
+                    target="????",
+                    priority="?",
+                    reason=pump_limit.summary,
+                    action="???????????????????????????????????",
+                    expected="??????????????????????",
+                )
+            )
+
         return recommendations[:6]
 
     def build_risks(

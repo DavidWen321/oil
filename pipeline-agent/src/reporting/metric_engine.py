@@ -49,10 +49,10 @@ def build_metric_snapshot(data: ReportDataBundle, request: DynamicReportRequest)
     failed_count = int(overview.get("failedCount") or 0)
     success_rate = _to_float(overview.get("successRate"))
 
+    # Do not synthesize pressure gap from roughness/length heuristics.
+    # Until real station pressure series is loaded from backend services,
+    # keep this field empty to avoid presenting estimated values as facts.
     min_pressure_gap = None
-    if request.min_pressure is not None and avg_roughness is not None:
-        estimated_pressure_loss = avg_roughness * (avg_length or 1.0)
-        min_pressure_gap = request.min_pressure - estimated_pressure_loss
 
     target_flow_gap = None
     if request.target_throughput is not None:
