@@ -234,6 +234,8 @@ public class CalculationHistoryController {
         payload.put("projectNames", request.getProjectNames() == null ? List.of() : request.getProjectNames());
         payload.put("rangeLabel", request.getRangeLabel());
         payload.put("intelligenceLabel", request.getIntelligenceLabel());
+        payload.put("outputStyle", request.getOutputStyle());
+        payload.put("outputStyleLabel", request.getOutputStyleLabel());
         payload.put("outputFormat", request.getOutputFormat());
         payload.put("sourceLabel", request.getSourceLabel());
         return payload;
@@ -244,8 +246,10 @@ public class CalculationHistoryController {
             return "智能报告已归档";
         }
 
+        String outputStyle = request.getOutputStyle();
         Object conclusion = request.getResult().get("conclusion");
-        if (conclusion instanceof String conclusionText && !conclusionText.isBlank()) {
+        if (!"simple".equals(outputStyle) && !"professional".equals(outputStyle)
+                && conclusion instanceof String conclusionText && !conclusionText.isBlank()) {
             return limitRemark(conclusionText);
         }
 

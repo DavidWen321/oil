@@ -28,6 +28,10 @@ public class ReportHistoryCreateRequest {
 
     private String intelligenceLabel;
 
+    private String outputStyle;
+
+    private String outputStyleLabel;
+
     private String outputFormat;
 
     private String sourceLabel;

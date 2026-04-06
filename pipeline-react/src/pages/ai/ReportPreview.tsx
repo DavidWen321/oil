@@ -14,6 +14,7 @@ import { calculationHistoryApi, oilPropertyApi, pipelineApi, projectApi, pumpSta
 import { agentApi } from '../../api/agent';
 import AnimatedPage from '../../components/common/AnimatedPage';
 import DynamicReportView from '../../components/reporting/DynamicReportView';
+import { useThemeStore } from '../../stores/themeStore';
 import type { CalculationHistory, OilProperty, PageResult, Pipeline, Project, PumpStation, R, SaveReportRequest } from '../../types';
 import type {
   DynamicReportRequestPayload,
@@ -75,6 +76,8 @@ type PreviewRecord = {
   rangeLabel: string;
   intelligenceLabel: string;
   projectNames: string[];
+  outputStyle?: BusinessOutputStyle;
+  outputStyleLabel?: string;
   outputFormat: OutputFormat;
   sourceLabel: string;
   result: ReportResult;
@@ -102,6 +105,7 @@ type HistoryItem = {
   title: string;
   time: string;
   summary: string;
+  outputStyleLabel?: string;
   preview?: PreviewRecord | LocalReportRecord;
 };
 
@@ -231,6 +235,59 @@ const BUSINESS_OUTPUT_STYLE_HINTS: Record<BusinessOutputStyle, { title: string; 
   },
 };
 
+function resolveOutputStyle(style?: string | null, label?: string | null): BusinessOutputStyle | undefined {
+  if (style === 'simple' || style === 'professional' || style === 'presentation') return style;
+  if (label === '简洁版') return 'simple';
+  if (label === '专业版') return 'professional';
+  if (label === '汇报版') return 'presentation';
+  return undefined;
+}
+
+function getOutputStyleMeta(style?: string | null, label?: string | null) {
+  const resolvedStyle = resolveOutputStyle(style, label);
+  if (resolvedStyle === 'simple') {
+    return {
+      style: resolvedStyle,
+      label: '简洁版',
+      audience: '适合快速查看',
+      emphasis: '只保留核心结论、关键指标和直接建议',
+      cardClassName: 'border-emerald-300/25 bg-emerald-400/8',
+      stripeClassName: 'from-emerald-300 via-cyan-300 to-transparent',
+      badgeClassName: 'border-emerald-300/30 bg-emerald-400/10 text-emerald-100',
+      chips: ['短摘要', '少章节', '快决策'],
+    };
+  }
+
+  if (resolvedStyle === 'presentation') {
+    return {
+      style: resolvedStyle,
+      label: '汇报版',
+      audience: '适合领导汇报',
+      emphasis: '突出结论、风险和行动项，弱化过程细节',
+      cardClassName: 'border-amber-300/25 bg-amber-400/8',
+      stripeClassName: 'from-amber-300 via-orange-300 to-transparent',
+      badgeClassName: 'border-amber-300/30 bg-amber-400/10 text-amber-50',
+      chips: ['结论优先', '风险突出', '行动导向'],
+    };
+  }
+
+  return {
+    style: 'professional' as const,
+    label: '专业版',
+    audience: '适合技术审阅',
+    emphasis: '保留完整分析结构、诊断过程、风险与建议',
+    cardClassName: 'border-cyan-300/25 bg-cyan-400/8',
+    stripeClassName: 'from-cyan-300 via-blue-300 to-transparent',
+    badgeClassName: 'border-cyan-300/30 bg-cyan-400/10 text-cyan-50',
+    chips: ['结构完整', '细节充分', '技术分析'],
+  };
+}
+
+function formatPreviewTitle(title: string, style?: string | null, label?: string | null) {
+  const styleMeta = getOutputStyleMeta(style, label);
+  return title.includes(styleMeta.label) ? title : `${title} · ${styleMeta.label}`;
+}
+
 const BUSINESS_OPTIMIZATION_GOAL_OPTIONS: Array<{ label: string; value: BusinessOptimizationGoal }> = [
   { label: '能耗最低', value: 'energy' },
   { label: '费用最低', value: 'cost' },
@@ -246,6 +303,11 @@ const BUSINESS_EXAMPLE_PROMPTS = [
 ];
 
 function PreviewContent({ preview }: { preview: PreviewRecord | LocalReportRecord }) {
+  const styleMeta = getOutputStyleMeta(preview.outputStyle, preview.outputStyleLabel);
+  const sectionCount = preview.result.report?.sections?.length ?? 0;
+  const summaryCount = preview.result.summary.length;
+  const riskCount = preview.result.risks.length;
+
   if (preview.result.report?.sections?.length) {
     return (
       <div className="grid gap-4 xl:grid-cols-2">
@@ -282,6 +344,41 @@ function PreviewContent({ preview }: { preview: PreviewRecord | LocalReportRecor
           </div>
         </div>
 
+        <div className={`relative overflow-hidden rounded-[24px] border p-5 shadow-[0_18px_40px_rgba(15,23,42,0.22)] xl:col-span-2 ${styleMeta.cardClassName}`}>
+          <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${styleMeta.stripeClassName}`} />
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <Tag color="geekblue">{styleMeta.label}</Tag>
+                <span className="text-sm text-slate-300">{styleMeta.audience}</span>
+              </div>
+              <div className="mt-3 text-lg font-semibold text-white">{formatPreviewTitle(preview.title, preview.outputStyle, preview.outputStyleLabel)}</div>
+              <div className="mt-2 text-sm leading-7 text-slate-300">{styleMeta.emphasis}</div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {styleMeta.chips.map((item) => (
+                  <span key={item} className={`rounded-full border px-3 py-1 text-xs ${styleMeta.badgeClassName}`}>
+                    {item}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div className="grid min-w-[260px] gap-3 sm:grid-cols-3 lg:w-[360px]">
+              <div className="rounded-2xl border border-white/10 bg-slate-950/30 px-4 py-3">
+                <div className="text-xs uppercase tracking-[0.18em] text-slate-400">摘要</div>
+                <div className="mt-2 text-2xl font-semibold text-white">{summaryCount}</div>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-slate-950/30 px-4 py-3">
+                <div className="text-xs uppercase tracking-[0.18em] text-slate-400">章节</div>
+                <div className="mt-2 text-2xl font-semibold text-white">{sectionCount}</div>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-slate-950/30 px-4 py-3">
+                <div className="text-xs uppercase tracking-[0.18em] text-slate-400">风险</div>
+                <div className="mt-2 text-2xl font-semibold text-white">{riskCount}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div className="xl:col-span-2">
           <DynamicReportView report={preview.result.report} />
         </div>
@@ -294,6 +391,7 @@ function PreviewContent({ preview }: { preview: PreviewRecord | LocalReportRecor
             </pre>
           </div>
         ) : null}
+
       </div>
     );
   }
@@ -482,6 +580,7 @@ function PreviewContent({ preview }: { preview: PreviewRecord | LocalReportRecor
           </pre>
         </div>
       ) : null}
+
     </div>
   );
 }
@@ -837,6 +936,14 @@ function normalizeDynamicReport(value: unknown): DynamicReportResponsePayload | 
 function normalizePreviewRecord(record: LocalReportRecord): LocalReportRecord {
   return {
     ...record,
+    outputStyle:
+      record.outputStyle === 'simple' || record.outputStyle === 'professional' || record.outputStyle === 'presentation'
+        ? record.outputStyle
+        : undefined,
+    outputStyleLabel:
+      typeof record.outputStyleLabel === 'string' && record.outputStyleLabel.trim()
+        ? record.outputStyleLabel
+        : undefined,
     result: {
       ...record.result,
       highlights: toLines(record.result.highlights),
@@ -852,6 +959,69 @@ function normalizePreviewRecord(record: LocalReportRecord): LocalReportRecord {
 
 function normalizeLocalReportRecords(records: LocalReportRecord[]) {
   return records.map((item) => normalizePreviewRecord(item));
+}
+
+function getOutputStyleLabel(style?: string | null) {
+  if (style === 'simple') return '简洁版';
+  if (style === 'professional') return '专业版';
+  if (style === 'presentation') return '汇报版';
+  return '';
+}
+
+function getOutputStyleFromLabel(label?: string | null): BusinessOutputStyle | undefined {
+  if (label === '简洁版') return 'simple';
+  if (label === '专业版') return 'professional';
+  if (label === '汇报版') return 'presentation';
+  return undefined;
+}
+
+function buildHistorySummary(preview?: PreviewRecord | LocalReportRecord) {
+  if (!preview) {
+    return '已生成智能报告。';
+  }
+
+  const style = preview.outputStyle ?? getOutputStyleFromLabel(preview.outputStyleLabel);
+  const reportAbstract = preview.result.report?.abstract?.trim() || '';
+  const firstSummary = preview.result.summary[0]?.trim() || '';
+  const secondSummary = preview.result.summary[1]?.trim() || '';
+  const firstHighlight = preview.result.highlights[0]?.trim() || '';
+  const conclusion = preview.result.conclusion?.trim() || '';
+
+  if (style === 'simple') {
+    return firstSummary || firstHighlight || conclusion || reportAbstract || '已生成简洁版报告。';
+  }
+
+  if (style === 'presentation') {
+    return conclusion || firstHighlight || firstSummary || reportAbstract || '已生成汇报版报告。';
+  }
+
+  return reportAbstract || [firstSummary, secondSummary].filter(Boolean).join(' ') || conclusion || '已生成专业版报告。';
+}
+
+function buildRichHistorySummary(preview?: PreviewRecord | LocalReportRecord) {
+  if (!preview) {
+    return '已生成智能报告。';
+  }
+
+  const legacySummary = buildHistorySummary(preview);
+  const styleMeta = getOutputStyleMeta(preview.outputStyle, preview.outputStyleLabel);
+  const reportAbstract = preview.result.report?.abstract?.trim() || '';
+  const firstSummary = preview.result.summary[0]?.trim() || '';
+  const secondSummary = preview.result.summary[1]?.trim() || '';
+  const firstHighlight = preview.result.highlights[0]?.trim() || '';
+  const conclusion = preview.result.conclusion?.trim() || '';
+  const sectionCount = preview.result.report?.sections?.length ?? 0;
+  const metricsLabel = `${preview.result.summary.length} 条摘要 / ${sectionCount} 个章节`;
+
+  if (styleMeta.style === 'simple') {
+    return `${styleMeta.label} · ${metricsLabel} · ${firstSummary || firstHighlight || reportAbstract || conclusion || legacySummary}`;
+  }
+
+  if (styleMeta.style === 'presentation') {
+    return `${styleMeta.label} · ${metricsLabel} · ${conclusion || firstHighlight || firstSummary || reportAbstract || legacySummary}`;
+  }
+
+  return `${styleMeta.label} · ${metricsLabel} · ${reportAbstract || [firstSummary, secondSummary].filter(Boolean).join(' ') || conclusion || legacySummary}`;
 }
 
 function escapeMarkdownTableCell(value: string) {
@@ -1537,6 +1707,8 @@ function buildHistoryPreview(history: CalculationHistory): PreviewRecord {
   const archivedRangeLabel = pickFirstString(input, ['rangeLabel']) || '单次计算记录';
   const archivedIntelligenceLabel = pickFirstString(input, ['intelligenceLabel']) || '历史回放';
   const archivedSourceLabel = pickFirstString(input, ['sourceLabel']) || '服务端历史记录';
+  const archivedOutputStyle = pickFirstString(input, ['outputStyle']);
+  const archivedOutputStyleLabel = pickFirstString(input, ['outputStyleLabel']) || getOutputStyleLabel(archivedOutputStyle);
   const archivedOutputFormat = pickFirstString(input, ['outputFormat']);
 
   if (archivedTitle && (archivedResult.report || archivedResult.summary.length || archivedResult.conclusion)) {
@@ -1548,6 +1720,11 @@ function buildHistoryPreview(history: CalculationHistory): PreviewRecord {
       rangeLabel: archivedRangeLabel,
       intelligenceLabel: archivedIntelligenceLabel,
       projectNames: archivedProjectNames.length ? archivedProjectNames : [history.projectName || '未命名项目'],
+      outputStyle:
+        archivedOutputStyle === 'simple' || archivedOutputStyle === 'professional' || archivedOutputStyle === 'presentation'
+          ? archivedOutputStyle
+          : undefined,
+      outputStyleLabel: archivedOutputStyleLabel || undefined,
       outputFormat: archivedOutputFormat === 'pdf' || archivedOutputFormat === 'docx' ? archivedOutputFormat : 'markdown',
       sourceLabel: archivedSourceLabel,
       result: archivedResult,
@@ -1725,6 +1902,8 @@ function buildSaveReportPayload(preview: PreviewRecord, selectedProjectIds: numb
     projectNames: preview.projectNames,
     rangeLabel: preview.rangeLabel,
     intelligenceLabel: preview.intelligenceLabel,
+    outputStyle: preview.outputStyle,
+    outputStyleLabel: preview.outputStyleLabel,
     outputFormat: preview.outputFormat,
     sourceLabel: preview.sourceLabel,
     result: {
@@ -2057,6 +2236,7 @@ function renderStatus(status: HistoryItem['status']) {
 }
 
 export default function ReportPreview() {  const savedTemplate = useMemo(() => readStorage<Record<string, unknown> | null>(TEMPLATE_KEY, null), []);
+  const resolvedTheme = useThemeStore((state) => state.resolved);
   const savedCustomRange = useMemo(() => {
     const raw = savedTemplate?.customRange;
     if (!Array.isArray(raw) || raw.length !== 2) return null;
@@ -2430,6 +2610,8 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
               projectNames: [businessSelectedProject.name],
               rangeLabel: businessRangeLabel,
               intelligenceLabel: '业务智能报告',
+              outputStyle: businessOutputStyle,
+              outputStyleLabel: getOutputStyleLabel(businessOutputStyle),
               outputFormat: 'markdown',
               sourceLabel: getDynamicReportSourceLabel(dynamicResponse.source),
               result: {
@@ -2959,6 +3141,10 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
       rangeLabel,
       intelligenceLabel: INTELLIGENCE_OPTIONS.find((item) => item.value === intelligenceLevel)?.label ?? '增强',
       projectNames: selectedProjects.map((item) => item.name),
+      outputStyle: intelligenceLevel === 'expert' ? 'professional' : intelligenceLevel === 'enhanced' ? 'presentation' : 'simple',
+      outputStyleLabel: getOutputStyleLabel(
+        intelligenceLevel === 'expert' ? 'professional' : intelligenceLevel === 'enhanced' ? 'presentation' : 'simple',
+      ),
       outputFormat,
       sourceLabel: result.report?.source === 'hybrid' ? '规则 + AI 动态生成' : result.source === 'ai' ? 'AI 结构化输出' : '规则回退分析',
       result,
@@ -3018,7 +3204,13 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
       summary: item.errorMessage || item.remark || '来自服务端历史记录。',
       preview: buildHistoryPreview(item),
     }));
-    return [...localItems, ...serverItems].sort((a, b) => dayjs(b.time).valueOf() - dayjs(a.time).valueOf()).filter((item) => {
+    const normalizedItems = [...localItems, ...serverItems].map((item) => ({
+      ...item,
+      title: item.preview ? formatPreviewTitle(item.title, item.preview.outputStyle, item.preview.outputStyleLabel) : item.title,
+      summary: item.preview ? buildRichHistorySummary(item.preview) : item.summary,
+      outputStyleLabel: item.preview?.outputStyleLabel,
+    }));
+    return normalizedItems.sort((a, b) => dayjs(b.time).valueOf() - dayjs(a.time).valueOf()).filter((item) => {
       if (historyFilter === 'all') return true;
       if (historyFilter === 'ai') return item.kind === 'ai';
       if (historyFilter === 'normal') return item.kind === 'normal';
@@ -3842,15 +4034,38 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
         {historyItems.length ? (
           <div className="mt-6 grid gap-4">
             {historyItems.map((item) => (
-              <div key={item.id} className="rounded-[24px] border border-white/8 bg-white/5 p-5 shadow-[0_18px_40px_rgba(15,23,42,0.24)]">
+              <div
+                key={item.id}
+                className={`relative overflow-hidden rounded-[24px] border bg-white/5 p-5 shadow-[0_18px_40px_rgba(15,23,42,0.24)] ${
+                  item.preview ? getOutputStyleMeta(item.preview!.outputStyle, item.preview!.outputStyleLabel).cardClassName : 'border-white/8'
+                }`}
+              >
+                {item.preview ? (
+                  <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${getOutputStyleMeta(item.preview!.outputStyle, item.preview!.outputStyleLabel).stripeClassName}`} />
+                ) : null}
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <div className="text-base font-semibold text-white">{item.title}</div>
                       <Tag color={item.kind === 'ai' ? 'blue' : 'default'}>{item.kind === 'ai' ? 'AI 报告' : '普通报告'}</Tag>
+                      {item.outputStyleLabel ? <Tag color="geekblue">{item.outputStyleLabel}</Tag> : null}
                       {renderStatus(item.status)}
                     </div>
                     <div className="mt-2 text-sm text-slate-400">{formatTime(item.time)}</div>
+                    {item.preview ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {getOutputStyleMeta(item.preview!.outputStyle, item.preview!.outputStyleLabel).chips.map((chip) => (
+                          <span
+                            key={chip}
+                            className={`rounded-full border px-3 py-1 text-xs ${
+                              getOutputStyleMeta(item.preview!.outputStyle, item.preview!.outputStyleLabel).badgeClassName
+                            }`}
+                          >
+                            {chip}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
                     <div className="mt-3 text-sm leading-7 text-slate-300">{item.summary}</div>
                   </div>
                   <Space wrap>
@@ -3908,19 +4123,33 @@ export default function ReportPreview() {  const savedTemplate = useMemo(() => r
         }
         styles={{
           container: {
-            background: 'linear-gradient(180deg, #0b1220 0%, #0f172a 100%)',
-            border: '1px solid rgba(255,255,255,0.08)',
+            background: resolvedTheme === 'light'
+              ? 'linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)'
+              : 'linear-gradient(180deg, #0b1220 0%, #0f172a 100%)',
+            border: resolvedTheme === 'light'
+              ? '1px solid rgba(148,163,184,0.22)'
+              : '1px solid rgba(255,255,255,0.08)',
+            boxShadow: resolvedTheme === 'light'
+              ? '0 24px 72px rgba(148,163,184,0.18)'
+              : '0 24px 72px rgba(2,8,23,0.35)',
           },
           header: {
             background: 'transparent',
-            borderBottom: '1px solid rgba(255,255,255,0.08)',
+            borderBottom: resolvedTheme === 'light'
+              ? '1px solid rgba(148,163,184,0.18)'
+              : '1px solid rgba(255,255,255,0.08)',
           },
           body: {
             paddingTop: 20,
+            background: resolvedTheme === 'light' ? '#f8fbff' : 'transparent',
           },
         }}
       >
-        {previewModalRecord ? <PreviewContent preview={previewModalRecord} /> : null}
+        {previewModalRecord ? (
+          <div className={resolvedTheme === 'light' ? 'report-light-surface' : undefined}>
+            <PreviewContent preview={previewModalRecord} />
+          </div>
+        ) : null}
       </Modal>
     </AnimatedPage>
   );

@@ -56,6 +56,8 @@ export interface SaveReportRequest {
   projectNames: string[];
   rangeLabel: string;
   intelligenceLabel: string;
+  outputStyle?: 'simple' | 'professional' | 'presentation';
+  outputStyleLabel?: string;
   outputFormat: 'markdown' | 'docx' | 'pdf';
   sourceLabel: string;
   result: ReportResultPayload;
