@@ -16,7 +16,7 @@ import type {
 } from '../types/agent';
 
 const AGENT_API_BASE =
-  import.meta.env.VITE_AGENT_API_BASE_URL || 'http://127.0.0.1:8000/api/v1';
+  import.meta.env.VITE_AGENT_API_BASE_URL || 'http://127.0.0.1:8100/api/v1';
 
 async function parseJson<T>(response: Response): Promise<T> {
   const text = await response.text();
