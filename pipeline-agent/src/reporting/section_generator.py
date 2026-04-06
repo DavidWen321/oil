@@ -104,7 +104,7 @@ def build_sections(
         title="趋势分析",
         summary="趋势结论由代码计算，不依赖大模型猜测。",
         items=[
-            ReportBulletItem(title=item.metric, content=f"{item.summary}；证据：{'；'.join(item.evidence)}")
+            ReportBulletItem(title=item.metric_label, content=f"{item.summary}；证据：{'；'.join(item.evidence)}")
             for item in diagnosis.trends
         ] or [ReportBulletItem(content="当前样本不足，未形成可置信的趋势判断。")],
     )

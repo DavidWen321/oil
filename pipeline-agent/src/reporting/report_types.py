@@ -27,6 +27,7 @@ class MetricSnapshot:
 @dataclass
 class TrendFinding:
     metric: str
+    metric_label: str
     direction: str
     change_rate: float
     volatility: float

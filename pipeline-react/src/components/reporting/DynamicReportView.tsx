@@ -2,12 +2,24 @@ import { Empty, Tag } from 'antd';
 
 import type { DynamicReportResponsePayload, DynamicReportSectionPayload } from '../../types/agent';
 
+const REPORT_TITLE_LABELS: Record<string, string> = {
+  total: '计算量',
+  failed: '失败次数',
+  avg_duration_ms: '平均计算耗时',
+  success_rate: '成功率',
+};
+
 function getSectionKindLabel(kind: DynamicReportSectionPayload['kind']) {
   if (kind === 'metrics') return '指标';
   if (kind === 'table') return '表格';
   if (kind === 'markdown') return '正文';
   if (kind === 'callout') return '结论';
   return '要点';
+}
+
+function localizeReportTitle(title: string | undefined) {
+  if (!title) return '';
+  return REPORT_TITLE_LABELS[title] || title;
 }
 
 function renderSection(section: DynamicReportSectionPayload) {
@@ -82,7 +94,7 @@ function renderSection(section: DynamicReportSectionPayload) {
             {item.title ? (
               <div className="mb-2 flex items-center gap-2">
                 <Tag color="blue">{String(index + 1).padStart(2, '0')}</Tag>
-                <div className="text-sm font-medium text-white">{item.title}</div>
+                <div className="text-sm font-medium text-white">{localizeReportTitle(item.title)}</div>
               </div>
             ) : null}
             <div className="text-sm leading-7 text-slate-200">{item.content}</div>

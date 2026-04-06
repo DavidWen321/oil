@@ -9,6 +9,8 @@ from .report_types import MetricSnapshot, ReportDataBundle
 
 
 def _to_float(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
     if isinstance(value, (int, float)):
         return float(value)
     if isinstance(value, str) and value.strip():
@@ -21,9 +23,15 @@ def _to_float(value: Any) -> float | None:
 
 def _avg(values: list[float | None]) -> float | None:
     actual = [value for value in values if value is not None]
-    if not actual:
+    return mean(actual) if actual else None
+
+
+def _normalize_efficiency(value: float | None) -> float | None:
+    if value is None:
         return None
-    return mean(actual)
+    if value > 1:
+        return value / 100.0
+    return value
 
 
 def build_metric_snapshot(data: ReportDataBundle, request: DynamicReportRequest) -> MetricSnapshot:
@@ -32,8 +40,8 @@ def build_metric_snapshot(data: ReportDataBundle, request: DynamicReportRequest)
     roughness_values = [_to_float(item.get("roughness")) for item in data.pipelines]
     density_values = [_to_float(item.get("density")) for item in data.oil_properties]
     viscosity_values = [_to_float(item.get("viscosity")) for item in data.oil_properties]
-    pump_eff_values = [_to_float(item.get("pump_efficiency")) for item in data.pump_stations]
-    electric_eff_values = [_to_float(item.get("electric_efficiency")) for item in data.pump_stations]
+    pump_eff_values = [_normalize_efficiency(_to_float(item.get("pump_efficiency"))) for item in data.pump_stations]
+    electric_eff_values = [_normalize_efficiency(_to_float(item.get("electric_efficiency"))) for item in data.pump_stations]
 
     total_throughput = sum(value for value in throughput_values if value is not None)
     avg_pump_eff = _avg(pump_eff_values)
@@ -49,37 +57,54 @@ def build_metric_snapshot(data: ReportDataBundle, request: DynamicReportRequest)
     failed_count = int(overview.get("failedCount") or 0)
     success_rate = _to_float(overview.get("successRate"))
 
-    # Do not synthesize pressure gap from roughness/length heuristics.
-    # Until real station pressure series is loaded from backend services,
-    # keep this field empty to avoid presenting estimated values as facts.
+    operation_daily = data.time_series.get("operation_daily", [])
+    operation_points = data.time_series.get("operation_points", [])
+
+    flow_series = [_to_float(item.get("flow_rate")) for item in operation_daily]
+    energy_series = [_to_float(item.get("energy_consumption")) for item in operation_daily]
+    pressure_series = [_to_float(item.get("end_station_pressure")) for item in operation_daily]
+    duration_series = [_to_float(item.get("avg_duration_ms")) for item in operation_daily]
+
+    avg_flow_rate = _avg(flow_series)
+    avg_energy_consumption = _avg(energy_series)
+    avg_end_station_pressure = _avg(pressure_series)
+    avg_calc_duration_ms = _avg(duration_series)
+
+    latest_end_station_pressure = None
+    for row in reversed(operation_daily):
+        value = _to_float(row.get("end_station_pressure"))
+        if value is not None:
+            latest_end_station_pressure = value
+            break
+
     min_pressure_gap = None
+    if request.min_pressure is not None and latest_end_station_pressure is not None:
+        min_pressure_gap = latest_end_station_pressure - request.min_pressure
 
     target_flow_gap = None
-    if request.target_throughput is not None:
-        target_flow_gap = request.target_throughput - total_throughput
+    if request.target_throughput is not None and avg_flow_rate is not None:
+        target_flow_gap = avg_flow_rate - request.target_throughput
 
-    pump_rows = []
-    for row in data.pump_stations:
-        pump_rows.append(
-            {
-                "name": str(row.get("name") or "-"),
-                "pump_efficiency": _to_float(row.get("pump_efficiency")),
-                "electric_efficiency": _to_float(row.get("electric_efficiency")),
-                "displacement": _to_float(row.get("displacement")),
-                "come_power": _to_float(row.get("come_power")),
-            }
-        )
+    pump_rows = [
+        {
+            "name": str(row.get("name") or "-"),
+            "pump_efficiency": _normalize_efficiency(_to_float(row.get("pump_efficiency"))),
+            "electric_efficiency": _normalize_efficiency(_to_float(row.get("electric_efficiency"))),
+            "displacement": _to_float(row.get("displacement")),
+            "come_power": _to_float(row.get("come_power")),
+        }
+        for row in data.pump_stations
+    ]
 
-    pipeline_rows = []
-    for row in data.pipelines:
-        pipeline_rows.append(
-            {
-                "name": str(row.get("name") or "-"),
-                "length": _to_float(row.get("length")),
-                "throughput": _to_float(row.get("throughput")),
-                "roughness": _to_float(row.get("roughness")),
-            }
-        )
+    pipeline_rows = [
+        {
+            "name": str(row.get("name") or "-"),
+            "length": _to_float(row.get("length")),
+            "throughput": _to_float(row.get("throughput")),
+            "roughness": _to_float(row.get("roughness")),
+        }
+        for row in data.pipelines
+    ]
 
     return MetricSnapshot(
         overview_metrics={
@@ -98,9 +123,16 @@ def build_metric_snapshot(data: ReportDataBundle, request: DynamicReportRequest)
             "avg_viscosity": avg_viscosity,
             "avg_pump_efficiency": avg_pump_eff,
             "avg_electric_efficiency": avg_electric_eff,
+            "avg_flow_rate": avg_flow_rate,
+            "avg_energy_consumption": avg_energy_consumption,
+            "avg_end_station_pressure": avg_end_station_pressure,
+            "latest_end_station_pressure": latest_end_station_pressure,
+            "avg_calc_duration_ms": avg_calc_duration_ms,
         },
         trend_metrics={
             "history_daily": data.time_series.get("history_daily", []),
+            "operation_daily": operation_daily,
+            "operation_points": operation_points,
         },
         object_metrics={
             "pump_stations": pump_rows,
@@ -119,6 +151,20 @@ def build_metric_snapshot(data: ReportDataBundle, request: DynamicReportRequest)
             "has_pipelines": bool(data.pipelines),
             "has_histories": bool(data.history_records),
             "series_points": len(data.time_series.get("history_daily", [])),
-            "usable_for_trend": len(data.time_series.get("history_daily", [])) >= 7,
+            "operation_points": len(operation_points),
+            "usable_for_trend": len(operation_daily) >= 7,
+            "usable_for_correlation": len(
+                [
+                    item
+                    for item in operation_points
+                    if (
+                        _to_float(item.get("flow_rate")) is not None
+                        or _to_float(item.get("energy_consumption")) is not None
+                        or _to_float(item.get("pump_efficiency")) is not None
+                        or _to_float(item.get("end_station_pressure")) is not None
+                    )
+                ]
+            )
+            >= 7,
         },
     )
