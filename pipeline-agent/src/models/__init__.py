@@ -17,6 +17,13 @@ from .state import (
     AgentState,
     create_initial_state,
 )
+from .scheme_card import (
+    ApprovalStatus,
+    EvidenceItem,
+    RiskLevel,
+    SchemeCard,
+    SchemeOption,
+)
 from .knowledge_base import (
     KnowledgeFileType,
     KnowledgeSourceType,
@@ -33,6 +40,8 @@ from .schemas import (
     HITLConfirmRequest,
     HITLConfirmResponse,
     TraceSummaryResponse,
+    ReportGenerateRequest,
+    ReportGenerateResponse,
     GraphQueryResponse,
     ProjectInfo,
     PipelineInfo,
@@ -64,6 +73,11 @@ __all__ = [
     "ReflexionMemory",
     "AgentState",
     "create_initial_state",
+    "RiskLevel",
+    "ApprovalStatus",
+    "EvidenceItem",
+    "SchemeOption",
+    "SchemeCard",
     "KnowledgeFileType",
     "KnowledgeSourceType",
     "KnowledgeDocumentStatus",
@@ -77,6 +91,8 @@ __all__ = [
     "HITLConfirmRequest",
     "HITLConfirmResponse",
     "TraceSummaryResponse",
+    "ReportGenerateRequest",
+    "ReportGenerateResponse",
     "GraphQueryResponse",
     "ProjectInfo",
     "PipelineInfo",

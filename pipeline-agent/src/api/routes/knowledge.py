@@ -17,6 +17,9 @@ from src.utils import logger
 
 router = APIRouter(prefix="/knowledge", tags=["Knowledge"])
 
+ALLOWED_EXTENSIONS = {".md", ".txt", ".pdf", ".docx"}
+ALLOWED_CATEGORIES = {"standards", "formulas", "operations", "cases", "faq"}
+
 
 class ReindexRequest(BaseModel):
     """Reindex request payload."""
