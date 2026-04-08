@@ -31,6 +31,37 @@ class RetrievalDecision(Enum):
 class SelfRAG:
     """Decide whether to retrieve and assess retrieval quality."""
 
+    GRAPH_ROUTE_MARKERS = [
+        "原因",
+        "因果",
+        "关系",
+        "关联",
+        "依赖",
+        "链路",
+        "影响",
+        "故障",
+        "标准",
+        "规范",
+        "相关节点",
+    ]
+    DATABASE_ROUTE_MARKERS = [
+        "数据库",
+        "sql",
+        "表里",
+        "表中",
+        "字段",
+        "项目",
+        "项目代号",
+        "负责人",
+        "上线日期",
+        "首发日期",
+        "泵站数据",
+        "管道参数",
+        "统计",
+        "列表",
+        "多少条",
+    ]
+
     DECISION_PROMPT = """你是一个检索路由器，需要判断用户问题最适合哪种处理方式。
 
 用户问题: {query}
@@ -67,7 +98,7 @@ class SelfRAG:
             self._llm = ChatOpenAI(
                 api_key=settings.OPENAI_API_KEY,
                 base_url=settings.OPENAI_API_BASE,
-                model=settings.LLM_MODEL,
+                model=settings.router_model_name,
                 temperature=0,
                 max_tokens=256,
             )
@@ -209,6 +240,53 @@ class SelfRAG:
                 return RetrievalQuality.MEDIUM, "评估失败，按分数判定为中等"
             return RetrievalQuality.LOW, "评估失败，按分数判定为较低"
 
+    def detect_route_hints(self, query: str) -> dict:
+        """Return lightweight routing hints for the agentic retrieval loop."""
+
+        text = (query or "").strip()
+        lowered = text.lower()
+        graph_hint = self._match_any(text, self.GRAPH_ROUTE_MARKERS)
+        database_hint = self._match_any(text, self.DATABASE_ROUTE_MARKERS)
+        exact_fact = bool(
+            re.search(
+                r".+(是什么|是多少|多少条|谁负责|什么时候|何时|上线日期|项目代号|编号|列表)",
+                text,
+                re.IGNORECASE,
+            )
+        )
+        return {
+            "graph": graph_hint,
+            "database": database_hint or exact_fact,
+            "multi_hop": graph_hint and any(marker in text for marker in ["原因", "因果", "影响", "依赖", "链路"]),
+            "exact_fact": exact_fact,
+            "raw_query": lowered,
+        }
+
+    def plan_routes(self, query: str, decision: RetrievalDecision) -> List[dict]:
+        """Plan an ordered list of retrieval routes for a query."""
+
+        hints = self.detect_route_hints(query)
+        routes: List[dict] = []
+
+        def add_route(name: str, reason: str) -> None:
+            if any(route["route"] == name for route in routes):
+                return
+            routes.append({"route": name, "reason": reason})
+
+        if decision == RetrievalDecision.SQL:
+            add_route("database", "Self-RAG 判定为结构化数据查询")
+            add_route("hybrid", "数据库结果可继续用知识库补充上下文")
+        else:
+            add_route("hybrid", "知识问答默认先走混合检索")
+            if hints["graph"]:
+                add_route("graph", "问题包含因果/关系/规范等图谱信号")
+            if hints["database"]:
+                add_route("database", "问题包含项目/字段/列表等结构化数据线索")
+
+        if not routes:
+            add_route("hybrid", "默认路由")
+        return routes
+
     def refine_context(self, query: str, results: List[RerankResult]) -> str:
         del query
         if not results:
@@ -239,7 +317,7 @@ class QueryRewriter:
             self._llm = ChatOpenAI(
                 api_key=settings.OPENAI_API_KEY,
                 base_url=settings.OPENAI_API_BASE,
-                model=settings.LLM_MODEL,
+                model=settings.router_model_name,
                 temperature=0.3,
                 max_tokens=512,
             )

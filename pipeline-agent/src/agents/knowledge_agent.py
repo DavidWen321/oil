@@ -13,6 +13,7 @@ from src.config import settings
 from src.utils import logger
 from src.rag import get_rag_pipeline, RAGResponse
 from src.models.enums import RetrievalQuality
+from src.rag.self_rag import RetrievalDecision
 from .prompts import KNOWLEDGE_AGENT_SYSTEM_PROMPT, KNOWLEDGE_AGENT_TASK_PROMPT
 
 
@@ -38,7 +39,7 @@ class KnowledgeAgent:
             self._llm = ChatOpenAI(
                 api_key=settings.OPENAI_API_KEY,
                 base_url=settings.OPENAI_API_BASE,
-                model=settings.LLM_MODEL,
+                model=settings.final_synthesis_model_name,
                 temperature=0.3,
                 max_tokens=4096,
             )
@@ -69,11 +70,19 @@ class KnowledgeAgent:
             rag_response = self.rag_pipeline.retrieve(
                 query=question,
                 category_filter=category,
-                skip_self_rag=True,
+                skip_self_rag=False,
             )
 
             # 2. 检查检索质量
-            if rag_response.should_fallback or not rag_response.context:
+            if rag_response.decision == RetrievalDecision.DIRECT:
+                return self._answer_directly(question)
+
+            if rag_response.decision == RetrievalDecision.CALCULATE:
+                return (
+                    "这个问题更适合走计算链路，建议改用 `hydraulic_calculation` 工具或计算工作流继续处理。"
+                )
+
+            if not self._has_usable_context(rag_response):
                 return self._handle_no_knowledge(question)
 
             # 3. 基于检索结果生成回答
@@ -85,6 +94,21 @@ class KnowledgeAgent:
         except Exception as e:
             logger.error(f"Knowledge Agent执行失败: {e}")
             return f"知识检索失败: {str(e)}"
+
+    @staticmethod
+    def _has_usable_context(rag_response: RAGResponse) -> bool:
+        """Treat strong retrieved evidence as usable even if CRAG marks quality low."""
+        if not rag_response.context or not rag_response.sources:
+            return False
+
+        top_score = 0.0
+        for src in rag_response.sources:
+            try:
+                top_score = max(top_score, float(src.get("score", 0.0) or 0.0))
+            except (TypeError, ValueError):
+                continue
+
+        return top_score >= 0.45
 
     def _generate_answer(self, question: str, rag_response: RAGResponse) -> str:
         """
@@ -131,6 +155,20 @@ class KnowledgeAgent:
             logger.error(f"回答生成失败: {e}")
             # 降级：直接返回检索内容
             return f"**检索到的相关内容:**\n\n{rag_response.context[:1000]}..."
+
+    def _answer_directly(self, question: str) -> str:
+        """Handle simple direct questions without pretending the knowledge base missed."""
+
+        try:
+            prompt = ChatPromptTemplate.from_messages([
+                ("system", "你是管道工程领域的 AI 助手。请直接、简洁地回答用户问题。"),
+                ("human", "{question}")
+            ])
+            chain = prompt | self.llm | StrOutputParser()
+            return chain.invoke({"question": question})
+        except Exception as e:
+            logger.error(f"直接回答失败: {e}")
+            return self._handle_no_knowledge(question)
 
     def _handle_no_knowledge(self, question: str) -> str:
         """
@@ -179,7 +217,7 @@ class KnowledgeAgent:
             rag_response = self.rag_pipeline.retrieve(
                 query=query,
                 top_k=top_k,
-                skip_self_rag=True  # 跳过Self-RAG，直接检索
+                skip_self_rag=False
             )
 
             return rag_response.sources

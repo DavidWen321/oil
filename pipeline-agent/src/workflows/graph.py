@@ -14,12 +14,15 @@ import time
 from typing import Any, Dict, List, Optional
 
 from langchain_core.messages import SystemMessage
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import MessagesState, START, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.types import Command
 
+from src.agents.knowledge_agent import get_knowledge_agent
 from src.config import settings
 from src.tool_search import get_tool_search_engine
 from src.tools.agent_tools import (
@@ -73,21 +76,54 @@ REACT_SYSTEM_PROMPT += """
 """
 
 _base_llm: Optional[ChatOpenAI] = None
+_final_llm: Optional[ChatOpenAI] = None
 _llm_tools_cache: Dict[str, Any] = {}
+
+FINAL_SYNTHESIS_PROMPT = """你是最终回答整合节点。
+
+请基于用户问题、工具执行后的草稿回答以及工具调用记录，输出最终回复。
+
+要求：
+1. 使用与用户一致的语言。
+2. 保留工具结果中的关键事实，不要编造未出现的信息。
+3. 如果草稿回答已经足够完整，只做必要的精炼和组织。
+4. 如果没有工具调用，也可以直接润色草稿回答。
+"""
 
 
 def _get_base_llm() -> ChatOpenAI:
     global _base_llm
     if _base_llm is None:
+        model_name = settings.tool_calling_model_name
+        if model_name != settings.router_model_name:
+            logger.warning(
+                "Router model '{}' does not support tool calling in workflow, fallback to '{}'",
+                settings.router_model_name,
+                model_name,
+            )
         _base_llm = ChatOpenAI(
             api_key=settings.OPENAI_API_KEY,
             base_url=settings.OPENAI_API_BASE,
-            model=settings.LLM_MODEL,
+            model=model_name,
             temperature=settings.LLM_TEMPERATURE,
             max_tokens=settings.LLM_MAX_TOKENS,
             streaming=True,
         )
     return _base_llm
+
+
+def _get_final_llm() -> ChatOpenAI:
+    global _final_llm
+    if _final_llm is None:
+        _final_llm = ChatOpenAI(
+            api_key=settings.OPENAI_API_KEY,
+            base_url=settings.OPENAI_API_BASE,
+            model=settings.final_synthesis_model_name,
+            temperature=settings.LLM_TEMPERATURE,
+            max_tokens=settings.LLM_MAX_TOKENS,
+            streaming=False,
+        )
+    return _final_llm
 
 
 def _extract_latest_user_query(messages: List[Any]) -> str:
@@ -195,6 +231,79 @@ def _get_llm_with_tools(tool_names: List[str]) -> Any:
     llm_with_tools = _get_base_llm().bind_tools(selected_tools)
     _llm_tools_cache[cache_key] = llm_with_tools
     return llm_with_tools
+
+
+def _synthesize_final_response(
+    *,
+    user_input: str,
+    draft_response: str,
+    tool_calls: List[Dict[str, Any]],
+) -> str:
+    """Use the stronger synthesis model to produce the final user-facing answer."""
+
+    if not draft_response and not tool_calls:
+        return draft_response
+
+    try:
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", FINAL_SYNTHESIS_PROMPT),
+            (
+                "human",
+                "用户问题:\n{user_input}\n\n草稿回答:\n{draft_response}\n\n工具调用记录(JSON):\n{tool_calls}",
+            ),
+        ])
+        chain = prompt | _get_final_llm() | StrOutputParser()
+        synthesized = chain.invoke(
+            {
+                "user_input": user_input,
+                "draft_response": draft_response,
+                "tool_calls": json.dumps(tool_calls, ensure_ascii=False, default=str),
+            }
+        ).strip()
+        return synthesized or draft_response
+    except Exception as exc:
+        logger.warning(f"Final synthesis fallback to draft response: {exc}")
+        return draft_response
+
+
+def _maybe_apply_knowledge_fallback(
+    *,
+    user_input: str,
+    draft_response: str,
+    tool_calls: List[Dict[str, Any]],
+) -> str:
+    """Use KB answer as a final fallback when the model skipped tools but retrieval is strong."""
+    if tool_calls:
+        return draft_response
+
+    try:
+        knowledge_agent = get_knowledge_agent()
+        sources = knowledge_agent.search_knowledge(user_input, top_k=3)
+        if not sources:
+            return draft_response
+
+        top_score = 0.0
+        for source in sources:
+            try:
+                top_score = max(top_score, float(source.get("score", 0.0) or 0.0))
+            except (TypeError, ValueError):
+                continue
+
+        if top_score < 0.45:
+            return draft_response
+
+        answer = knowledge_agent.execute(user_input)
+        if answer:
+            logger.info(
+                "Applied knowledge fallback for query='{}' with top_score={}",
+                user_input[:80],
+                round(top_score, 4),
+            )
+            return answer
+    except Exception as exc:
+        logger.warning(f"Knowledge fallback skipped: {exc}")
+
+    return draft_response
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -389,6 +498,16 @@ class AgentWorkflow:
                 if msgs and hasattr(msgs[-1], "content") and msgs[-1].content:
                     final_content = msgs[-1].content
 
+            final_content = _synthesize_final_response(
+                user_input=user_input,
+                draft_response=final_content,
+                tool_calls=tool_calls_record,
+            )
+            final_content = _maybe_apply_knowledge_fallback(
+                user_input=user_input,
+                draft_response=final_content,
+                tool_calls=tool_calls_record,
+            )
             intent = self._infer_intent(tool_calls_record)
             yield {
                 "type": "done",
@@ -494,8 +613,8 @@ class AgentWorkflow:
             return "knowledge"
         return "chat"
 
-    @staticmethod
     def _build_response(
+        self,
         result: dict,
         session_id: str,
         trace_id: Optional[str],
@@ -516,6 +635,17 @@ class AgentWorkflow:
                 for tc in msg.tool_calls:
                     tool_calls.append({"tool": tc.get("name", ""), "args": tc.get("args", {})})
 
+        user_input = _extract_latest_user_query(messages)
+        response_text = _synthesize_final_response(
+            user_input=user_input,
+            draft_response=response_text,
+            tool_calls=tool_calls,
+        )
+        response_text = _maybe_apply_knowledge_fallback(
+            user_input=user_input,
+            draft_response=response_text,
+            tool_calls=tool_calls,
+        )
         intent = AgentWorkflow._infer_intent(tool_calls)
         return {
             "response": response_text,

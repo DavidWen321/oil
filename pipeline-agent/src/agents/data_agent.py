@@ -35,10 +35,17 @@ class DataAgent:
     def llm(self) -> ChatOpenAI:
         """获取LLM实例"""
         if self._llm is None:
+            model_name = settings.tool_calling_model_name
+            if model_name != settings.router_model_name:
+                logger.warning(
+                    "Router model '{}' does not support tool calling, fallback to '{}'",
+                    settings.router_model_name,
+                    model_name,
+                )
             self._llm = ChatOpenAI(
                 api_key=settings.OPENAI_API_KEY,
                 base_url=settings.OPENAI_API_BASE,
-                model=settings.LLM_MODEL,
+                model=model_name,
                 temperature=0,
                 max_tokens=4096,
             )

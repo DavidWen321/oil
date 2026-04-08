@@ -28,6 +28,26 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = Field(default="sk-xxx")
     OPENAI_API_BASE: str = Field(default="https://api.penguinsaichat.dpdns.org/v1")
     LLM_MODEL: str = Field(default="claude-opus-4-6")
+    ROUTER_MODEL: Optional[str] = Field(
+        default=None,
+        description="Lightweight model for routing, intent recognition, and query rewrite",
+    )
+    ROUTER_MODEL_SUPPORTS_TOOL_CALLING: bool = Field(
+        default=True,
+        description="Whether ROUTER_MODEL supports native tool calling; fallback to LLM_MODEL when false",
+    )
+    GRAPH_EXTRACT_MODEL: Optional[str] = Field(
+        default=None,
+        description="Legacy alias for graph-query extraction model; prefer GRAPH_QUERY_MODEL",
+    )
+    GRAPH_QUERY_MODEL: Optional[str] = Field(
+        default=None,
+        description="Model used for graph-query entity extraction and query-time graph parsing",
+    )
+    FINAL_SYNTHESIS_MODEL: Optional[str] = Field(
+        default=None,
+        description="High-quality model used for final answer synthesis",
+    )
     LLM_TEMPERATURE: float = Field(default=0.1)
     LLM_MAX_TOKENS: int = Field(default=4096)
 
@@ -107,6 +127,7 @@ class Settings(BaseSettings):
 
     # 高级RAG功能开关
     RAG_USE_HYPE: bool = Field(default=True)           # HyPE (2025新技术，替代HyDE)
+    RAG_ENABLE_EXPERIMENTAL_HYPE: bool = Field(default=False)
     RAG_USE_CONTEXTUAL: bool = Field(default=True)    # Contextual Retrieval
     RAG_USE_CRAG: bool = Field(default=True)          # Corrective RAG
     RAG_USE_SELF_RAG: bool = Field(default=True)      # Self-RAG (自适应检索)
@@ -151,6 +172,28 @@ class Settings(BaseSettings):
     def kb_required_metadata_fields(self) -> list[str]:
         return [item.strip() for item in str(self.KB_REQUIRED_METADATA_FIELDS or "").split(",") if item.strip()]
 
+    @property
+    def router_model_name(self) -> str:
+        return str(self.ROUTER_MODEL or self.LLM_MODEL)
+
+    @property
+    def tool_calling_model_name(self) -> str:
+        if self.ROUTER_MODEL_SUPPORTS_TOOL_CALLING:
+            return self.router_model_name
+        return str(self.LLM_MODEL)
+
+    @property
+    def graph_query_model_name(self) -> str:
+        return str(self.GRAPH_QUERY_MODEL or self.GRAPH_EXTRACT_MODEL or self.router_model_name)
+
+    @property
+    def graph_extract_model_name(self) -> str:
+        return self.graph_query_model_name
+
+    @property
+    def final_synthesis_model_name(self) -> str:
+        return str(self.FINAL_SYNTHESIS_MODEL or self.LLM_MODEL)
+
 
 
 class RAGConfig:
@@ -190,7 +233,7 @@ class RAGConfig:
     @property
     def hype(self) -> dict:
         return {
-            "enabled": self.settings.RAG_USE_HYPE,
+            "enabled": self.settings.RAG_USE_HYPE and self.settings.RAG_ENABLE_EXPERIMENTAL_HYPE,
             "questions_per_chunk": self.settings.HYPE_QUESTIONS_PER_CHUNK
         }
 

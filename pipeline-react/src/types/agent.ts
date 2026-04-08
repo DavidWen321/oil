@@ -141,6 +141,9 @@ export interface KnowledgeDocumentSummary {
   file_size_bytes: number;
   source_type?: string;
   status: string;
+  chunk_count?: number;
+  ingest_stage?: string;
+  progress_percent?: number;
   created_at?: string | null;
   updated_at?: string | null;
 }

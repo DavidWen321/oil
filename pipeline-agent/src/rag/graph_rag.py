@@ -27,7 +27,7 @@ class GraphRAGRetriever:
             self._llm = ChatOpenAI(
                 api_key=settings.OPENAI_API_KEY,
                 base_url=settings.OPENAI_API_BASE,
-                model=settings.LLM_MODEL,
+                model=settings.graph_query_model_name,
                 temperature=0,
                 max_tokens=300,
             )

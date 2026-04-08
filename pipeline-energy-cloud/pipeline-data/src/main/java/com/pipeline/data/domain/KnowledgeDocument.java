@@ -33,6 +33,18 @@ public class KnowledgeDocument implements Serializable {
 
     private String remark;
 
+    private String author;
+
+    private String summary;
+
+    private String language;
+
+    private String version;
+
+    private String externalId;
+
+    private LocalDateTime effectiveAt;
+
     private String fileName;
 
     private String fileExtension;
@@ -54,6 +66,10 @@ public class KnowledgeDocument implements Serializable {
     private Integer retryCount;
 
     private String status;
+
+    private String ingestStage;
+
+    private Integer progressPercent;
 
     private String failureReason;
 

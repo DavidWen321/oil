@@ -9,8 +9,8 @@ import {
   Empty,
   Form,
   Input,
-  List,
   Popconfirm,
+  Progress,
   Row,
   Select,
   Space,
@@ -39,12 +39,20 @@ import PageHeader from '../../components/common/PageHeader';
 import type { KnowledgeDocument, KnowledgeIngestTask } from '../../types';
 
 const { Dragger } = Upload;
-const { Paragraph, Text } = Typography;
+const { Text } = Typography;
 const { Search } = Input;
 
 interface KnowledgeFormValues {
   title?: string;
   category: string;
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return fallback;
 }
 
 const CATEGORY_OPTIONS = [
@@ -54,6 +62,7 @@ const CATEGORY_OPTIONS = [
   { label: '案例分析', value: 'cases' },
   { label: '常见问答', value: 'faq' },
 ];
+
 
 const STATUS_OPTIONS = [
   { label: '全部状态', value: 'all' },
@@ -84,12 +93,37 @@ const TASK_TYPE_META: Record<string, string> = {
 
 const CATEGORY_LABEL_MAP = Object.fromEntries(CATEGORY_OPTIONS.map((item) => [item.value, item.label]));
 
-const INGESTION_STEPS = [
-  '上传后先落文档元数据和 MinIO 原文件。',
-  '系统创建入库任务并交给后台线程池异步执行。',
-  'Python Agent 解析文档、切片并写入向量库。',
-  '页面自动刷新处理中状态，也可以打开任务历史查看每一次尝试。',
-];
+const INGEST_STAGE_META: Record<string, { label: string; color: string }> = {
+  QUEUED: { label: 'Queued', color: 'gold' },
+  INGESTING: { label: 'Ingesting', color: 'blue' },
+  DONE: { label: 'Dense + Sparse Ready', color: 'green' },
+  FAILED: { label: 'Failed', color: 'red' },
+};
+
+
+const normalizeDisplayStage = (stage?: string, status?: string) => {
+  if (stage === 'DONE' || status === 'INDEXED' || status === 'SUCCESS') {
+    return 'DONE';
+  }
+  if (stage === 'FAILED' || status === 'FAILED') {
+    return 'FAILED';
+  }
+  if (stage === 'QUEUED' || status === 'UPLOADED' || status === 'PENDING') {
+    return 'QUEUED';
+  }
+  return 'INGESTING';
+};
+
+const resolveDisplayProgress = (stage: string, progressPercent?: number) => {
+  if (stage === 'DONE') {
+    return 100;
+  }
+  if (stage === 'FAILED' || stage === 'QUEUED') {
+    return 0;
+  }
+  const normalized = Math.max(0, Math.min(progressPercent ?? 10, 100));
+  return normalized > 0 ? normalized : 10;
+};
 
 export default function KnowledgeEntry() {
   const [form] = Form.useForm<KnowledgeFormValues>();
@@ -105,6 +139,8 @@ export default function KnowledgeEntry() {
   const [keyword, setKeyword] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [taskError, setTaskError] = useState<string | null>(null);
   const taskRequestSeqRef = useRef(0);
   const selectedDocumentIdRef = useRef<number | undefined>(undefined);
 
@@ -120,6 +156,9 @@ export default function KnowledgeEntry() {
     try {
       const response = await knowledgeDocumentApi.list();
       setDocuments(response.data ?? []);
+      setLoadError(null);
+    } catch (error) {
+      setLoadError(getErrorMessage(error, '知识文档加载失败'));
     } finally {
       if (showLoading) {
         setLoading(false);
@@ -136,6 +175,11 @@ export default function KnowledgeEntry() {
       const response = await knowledgeDocumentApi.listTasks(documentId);
       if (selectedDocumentIdRef.current === documentId && requestSeq === taskRequestSeqRef.current) {
         setTasks(response.data ?? []);
+        setTaskError(null);
+      }
+    } catch (error) {
+      if (selectedDocumentIdRef.current === documentId && requestSeq === taskRequestSeqRef.current) {
+        setTaskError(getErrorMessage(error, '任务历史加载失败'));
       }
     } finally {
       if (showLoading && requestSeq === taskRequestSeqRef.current) {
@@ -214,6 +258,8 @@ export default function KnowledgeEntry() {
       if (typeof error === 'object' && error !== null && 'errorFields' in error) {
         return;
       }
+
+      message.error(getErrorMessage(error, '提交入库失败'));
     } finally {
       setSubmitting(false);
     }
@@ -228,6 +274,8 @@ export default function KnowledgeEntry() {
       if (taskDrawerOpen && selectedDocument?.id === record.id) {
         await loadTasks(record.id);
       }
+    } catch (error) {
+      message.error(getErrorMessage(error, '重试失败'));
     } finally {
       setActingId(undefined);
     }
@@ -242,6 +290,8 @@ export default function KnowledgeEntry() {
         handleCloseTasks();
       }
       await loadDocuments();
+    } catch (error) {
+      message.error(getErrorMessage(error, '删除失败'));
     } finally {
       setActingId(undefined);
     }
@@ -251,6 +301,7 @@ export default function KnowledgeEntry() {
     selectedDocumentIdRef.current = record.id;
     setSelectedDocument(record);
     setTaskDrawerOpen(true);
+    setTaskError(null);
     await loadTasks(record.id);
   };
 
@@ -260,6 +311,7 @@ export default function KnowledgeEntry() {
     setTaskDrawerOpen(false);
     setSelectedDocument(undefined);
     setTasks([]);
+    setTaskError(null);
     setTaskLoading(false);
   };
 
@@ -303,8 +355,30 @@ export default function KnowledgeEntry() {
       ),
     },
     {
+      title: 'Stage Progress',
+      dataIndex: 'ingestStage',
+      key: 'ingestStage',
+      width: 220,
+      render: (value: string | undefined, record) => {
+        const stage = normalizeDisplayStage(value, record.status);
+        const percent = resolveDisplayProgress(stage, record.progressPercent);
+        return (
+          <Space direction="vertical" size={4} style={{ minWidth: 180 }}>
+            <Tag color={INGEST_STAGE_META[stage]?.color || 'default'}>{INGEST_STAGE_META[stage]?.label || stage}</Tag>
+            <Progress
+              percent={percent}
+              size="small"
+              showInfo={false}
+              status={stage === 'FAILED' ? 'exception' : stage === 'DONE' ? 'success' : 'active'}
+            />
+          </Space>
+        );
+      },
+    },
+    {
       title: '切片 / 重试',
       key: 'chunkCount',
+      width: 140,
       render: (_, record) => (
         <Space direction="vertical" size={4}>
           <Text>{record.chunkCount ?? 0} 个切片</Text>
@@ -315,12 +389,24 @@ export default function KnowledgeEntry() {
     {
       title: '存储',
       key: 'storage',
+      width: 260,
       render: (_, record) => (
         <Space direction="vertical" size={4}>
           <Text>{record.storageType || '-'}</Text>
-          <Text type="secondary" ellipsis style={{ maxWidth: 220 }}>
+          <div
+            style={{
+              maxWidth: 220,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              color: 'rgba(0, 0, 0, 0.45)',
+              fontSize: 14,
+              lineHeight: '22px',
+            }}
+            title={record.storageObjectKey || '-'}
+          >
             {record.storageObjectKey || '-'}
-          </Text>
+          </div>
         </Space>
       ),
     },
@@ -328,7 +414,8 @@ export default function KnowledgeEntry() {
       title: '最近入库',
       dataIndex: 'lastIngestTime',
       key: 'lastIngestTime',
-      render: (value?: string) => value || '-',
+      width: 180,
+      render: (value?: string) => <div style={{ whiteSpace: 'nowrap' }}>{value || '-'}</div>,
     },
     {
       title: '操作',
@@ -395,6 +482,27 @@ export default function KnowledgeEntry() {
       ),
     },
     {
+      title: 'Stage Progress',
+      dataIndex: 'ingestStage',
+      key: 'ingestStage',
+      width: 220,
+      render: (value: string | undefined, record) => {
+        const stage = normalizeDisplayStage(value, record.status);
+        const percent = resolveDisplayProgress(stage, record.progressPercent);
+        return (
+          <Space direction="vertical" size={4} style={{ minWidth: 180 }}>
+            <Tag color={INGEST_STAGE_META[stage]?.color || 'default'}>{INGEST_STAGE_META[stage]?.label || stage}</Tag>
+            <Progress
+              percent={percent}
+              size="small"
+              showInfo={false}
+              status={stage === 'FAILED' ? 'exception' : stage === 'DONE' ? 'success' : 'active'}
+            />
+          </Space>
+        );
+      },
+    },
+    {
       title: '结果',
       key: 'result',
       render: (_, record) => (
@@ -420,7 +528,6 @@ export default function KnowledgeEntry() {
     <AnimatedPage className="mx-auto flex w-full max-w-[1360px] flex-col gap-6 px-4 py-6 md:px-6">
       <PageHeader
         title="知识库录入"
-        subtitle="第三阶段把入库改成后台异步执行，并补上任务历史查看，方便我们持续观察每一次解析结果。"
         actions={
           <Space wrap>
             <Button icon={<ReloadOutlined />} onClick={() => void loadDocuments()} loading={loading}>
@@ -433,12 +540,14 @@ export default function KnowledgeEntry() {
         }
       />
 
-      <Alert
-        type="info"
-        showIcon
-        message="第三阶段说明"
-        description="上传和重试现在都会先创建后台任务，再由线程池异步执行入库。页面会自动轮询处理中记录，你也可以打开任务历史查看每次尝试的开始时间、结束时间和失败原因。"
-      />
+      {loadError ? (
+        <Alert
+          type="error"
+          showIcon
+          message="知识库列表加载失败"
+          description={loadError}
+        />
+      ) : null}
 
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} xl={6}>
@@ -476,8 +585,8 @@ export default function KnowledgeEntry() {
       </Row>
 
       <Row gutter={[16, 16]} align="stretch">
-        <Col xs={24} xl={14}>
-          <Card title="资料上传与元数据填写" extra={<Text type="secondary">阶段三</Text>}>
+        <Col xs={24}>
+          <Card title="资料上传">
             <Space direction="vertical" size={20} style={{ width: '100%' }}>
               <Dragger {...uploadProps} style={{ padding: 12 }}>
                 <p className="ant-upload-drag-icon">
@@ -500,40 +609,9 @@ export default function KnowledgeEntry() {
                     </Form.Item>
                   </Col>
                 </Row>
-
-                <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-                  页面仅保留文档标题和分类两个录入项，其余元数据由系统按默认规则补全。
-                </Paragraph>
               </Form>
             </Space>
           </Card>
-        </Col>
-
-        <Col xs={24} xl={10}>
-          <Space direction="vertical" size={16} style={{ width: '100%' }}>
-            <Card title="当前入库流程">
-              <List
-                dataSource={INGESTION_STEPS}
-                renderItem={(item, index) => (
-                  <List.Item>
-                    <Space align="start">
-                      <Tag color="blue">{index + 1}</Tag>
-                      <Text>{item}</Text>
-                    </Space>
-                  </List.Item>
-                )}
-              />
-            </Card>
-
-            <Card title="当前边界">
-              <Paragraph>
-                这一阶段已经把同步阻塞改成后台异步任务，但还没有做真正的批量导入、任务取消和更细粒度的进度百分比。
-              </Paragraph>
-              <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-                你先检查异步体验和任务历史是否顺手，确认通过后我再继续往批量导入和任务运营能力推进。
-              </Paragraph>
-            </Card>
-          </Space>
         </Col>
       </Row>
 
@@ -587,12 +665,14 @@ export default function KnowledgeEntry() {
       >
         {selectedDocument ? (
           <Space direction="vertical" size={16} style={{ width: '100%' }}>
-            <Alert
-              type="info"
-              showIcon
-              message="任务状态说明"
-              description="PENDING 表示已入队，PROCESSING 表示后台线程正在执行，SUCCESS/FAILED 表示本次任务的最终结果。"
-            />
+            {taskError ? (
+              <Alert
+                type="error"
+                showIcon
+                message="任务历史加载失败"
+                description={taskError}
+              />
+            ) : null}
             <Table<KnowledgeIngestTask>
               rowKey="id"
               loading={taskLoading}

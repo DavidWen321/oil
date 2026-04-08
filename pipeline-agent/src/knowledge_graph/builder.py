@@ -4,12 +4,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 import networkx as nx
 from sqlalchemy import text
-
-from src.persistence import upsert_kg_edge, upsert_kg_node
 from src.tools.database_tools import get_engine
 from src.utils import logger
 
@@ -19,11 +17,21 @@ from .schema import EdgeType, GraphEdge, GraphNode, NodeType
 class KnowledgeGraphBuilder:
     """Build and query pipeline-domain knowledge graph."""
 
+    DEFAULT_DATA_DIR = Path(__file__).parent / "data"
+    DEFAULT_DOCUMENT_GRAPH_PATH = Path("knowledge_base") / ".registry" / "document_graph.json"
+
     def __init__(self) -> None:
         self.graph = nx.DiGraph()
         self._built = False
+        self._data_dir = str(self.DEFAULT_DATA_DIR)
+        self._document_graph_path = str(self.DEFAULT_DOCUMENT_GRAPH_PATH)
+        self._document_graph_revision = ""
 
-    def build_from_data(self, data_dir: str = "src/knowledge_graph/data") -> None:
+    def build_from_data(
+        self,
+        data_dir: str = "src/knowledge_graph/data",
+        document_graph_path: str = "knowledge_base/.registry/document_graph.json",
+    ) -> None:
         """Build graph from local JSON files."""
 
         self.graph.clear()
@@ -31,9 +39,25 @@ class KnowledgeGraphBuilder:
         self._load_equipment_data(data_path / "equipment.json")
         self._load_fault_causal_data(data_path / "fault_causal.json")
         self._load_standards_data(data_path / "standards.json")
+        self._load_document_graph(Path(document_graph_path))
         self._built = True
+        self._data_dir = str(data_path)
+        self._document_graph_path = str(Path(document_graph_path))
+        self._document_graph_revision = self._read_document_graph_revision(Path(document_graph_path))
         logger.info(f"Knowledge graph built: nodes={self.graph.number_of_nodes()}, edges={self.graph.number_of_edges()}")
         self.sync_to_database(clear_existing=True)
+
+    def reload_all(
+        self,
+        data_dir: Optional[str] = None,
+        document_graph_path: Optional[str] = None,
+    ) -> None:
+        """Reload static graph data plus persisted document subgraphs."""
+
+        self.build_from_data(
+            data_dir=str(Path(data_dir) if data_dir else self.DEFAULT_DATA_DIR),
+            document_graph_path=str(Path(document_graph_path) if document_graph_path else self.DEFAULT_DOCUMENT_GRAPH_PATH),
+        )
 
     def add_node(self, node: GraphNode) -> None:
         self.graph.add_node(
@@ -57,10 +81,19 @@ class KnowledgeGraphBuilder:
         """Build graph once on first use."""
 
         if self._built:
+            current_revision = self._read_document_graph_revision(Path(self._document_graph_path))
+            if current_revision and current_revision != self._document_graph_revision:
+                logger.info("Document graph revision changed, reloading graph builder")
+                self.reload_all(
+                    data_dir=self._data_dir,
+                    document_graph_path=self._document_graph_path,
+                )
             return
 
-        default_dir = Path(__file__).parent / "data"
-        self.build_from_data(str(default_dir))
+        self.build_from_data(
+            str(self.DEFAULT_DATA_DIR),
+            str(self.DEFAULT_DOCUMENT_GRAPH_PATH),
+        )
 
     def match_nodes_by_text(self, text: str) -> List[str]:
         """Fuzzy match node names by text tokens."""
@@ -75,12 +108,22 @@ class KnowledgeGraphBuilder:
 
         for node_id, attrs in self.graph.nodes(data=True):
             name = str(attrs.get("name", ""))
+            description = str(attrs.get("description", ""))
+            aliases = attrs.get("aliases", [])
+            heading_path = str(attrs.get("heading_path", attrs.get("properties", {}).get("heading_path", "")))
             name_lower = name.lower()
-            if lowered in name_lower or name_lower in lowered:
+            haystacks = [name_lower, description.lower(), heading_path.lower()]
+            haystacks.extend(str(alias).lower() for alias in aliases if alias)
+            if any(lowered in haystack or haystack in lowered for haystack in haystacks if haystack):
                 matched.append(node_id)
                 continue
 
-            if tokens and any(token.lower() in name_lower for token in tokens):
+            if tokens and any(
+                token.lower() in haystack
+                for token in tokens
+                for haystack in haystacks
+                if haystack
+            ):
                 matched.append(node_id)
 
         return matched
@@ -277,47 +320,141 @@ class KnowledgeGraphBuilder:
     def sync_to_database(self, clear_existing: bool = True) -> None:
         """Sync in-memory graph to MySQL tables."""
 
+        node_sql = text(
+            """
+            INSERT INTO t_kg_node
+                (node_id, node_type, name, description, properties, create_time, update_time)
+            VALUES
+                (:node_id, :node_type, :name, :description, CAST(:properties AS JSON), NOW(), NOW())
+            ON DUPLICATE KEY UPDATE
+                node_type = VALUES(node_type),
+                name = VALUES(name),
+                description = VALUES(description),
+                properties = VALUES(properties),
+                update_time = NOW()
+            """
+        )
+        edge_sql = text(
+            """
+            INSERT INTO t_kg_edge
+                (source_id, target_id, edge_type, weight, properties, create_time)
+            VALUES
+                (:source_id, :target_id, :edge_type, :weight, CAST(:properties AS JSON), NOW())
+            """
+        )
         try:
             engine = get_engine()
-            if clear_existing:
-                with engine.begin() as conn:
+            with engine.begin() as conn:
+                if clear_existing:
                     conn.execute(text("DELETE FROM t_kg_edge"))
                     conn.execute(text("DELETE FROM t_kg_node"))
 
-            for node_id, attrs in self.graph.nodes(data=True):
-                upsert_kg_node(
-                    node_id=node_id,
-                    node_type=str(attrs.get("type", "")),
-                    name=str(attrs.get("name", node_id)),
-                    description=str(attrs.get("description", "")),
-                    properties={
-                        key: value
-                        for key, value in attrs.items()
-                        if key not in {"type", "name", "description"}
-                    },
-                )
+                for node_id, attrs in self.graph.nodes(data=True):
+                    conn.execute(
+                        node_sql,
+                        {
+                            "node_id": node_id,
+                            "node_type": str(attrs.get("type", "")),
+                            "name": str(attrs.get("name", node_id)),
+                            "description": str(attrs.get("description", "")),
+                            "properties": json.dumps(
+                                {
+                                    key: value
+                                    for key, value in attrs.items()
+                                    if key not in {"type", "name", "description"}
+                                },
+                                ensure_ascii=False,
+                            ),
+                        },
+                    )
 
-            edge_seen: Set[tuple[str, str, str]] = set()
-            for source_id, target_id, attrs in self.graph.edges(data=True):
-                edge_type = str(attrs.get("type", ""))
-                key = (source_id, target_id, edge_type)
-                if key in edge_seen:
-                    continue
-                edge_seen.add(key)
-                upsert_kg_edge(
-                    source_id=source_id,
-                    target_id=target_id,
-                    edge_type=edge_type,
-                    weight=float(attrs.get("weight", 1.0)),
-                    properties={
-                        k: v
-                        for k, v in attrs.items()
-                        if k not in {"type", "weight"}
-                    },
-                )
+                edge_seen: Set[tuple[str, str, str]] = set()
+                for source_id, target_id, attrs in self.graph.edges(data=True):
+                    edge_type = str(attrs.get("type", ""))
+                    key = (source_id, target_id, edge_type)
+                    if key in edge_seen:
+                        continue
+                    edge_seen.add(key)
+                    conn.execute(
+                        edge_sql,
+                        {
+                            "source_id": source_id,
+                            "target_id": target_id,
+                            "edge_type": edge_type,
+                            "weight": float(attrs.get("weight", 1.0)),
+                            "properties": json.dumps(
+                                {
+                                    k: v
+                                    for k, v in attrs.items()
+                                    if k not in {"type", "weight"}
+                                },
+                                ensure_ascii=False,
+                            ),
+                        },
+                    )
             logger.info("Knowledge graph synced to database")
         except Exception as exc:
-            logger.debug(f"Skip KG DB sync: {exc}")
+            logger.warning("Knowledge graph DB sync failed, keeping previous DB state: {}", exc)
+
+    def _load_document_graph(self, file_path: Path) -> None:
+        """Load persisted document subgraphs from the knowledge-base registry."""
+
+        if not file_path.exists():
+            return
+
+        try:
+            payload = self._load_json(file_path)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Document graph load failed: {}", exc)
+            return
+
+        documents = payload.get("documents", {})
+        for item in documents.values():
+            for node in item.get("nodes", []):
+                self._add_serialized_node(node)
+            for edge in item.get("edges", []):
+                self._add_serialized_edge(edge)
+
+    def _add_serialized_node(self, node: Dict[str, Any]) -> None:
+        node_id = str(node.get("id", "")).strip()
+        if not node_id:
+            return
+
+        properties = dict(node.get("properties") or {})
+        self.graph.add_node(
+            node_id,
+            type=str(node.get("type", "")),
+            name=str(node.get("name", node_id)),
+            description=str(node.get("description", "")),
+            **properties,
+        )
+
+    def _add_serialized_edge(self, edge: Dict[str, Any]) -> None:
+        source_id = str(edge.get("source_id", "")).strip()
+        target_id = str(edge.get("target_id", "")).strip()
+        if not source_id or not target_id:
+            return
+        if source_id not in self.graph or target_id not in self.graph:
+            return
+
+        properties = dict(edge.get("properties") or {})
+        self.graph.add_edge(
+            source_id,
+            target_id,
+            type=str(edge.get("type", "")),
+            weight=float(edge.get("weight", 1.0) or 1.0),
+            **properties,
+        )
+
+    @staticmethod
+    def _read_document_graph_revision(file_path: Path) -> str:
+        if not file_path.exists():
+            return ""
+        try:
+            stat = file_path.stat()
+            return f"{stat.st_mtime_ns}:{stat.st_size}"
+        except Exception:
+            return ""
 
     def _load_equipment_data(self, file_path: Path) -> None:
         if not file_path.exists():

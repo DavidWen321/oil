@@ -9,7 +9,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
 
-from src.models import KnowledgeDocumentMetadata
+from src.models import KnowledgeDocumentMetadata, KnowledgeDocumentStatus
 from src.models.enums import KnowledgeCategory
 from src.rag import get_rag_pipeline, get_retriever, get_reranker
 from src.rag.knowledge_registry import get_knowledge_registry
@@ -61,6 +61,7 @@ class SearchResponse(BaseModel):
     query: str
     results: list[SearchItem]
     total: int
+    route_trace: Optional[dict[str, Any]] = None
 
 
 class RetrievalDebugItem(BaseModel):
@@ -106,6 +107,7 @@ class SearchDebugResponse(BaseModel):
     rerank_results: list["RerankDebugItem"]
     debug: RetrievalDebugMetrics
     rerank_debug: "RerankDebugMetrics"
+    route_trace: Optional[dict[str, Any]] = None
 
 
 class RerankDebugItem(BaseModel):
@@ -161,6 +163,9 @@ class KnowledgeDocumentItem(BaseModel):
     file_size_bytes: int
     source_type: str
     status: str
+    chunk_count: int = 0
+    ingest_stage: str = "QUEUED"
+    progress_percent: int = 0
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
@@ -223,6 +228,18 @@ def _extract_context_preview(full_text: str, content: str) -> Optional[str]:
         return None
     if full_text == content:
         return None
+    if "[Parent Context]" in full_text:
+        preview_parts: list[str] = []
+        if "[Section]" in full_text:
+            section_part = full_text.split("[Section]", 1)[1]
+            section_text = section_part.split("[Parent Context]", 1)[0].strip()
+            if section_text:
+                preview_parts.append(section_text)
+        parent_text = full_text.split("[Parent Context]", 1)[1]
+        parent_text = parent_text.split("[Focus Snippet]", 1)[0].strip()
+        if parent_text:
+            preview_parts.append(parent_text[:240] + "..." if len(parent_text) > 240 else parent_text)
+        return "\n\n".join(preview_parts).strip() or None
     marker = "[原文]"
     if marker in full_text:
         prefix = full_text.split(marker, 1)[0]
@@ -309,10 +326,18 @@ async def upload_document(
             file_bytes=file_bytes,
             metadata=metadata,
         )
+        status_value = str(stored.get("status", "")).strip().lower()
+        ingest_stage = str(stored.get("ingest_stage", "")).strip().upper()
+        success = status_value == KnowledgeDocumentStatus.INDEXED.value or ingest_stage == "DONE"
+        message = (
+            "Document uploaded and indexed successfully"
+            if success
+            else f"Knowledge indexing failed at stage {stored.get('ingest_stage') or 'FAILED'}"
+        )
         return UploadResponse(
-            success=True,
+            success=success,
             document=_to_document_item(stored),
-            message="文档已上传并写入知识库注册表",
+            message=message,
         )
     except HTTPException:
         raise
@@ -375,7 +400,7 @@ async def search_knowledge(request: SearchRequest):
             query=request.query,
             top_k=request.top_k,
             category_filter=request.category,
-            skip_self_rag=True,
+            skip_self_rag=False,
         )
         results = [
             SearchItem(
@@ -387,7 +412,12 @@ async def search_knowledge(request: SearchRequest):
             )
             for src in rag_response.sources
         ]
-        return SearchResponse(query=request.query, results=results, total=len(results))
+        return SearchResponse(
+            query=request.query,
+            results=results,
+            total=len(results),
+            route_trace=rag_response.metadata,
+        )
     except Exception as exc:  # noqa: BLE001
         logger.error(f"Knowledge search failed: {exc}")
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -398,6 +428,8 @@ async def debug_search_knowledge(request: SearchRequest):
     """Return stage-3 retrieval debug data with reranker and contextual previews."""
 
     try:
+        pipeline = get_rag_pipeline()
+        pipeline.sync_sparse_index_if_needed()
         payload = get_retriever().retrieve_debug_bundle(
             query=request.query,
             top_k=request.top_k,
@@ -411,7 +443,8 @@ async def debug_search_knowledge(request: SearchRequest):
         match_type_lookup = {item.chunk_id: item.match_type for item in hybrid_results}
         reranker = get_reranker()
         rerank_started = time.perf_counter()
-        reranked = reranker.rerank(request.query, hybrid_results, top_k=request.top_k)
+        reranked = reranker.rerank(request.query, hybrid_results, top_k=request.top_k * 2)
+        reranked = pipeline._dedupe_rerank_results(reranked)[:request.top_k]
         rerank_duration_ms = round((time.perf_counter() - rerank_started) * 1000, 2)
 
         payload["rerank_results"] = [
@@ -425,9 +458,16 @@ async def debug_search_knowledge(request: SearchRequest):
             rerank_candidates_before=len(hybrid_results),
             rerank_candidates_after=len(reranked),
             rerank_duration_ms=rerank_duration_ms,
-            contextual_enabled=bool(getattr(get_rag_pipeline().chunker, "use_contextual", False)),
+            contextual_enabled=bool(getattr(pipeline.chunker, "use_contextual", False)),
             contextual_results=sum(1 for item in reranked if _extract_context_preview(item.full_text or "", item.content or "")),
         )
+        rag_response = pipeline.retrieve(
+            query=request.query,
+            top_k=request.top_k,
+            category_filter=request.category,
+            skip_self_rag=False,
+        )
+        payload["route_trace"] = rag_response.metadata
         return SearchDebugResponse(**payload)
     except Exception as exc:  # noqa: BLE001
         logger.error(f"Knowledge debug search failed: {exc}")
