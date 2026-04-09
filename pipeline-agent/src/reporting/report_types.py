@@ -36,6 +36,15 @@ class TrendFinding:
 
 
 @dataclass
+class IssueFinding:
+    target: str
+    level: str
+    issue_type: str
+    message: str
+    evidence: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
 class AnomalyFinding:
     target: str
     target_type: str
@@ -75,8 +84,30 @@ class RecommendationFinding:
 
 
 @dataclass
+class DecisionOption:
+    name: str
+    score: float
+    feasible: bool
+    reasons: list[str] = field(default_factory=list)
+    pros: list[str] = field(default_factory=list)
+    cons: list[str] = field(default_factory=list)
+    violations: list[str] = field(default_factory=list)
+    option_type: str = "single"
+
+
+@dataclass
+class DecisionResult:
+    recommended_options: list[DecisionOption] = field(default_factory=list)
+    fallback_options: list[DecisionOption] = field(default_factory=list)
+    rejected_options: list[DecisionOption] = field(default_factory=list)
+    summary: str = ""
+    weights: dict[str, float] = field(default_factory=dict)
+
+
+@dataclass
 class DiagnosisResult:
     trends: list[TrendFinding] = field(default_factory=list)
+    issues: list[IssueFinding] = field(default_factory=list)
     anomalies: list[AnomalyFinding] = field(default_factory=list)
     causes: list[CauseFinding] = field(default_factory=list)
     constraints: list[ConstraintFinding] = field(default_factory=list)

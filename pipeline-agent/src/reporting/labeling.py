@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from src.models.schemas import DynamicReportRequest
 
@@ -28,11 +28,11 @@ def report_type_label(request: DynamicReportRequest) -> str:
         "RISK_REVIEW": "风险复盘报告",
         "ENERGY_DIAGNOSIS": "能耗诊断报告",
         "OPERATION_BRIEF": "运行简报",
-        "overview": "运行概况报告",
+        "overview": "参数评估报告",
         "energy": "能耗分析报告",
-        "pump": "泵站优化报告",
-        "sensitivity": "敏感性分析报告",
-        "diagnosis": "异常诊断报告",
+        "pump": "泵站优选报告",
+        "sensitivity": "水力分析解读报告",
+        "diagnosis": "优化建议报告",
         "comparison": "方案对比报告",
     }
     return mapping.get(request.report_type, request.report_type)
@@ -47,9 +47,9 @@ def output_style_key(request: DynamicReportRequest) -> str:
 
 def output_style_label(request: DynamicReportRequest) -> str:
     mapping = {
-        "simple": "简洁版",
+        "simple": "简明版",
         "professional": "专业版",
-        "presentation": "汇报版",
+        "presentation": "管理版",
     }
     return mapping.get(output_style_key(request), "专业版")
 
@@ -61,6 +61,7 @@ def analysis_object_label(value: str | None) -> str:
         "pipeline": "管道",
         "pumpStation": "泵站",
         "pump_station": "泵站",
+        "scheme": "方案",
     }
     return mapping.get(value or "", value or "-")
 
@@ -68,9 +69,9 @@ def analysis_object_label(value: str | None) -> str:
 def optimization_goal_label(value: str | None) -> str:
     mapping = {
         "energy": "能耗优先",
-        "cost": "成本优先",
-        "safety": "安全优先",
-        "balanced": "综合平衡",
+        "cost": "输量优先",
+        "safety": "压力优先",
+        "balanced": "综合最优",
     }
     return mapping.get(value or "", value or "-")
 

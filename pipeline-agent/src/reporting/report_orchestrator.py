@@ -4,10 +4,12 @@ from src.models.schemas import DynamicReportRequest, DynamicReportResponse
 
 from .data_loader import load_report_data
 from .diagnosis_engine import DiagnosisEngine
+from .decision_engine import DecisionEngine
 from .labeling import output_style_key, range_label, report_type_label
 from .llm_writer import explain_report
 from .metric_engine import build_metric_snapshot
 from .outline_planner import plan_outline
+from .report_context_builder import build_report_context
 from .section_generator import (
     build_highlights,
     build_raw_text,
@@ -31,33 +33,35 @@ def generate_report(request: DynamicReportRequest) -> DynamicReportResponse:
     data = load_report_data(request)
     metrics = build_metric_snapshot(data, request)
     diagnosis = DiagnosisEngine().run(data, metrics, request)
-    outline = plan_outline(request, metrics, diagnosis, _title_prefix(data.projects))
-    sections = build_sections(request, data, metrics, diagnosis, outline)
+    decision = DecisionEngine().run(data, metrics, diagnosis, request)
+    outline = plan_outline(request, metrics, diagnosis, decision, _title_prefix(data.projects))
+    sections = build_sections(request, data, metrics, diagnosis, decision, outline)
     scope_rows = next((section.table.rows for section in sections if section.id == "scope-context" and section.table), [])
 
-    summary = build_summary(diagnosis, metrics)
-    highlights = build_highlights(diagnosis, metrics)
+    summary = build_summary(diagnosis, metrics, decision)
+    highlights = build_highlights(diagnosis, metrics, decision)
     conclusion = sections[-1].content if sections and sections[-1].id == "conclusion" else ""
     risks = build_risk_items(diagnosis)
     suggestions = build_suggestion_items(diagnosis)
+    report_context = build_report_context(request, data, metrics, diagnosis, decision)
 
     llm_input = {
-        "report_context": {
-            "report_type": report_type_label(request),
-            "range_label": range_label(request),
-            "output_style": request.output_style or "professional",
-            "analysis_object": request.analysis_object or "project",
-            "user_goal": request.optimization_goal or "",
-            "focuses": request.focuses,
-            "user_prompt": request.user_prompt or "",
-        },
+        "report_context": report_context,
         "facts": {
             "overview_metrics": metrics.overview_metrics,
             "trends": [item.__dict__ for item in diagnosis.trends],
+            "issues": [item.__dict__ for item in diagnosis.issues],
             "anomalies": [item.__dict__ for item in diagnosis.anomalies],
             "causes": [item.__dict__ for item in diagnosis.causes],
             "constraints": [item.__dict__ for item in diagnosis.constraints],
             "recommendations": [item.__dict__ for item in diagnosis.recommendations],
+            "decision": {
+                "recommended_options": [item.__dict__ for item in decision.recommended_options],
+                "fallback_options": [item.__dict__ for item in decision.fallback_options],
+                "rejected_options": [item.__dict__ for item in decision.rejected_options],
+                "summary": decision.summary,
+                "weights": decision.weights,
+            },
         },
         "outline": [item.__dict__ for item in outline.sections],
         "draft": {
@@ -109,6 +113,7 @@ def generate_report(request: DynamicReportRequest) -> DynamicReportResponse:
             "confidence": diagnosis.confidence,
             "scope_rows": scope_rows,
             "outline": [item.__dict__ for item in outline.sections],
+            "decision_summary": decision.summary,
         },
-        raw_text=build_raw_text(outline, diagnosis, metrics, sections),
+        raw_text=build_raw_text(outline, diagnosis, metrics, decision, sections),
     )

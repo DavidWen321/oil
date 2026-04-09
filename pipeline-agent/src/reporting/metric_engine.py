@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from statistics import mean
 from typing import Any
@@ -37,6 +37,7 @@ def _normalize_efficiency(value: float | None) -> float | None:
 def build_metric_snapshot(data: ReportDataBundle, request: DynamicReportRequest) -> MetricSnapshot:
     throughput_values = [_to_float(item.get("throughput")) for item in data.pipelines]
     length_values = [_to_float(item.get("length")) for item in data.pipelines]
+    diameter_values = [_to_float(item.get("diameter")) for item in data.pipelines]
     roughness_values = [_to_float(item.get("roughness")) for item in data.pipelines]
     density_values = [_to_float(item.get("density")) for item in data.oil_properties]
     viscosity_values = [_to_float(item.get("viscosity")) for item in data.oil_properties]
@@ -49,6 +50,7 @@ def build_metric_snapshot(data: ReportDataBundle, request: DynamicReportRequest)
     avg_density = _avg(density_values)
     avg_viscosity = _avg(viscosity_values)
     avg_length = _avg(length_values)
+    avg_diameter = _avg(diameter_values)
     avg_roughness = _avg(roughness_values)
 
     overview = data.history_overview or {}
@@ -100,6 +102,7 @@ def build_metric_snapshot(data: ReportDataBundle, request: DynamicReportRequest)
         {
             "name": str(row.get("name") or "-"),
             "length": _to_float(row.get("length")),
+            "diameter": _to_float(row.get("diameter")),
             "throughput": _to_float(row.get("throughput")),
             "roughness": _to_float(row.get("roughness")),
         }
@@ -118,6 +121,7 @@ def build_metric_snapshot(data: ReportDataBundle, request: DynamicReportRequest)
             "success_rate": success_rate,
             "total_throughput": total_throughput,
             "avg_pipeline_length": avg_length,
+            "avg_pipeline_diameter": avg_diameter,
             "avg_roughness": avg_roughness,
             "avg_density": avg_density,
             "avg_viscosity": avg_viscosity,

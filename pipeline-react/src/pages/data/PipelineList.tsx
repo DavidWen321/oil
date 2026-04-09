@@ -311,7 +311,9 @@ export default function PipelineList() {
         <header className={styles.header}>
           <div className={styles.headerTop}>
             <div className={styles.headerInfo}>
-              <h1 className={styles.title}>管道参数</h1>
+              <h1 className={styles.title}>
+                <span className={styles.titleAccent}>管道参数</span>
+              </h1>
               <p className={styles.subtitle}>
                 管理数据库中全部项目的管道参数，并自动同步最新的管径、长度、壁厚、输量与高程数据。
               </p>

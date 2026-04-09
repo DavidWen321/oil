@@ -86,11 +86,24 @@
   letter-spacing: -0.04em;
 }
 
+.titleAccent {
+  background: linear-gradient(
+    135deg,
+    var(--accent-primary) 0%,
+    #4f7dff 46%,
+    var(--accent-secondary) 100%
+  );
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
 .subtitle {
   max-width: 760px;
   margin: 0;
-  color: var(--text-secondary);
+  color: var(--text-tertiary);
   font-size: var(--text-base);
+  font-weight: var(--font-medium);
   line-height: 1.75;
 }
 

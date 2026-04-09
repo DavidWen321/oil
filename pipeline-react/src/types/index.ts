@@ -1,4 +1,4 @@
-import type { DynamicReportResponsePayload } from './agent';
+﻿import type { DynamicReportResponsePayload } from './agent';
 
 export interface R<T> {
   code: number;
@@ -46,21 +46,6 @@ export interface ReportResultPayload {
   conclusion?: string;
   rawText?: string;
   report?: DynamicReportResponsePayload | null;
-}
-
-export interface SaveReportRequest {
-  title: string;
-  reportType: string;
-  reportTypeLabel: string;
-  selectedProjectIds: number[];
-  projectNames: string[];
-  rangeLabel: string;
-  intelligenceLabel: string;
-  outputStyle?: 'simple' | 'professional' | 'presentation';
-  outputStyleLabel?: string;
-  outputFormat: 'markdown' | 'docx' | 'pdf';
-  sourceLabel: string;
-  result: ReportResultPayload;
 }
 
 export interface LoginParams {
@@ -301,3 +286,4 @@ export interface SensitivityRanking {
 }
 
 export * from './agent';
+

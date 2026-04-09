@@ -225,7 +225,9 @@ export default function PumpStationList() {
         <header className={styles.header}>
           <div className={styles.headerTop}>
             <div className={styles.headerInfo}>
-              <h1 className={styles.title}>泵站参数</h1>
+              <h1 className={styles.title}>
+                <span className={styles.titleAccent}>泵站参数</span>
+              </h1>
               <p className={styles.subtitle}>
                 管理共享泵站设备参数信息，集中维护关键运行指标。
               </p>

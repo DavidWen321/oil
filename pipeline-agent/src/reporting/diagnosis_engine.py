@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from statistics import mean, stdev
 
@@ -10,6 +10,7 @@ from .report_types import (
     CauseFinding,
     ConstraintFinding,
     DiagnosisResult,
+    IssueFinding,
     MetricSnapshot,
     RecommendationFinding,
     ReportDataBundle,
@@ -83,25 +84,157 @@ class DiagnosisEngine:
         metrics: MetricSnapshot,
         request: DynamicReportRequest,
     ) -> DiagnosisResult:
+        issues = self.build_issues(metrics, data, request)
         trends = self.analyze_trend(metrics.trend_metrics.get("operation_daily", []))
         anomalies = self.detect_anomalies(metrics, data)
         causes = self.infer_causes(anomalies, metrics, request)
         constraints = self.infer_constraints(metrics, request)
         recommendations = self.generate_recommendations(causes, constraints, request)
-        risks = self.build_risks(anomalies, constraints)
+        risks = self.build_risks(issues, anomalies, constraints)
         return DiagnosisResult(
             trends=trends,
+            issues=issues,
             anomalies=anomalies,
             causes=causes,
             constraints=constraints,
             recommendations=recommendations,
             risks=risks,
             confidence={
-                "trend": 0.82 if metrics.data_quality.get("usable_for_trend") else 0.35,
+                "trend": 0.72 if metrics.data_quality.get("usable_for_trend") else 0.35,
                 "anomaly": 0.8 if anomalies else 0.45,
                 "cause": 0.76 if causes else 0.4,
             },
         )
+
+    def build_issues(
+        self,
+        metrics: MetricSnapshot,
+        data: ReportDataBundle,
+        request: DynamicReportRequest,
+    ) -> list[IssueFinding]:
+        issues: list[IssueFinding] = []
+        pump_rows = metrics.object_metrics.get("pump_stations", [])
+        pump_eff_values = [row.get("pump_efficiency") for row in pump_rows if row.get("pump_efficiency") is not None]
+        motor_eff_values = [row.get("electric_efficiency") for row in pump_rows if row.get("electric_efficiency") is not None]
+        pump_eff_baseline = mean(pump_eff_values) if pump_eff_values else None
+        motor_eff_baseline = mean(motor_eff_values) if motor_eff_values else None
+
+        for row in pump_rows:
+            name = str(row.get("name") or "-")
+            pump_eff = row.get("pump_efficiency")
+            motor_eff = row.get("electric_efficiency")
+            displacement = row.get("displacement")
+
+            if pump_eff is not None:
+                threshold = 0.75 if pump_eff_baseline is None else max(0.75, pump_eff_baseline - 0.05)
+                if pump_eff < threshold:
+                    level = "high" if pump_eff < 0.7 else "medium"
+                    issues.append(
+                        IssueFinding(
+                            target=name,
+                            level=level,
+                            issue_type="pump_efficiency_low",
+                            message="泵效偏低，低于当前样本基线",
+                            evidence={"current_value": round(pump_eff, 3), "baseline": round(pump_eff_baseline or threshold, 3)},
+                        )
+                    )
+
+            if motor_eff is not None:
+                threshold = 0.85 if motor_eff_baseline is None else max(0.85, motor_eff_baseline - 0.04)
+                if motor_eff < threshold:
+                    level = "high" if motor_eff < 0.8 else "medium"
+                    issues.append(
+                        IssueFinding(
+                            target=name,
+                            level=level,
+                            issue_type="motor_efficiency_low",
+                            message="电机效率偏低，存在能耗损失风险",
+                            evidence={"current_value": round(motor_eff, 3), "baseline": round(motor_eff_baseline or threshold, 3)},
+                        )
+                    )
+
+            if request.target_throughput is not None and displacement is not None and displacement < request.target_throughput * 0.9:
+                issues.append(
+                    IssueFinding(
+                        target=name,
+                        level="medium",
+                        issue_type="flow_below_target",
+                        message="排量低于目标输量，可能无法满足输量要求",
+                        evidence={"current_value": round(displacement, 2), "target": request.target_throughput},
+                    )
+                )
+
+        latest_pressure = metrics.overview_metrics.get("latest_end_station_pressure")
+        if request.min_pressure is not None and latest_pressure is not None and latest_pressure < request.min_pressure:
+            issues.append(
+                IssueFinding(
+                    target="末站",
+                    level="high",
+                    issue_type="min_pressure_unmet",
+                    message="末站进站压力低于最低出口压力约束",
+                    evidence={"current_value": round(latest_pressure, 3), "min_required": request.min_pressure},
+                )
+            )
+
+        if request.target_throughput is not None:
+            avg_flow_rate = metrics.overview_metrics.get("avg_flow_rate")
+            if avg_flow_rate is not None and avg_flow_rate < request.target_throughput * 0.9:
+                issues.append(
+                    IssueFinding(
+                        target="系统",
+                        level="medium",
+                        issue_type="flow_target_gap",
+                        message="平均输量低于目标输量",
+                        evidence={"current_value": round(avg_flow_rate, 2), "target": request.target_throughput},
+                    )
+                )
+
+        pipeline_rows = metrics.object_metrics.get("pipelines", [])
+        resistance_scores = []
+        for row in pipeline_rows:
+            length = row.get("length")
+            roughness = row.get("roughness")
+            diameter = row.get("diameter")
+            if length is None or roughness is None or diameter is None or diameter <= 0:
+                continue
+            resistance_scores.append(length * roughness / diameter)
+        baseline = mean(resistance_scores) if resistance_scores else None
+        std = stdev(resistance_scores) if resistance_scores and len(resistance_scores) > 1 else 0.0
+
+        for row in pipeline_rows:
+            length = row.get("length")
+            roughness = row.get("roughness")
+            diameter = row.get("diameter")
+            if length is None or roughness is None or diameter is None or diameter <= 0:
+                continue
+            score = length * roughness / diameter
+            if baseline is None:
+                continue
+            if score > baseline + max(std, baseline * 0.25):
+                issues.append(
+                    IssueFinding(
+                        target=str(row.get("name") or "-"),
+                        level="medium",
+                        issue_type="pipeline_resistance_high",
+                        message="管道输送阻力偏大，可能导致压损升高",
+                        evidence={"resistance_index": round(score, 4), "baseline": round(baseline, 4)},
+                    )
+                )
+
+        avg_viscosity = metrics.overview_metrics.get("avg_viscosity")
+        if avg_viscosity is not None and avg_viscosity > 12:
+            level = "high" if avg_viscosity > 20 else "medium"
+            issues.append(
+                IssueFinding(
+                    target="油品",
+                    level=level,
+                    issue_type="viscosity_high",
+                    message="油品黏度偏高，输送风险上升",
+                    evidence={"current_value": round(avg_viscosity, 2)},
+                )
+            )
+
+        return issues
 
     def analyze_trend(self, rows: list[dict]) -> list[TrendFinding]:
         if len(rows) < 7:
@@ -115,7 +248,7 @@ class DiagnosisEngine:
 
             window = max(2, len(values) // 3)
             first = values[:window]
-            middle = values[max(0, (len(values) - window) // 2): max(0, (len(values) - window) // 2) + window]
+            middle = values[max(0, (len(values) - window) // 2) : max(0, (len(values) - window) // 2) + window]
             last = values[-window:]
             first_avg = mean(first)
             middle_avg = mean(middle) if middle else first_avg
@@ -248,7 +381,7 @@ class DiagnosisEngine:
                         value=value,
                         baseline=eff_baseline,
                         severity="high" if value < 0.7 else "medium",
-                        summary=f"{row['name']}泵效偏低，低于当前样本基线",
+                        summary=f"{row['name']} 泵效偏低，低于当前样本基线",
                         evidence=[
                             f"当前值 {value:.2%}",
                             f"样本均值 {eff_baseline:.2%}",
@@ -256,32 +389,6 @@ class DiagnosisEngine:
                     )
                 )
 
-        pipeline_rows = metrics.object_metrics.get("pipelines", [])
-        throughput_values = [row["throughput"] for row in pipeline_rows if row.get("throughput") is not None]
-        throughput_baseline = mean(throughput_values) if throughput_values else None
-        avg_roughness = metrics.overview_metrics.get("avg_roughness")
-        for row in pipeline_rows:
-            value = row.get("throughput")
-            roughness = row.get("roughness")
-            if value is None or throughput_baseline is None or roughness is None or avg_roughness is None:
-                continue
-            if value > throughput_baseline * 1.2 and roughness > avg_roughness * 1.1:
-                anomalies.append(
-                    AnomalyFinding(
-                        target=str(row["name"]),
-                        target_type="pipeline",
-                        metric="pressure_loss_risk",
-                        value=roughness,
-                        baseline=avg_roughness,
-                        severity="medium",
-                        summary=f"{row['name']}在高输量下粗糙度偏高，压损风险上升",
-                        evidence=[
-                            f"输量 {value:.2f}",
-                            f"粗糙度 {roughness:.4f}",
-                            f"均值粗糙度 {avg_roughness:.4f}",
-                        ],
-                    )
-                )
         return anomalies
 
     def infer_causes(
@@ -299,7 +406,7 @@ class DiagnosisEngine:
         flow_pressure_corr = _pearson(_paired_values(operation_points, "flow_rate", "end_station_pressure"))
 
         for item in anomalies:
-            primary = "当前异常需要结合更多运行时序做复核"
+            primary = "当前异常需要结合更多运行记录复核"
             secondary: list[str] = []
             evidence = list(item.evidence)
             confidence = 0.58
@@ -320,7 +427,7 @@ class DiagnosisEngine:
 
             elif item.metric in {"end_station_pressure", "end_station_pressure_jump", "pressure_loss_risk"}:
                 if flow_pressure_corr is not None and flow_pressure_corr <= -0.45:
-                    primary = "输量升高与末站压力下降存在负相关，压力异常更可能由高输量工况触发"
+                    primary = "输量升高与末站压力下降存在负相关，压力异常可能由高输量工况触发"
                     evidence.append(f"输量-压力相关系数 {flow_pressure_corr:.2f}")
                     confidence += 0.15
                 if avg_viscosity is not None and avg_viscosity > 10:
@@ -328,7 +435,7 @@ class DiagnosisEngine:
                     evidence.append(f"平均黏度 {avg_viscosity:.2f}")
                     confidence += 0.06
                 if not request.allow_pump_adjust:
-                    secondary.append("当前禁止调泵，压头补偿手段受限")
+                    secondary.append("当前禁止调泵，压力补偿手段受限")
                     evidence.append("运行限制：禁止调泵")
                     confidence += 0.08
 
@@ -344,7 +451,7 @@ class DiagnosisEngine:
                     confidence += 0.08
 
             elif item.metric in {"flow_rate", "flow_rate_jump"}:
-                primary = "输量波动本身较大，可能同时拉动能耗和压力结果变化"
+                primary = "输量波动较大，可能同时拉动能耗和压力结果变化"
                 if flow_energy_corr is not None and flow_energy_corr >= 0.65:
                     secondary.append("输量与能耗呈显著正相关")
                     evidence.append(f"输量-能耗相关系数 {flow_energy_corr:.2f}")
@@ -361,54 +468,83 @@ class DiagnosisEngine:
                     primary_cause=primary,
                     secondary_causes=secondary,
                     evidence=evidence,
-                    confidence=min(confidence, 0.93),
+                    confidence=min(confidence, 0.95),
                 )
             )
         return causes
 
     def infer_constraints(self, metrics: MetricSnapshot, request: DynamicReportRequest) -> list[ConstraintFinding]:
-        findings: list[ConstraintFinding] = []
+        constraints: list[ConstraintFinding] = []
         target_flow_gap = metrics.constraint_metrics.get("target_flow_gap")
         min_pressure_gap = metrics.constraint_metrics.get("min_pressure_gap")
-        latest_pressure = metrics.overview_metrics.get("latest_end_station_pressure")
-        avg_flow = metrics.overview_metrics.get("avg_flow_rate")
 
-        if request.target_throughput is not None and target_flow_gap is not None and target_flow_gap < 0:
-            findings.append(
-                ConstraintFinding(
-                    name="输量目标缺口",
-                    severity="high" if abs(target_flow_gap) > 100 else "medium",
-                    summary=f"当前平均输量低于目标输量，缺口约 {abs(target_flow_gap):.2f} m3/h",
-                    evidence=[
-                        f"目标输量 {request.target_throughput:.2f} m3/h",
-                        f"当前平均输量 {avg_flow:.2f} m3/h" if avg_flow is not None else "当前平均输量缺失",
-                    ],
+        if request.target_throughput is not None:
+            if target_flow_gap is None:
+                constraints.append(
+                    ConstraintFinding(
+                        name="输量约束",
+                        severity="low",
+                        summary="目标输量已设定，但暂缺可用于校核的运行数据。",
+                        evidence=[f"目标输量 {request.target_throughput:.2f} m3/h"],
+                    )
                 )
-            )
+            elif target_flow_gap < 0:
+                constraints.append(
+                    ConstraintFinding(
+                        name="输量约束",
+                        severity="high",
+                        summary="平均输量低于目标输量，存在输量缺口。",
+                        evidence=[f"缺口 {abs(target_flow_gap):.2f} m3/h"],
+                    )
+                )
+            else:
+                constraints.append(
+                    ConstraintFinding(
+                        name="输量约束",
+                        severity="low",
+                        summary="平均输量已满足目标要求。",
+                        evidence=[f"余量 {target_flow_gap:.2f} m3/h"],
+                    )
+                )
 
-        if request.min_pressure is not None and min_pressure_gap is not None and min_pressure_gap < 0:
-            findings.append(
-                ConstraintFinding(
-                    name="压力约束偏紧",
-                    severity="high" if abs(min_pressure_gap) > 0.2 else "medium",
-                    summary=f"最新末站进站压头低于最小约束，缺口约 {abs(min_pressure_gap):.2f} MPa",
-                    evidence=[
-                        f"最小约束 {request.min_pressure:.2f} MPa",
-                        f"最新末站进站压头 {latest_pressure:.2f} MPa" if latest_pressure is not None else "末站压力样本缺失",
-                    ],
+        if request.min_pressure is not None:
+            if min_pressure_gap is None:
+                constraints.append(
+                    ConstraintFinding(
+                        name="压力约束",
+                        severity="low",
+                        summary="最低出口压力已设定，但暂缺可用于校核的运行数据。",
+                        evidence=[f"最低出口压力 {request.min_pressure:.2f} MPa"],
+                    )
                 )
-            )
+            elif min_pressure_gap < 0:
+                constraints.append(
+                    ConstraintFinding(
+                        name="压力约束",
+                        severity="high",
+                        summary="末站压力低于最低出口压力，存在压力缺口。",
+                        evidence=[f"缺口 {abs(min_pressure_gap):.2f} MPa"],
+                    )
+                )
+            else:
+                constraints.append(
+                    ConstraintFinding(
+                        name="压力约束",
+                        severity="low",
+                        summary="末站压力满足最低出口压力要求。",
+                        evidence=[f"余量 {min_pressure_gap:.2f} MPa"],
+                    )
+                )
 
-        if findings and not request.allow_pump_adjust:
-            findings.append(
-                ConstraintFinding(
-                    name="调泵限制",
-                    severity="high",
-                    summary="当前禁止调整泵站组合，可行解空间被压缩",
-                    evidence=["allow_pump_adjust = false"],
-                )
+        constraints.append(
+            ConstraintFinding(
+                name="运行限制",
+                severity="low",
+                summary="允许调整泵站组合" if request.allow_pump_adjust else "不允许调整泵站组合",
+                evidence=["调泵限制"],
             )
-        return findings
+        )
+        return constraints
 
     def generate_recommendations(
         self,
@@ -418,115 +554,88 @@ class DiagnosisEngine:
     ) -> list[RecommendationFinding]:
         recommendations: list[RecommendationFinding] = []
         goal_label = optimization_goal_label(request.optimization_goal)
-        constraint_map = {item.name: item for item in constraints}
 
-        for cause in causes:
-            evidence_text = "；".join(cause.evidence[:2]) if cause.evidence else ""
-            if cause.metric.startswith("pump_efficiency"):
-                action = "优先复核低效率泵组的启停组合，并校核当前工况下的泵效与电机效率"
-                if request.optimization_goal == "safety":
-                    action = "在保证末站压力余量的前提下，逐步收敛低效率泵组组合"
+        for item in causes:
+            if "泵效偏低" in item.primary_cause or item.metric.startswith("pump_efficiency"):
+                action = "优先复核低效率泵组运行组合，并对低负荷泵组做停启优化"
+                if goal_label == "压力优先":
+                    action = "在满足压力冗余前提下逐步优化低效率泵组运行组合"
                 recommendations.append(
                     RecommendationFinding(
-                        target=cause.target,
-                        priority="高",
-                        reason=f"{cause.primary_cause}{f'；依据：{evidence_text}' if evidence_text else ''}",
+                        target=item.target,
+                        priority="high",
+                        reason=item.primary_cause,
                         action=action,
-                        expected=f"降低单位输量能耗，并让运行状态更贴近 {goal_label or '当前优化目标'}",
+                        expected="降低单位输量能耗并减少无效扬程",
                     )
                 )
-            elif "pressure" in cause.metric:
-                action = "优先复核高输量工况下的压力余量与压降路径，必要时分时段压缩输量"
-                if not request.allow_pump_adjust:
-                    action = "先评估适度下调输量是否能恢复压力余量，再决定是否放开调泵限制"
+
+            if "压力" in item.primary_cause or item.metric.startswith("end_station_pressure"):
+                action = "核查目标输量与泵站组合，必要时提升末站压力裕度"
+                if goal_label == "输量优先":
+                    action = "在保证最低压力前提下优先校核输量缺口并优化泵站组合"
                 recommendations.append(
                     RecommendationFinding(
-                        target=cause.target,
-                        priority="高",
-                        reason=f"{cause.primary_cause}{f'；依据：{evidence_text}' if evidence_text else ''}",
+                        target=item.target,
+                        priority="high",
+                        reason=item.primary_cause,
                         action=action,
-                        expected="缓解压力约束冲突，降低末站压力失守风险",
+                        expected="提升压力可行性并降低运行风险",
                     )
                 )
-            elif cause.metric.startswith("energy"):
+
+        for item in constraints:
+            if item.severity == "high":
                 recommendations.append(
                     RecommendationFinding(
-                        target=cause.target,
-                        priority="中",
-                        reason=f"{cause.primary_cause}{f'；依据：{evidence_text}' if evidence_text else ''}",
-                        action="围绕高能耗时段复核输量、泵效和电价口径，优先处理高成本工况",
-                        expected="压降年能耗和综合电费支出",
+                        target=item.name,
+                        priority="high",
+                        reason=item.summary,
+                        action="优先校核约束边界并重新评估当前方案可行性",
+                        expected="降低约束冲突带来的运行风险",
                     )
                 )
 
-        flow_gap = constraint_map.get("输量目标缺口")
-        if flow_gap is not None:
-            recommendations.append(
-                RecommendationFinding(
-                    target="运行目标",
-                    priority="高",
-                    reason=flow_gap.summary,
-                    action="基于真实时序样本重算目标输量可达性，必要时按阶段逼近目标",
-                    expected="减少目标设定与实际工况之间的偏差",
-                )
-            )
-
-        pressure_gap = constraint_map.get("压力约束偏紧")
-        if pressure_gap is not None:
-            recommendations.append(
-                RecommendationFinding(
-                    target="压力边界",
-                    priority="高" if pressure_gap.severity == "high" else "中",
-                    reason=pressure_gap.summary,
-                    action="围绕末站进站压头建立阈值监控，并联动复算压降敏感参数",
-                    expected="让后续优化在真实压力边界内进行，避免不可行方案反复试算",
-                )
-            )
-
-        pump_limit = constraint_map.get("调泵限制")
-        if pump_limit is not None:
-            recommendations.append(
-                RecommendationFinding(
-                    target="运行限制",
-                    priority="中",
-                    reason=pump_limit.summary,
-                    action="若业务允许，预留可调泵的应急策略；若不允许，则优先从输量和时段分配侧优化",
-                    expected="扩大可行解空间，减少约束冲突对结果的放大效应",
-                )
-            )
-
-        deduplicated: list[RecommendationFinding] = []
-        for item in recommendations:
-            key = (item.target, item.reason, item.action)
-            if any((current.target, current.reason, current.action) == key for current in deduplicated):
-                continue
-            deduplicated.append(item)
-        return deduplicated[:6]
+        return recommendations
 
     def build_risks(
         self,
+        issues: list[IssueFinding],
         anomalies: list[AnomalyFinding],
         constraints: list[ConstraintFinding],
     ) -> list[dict]:
         risks: list[dict] = []
-        for item in anomalies[:4]:
+        for item in issues[:4]:
+            risks.append(
+                {
+                    "target": item.target,
+                    "riskType": item.issue_type,
+                    "level": "高" if item.level == "high" else "中",
+                    "reason": item.message,
+                    "suggestion": "建议结合目标约束复核对应参数，并评估是否需要调整方案。",
+                }
+            )
+
+        for item in anomalies[:3]:
             risks.append(
                 {
                     "target": item.target,
                     "riskType": item.metric,
                     "level": "高" if item.severity == "high" else "中",
                     "reason": item.summary,
-                    "suggestion": item.evidence[0] if item.evidence else "建议补充对象级运行样本后复核",
+                    "suggestion": "建议复核异常时点的参数配置与运行记录。",
                 }
             )
-        for item in constraints[:3]:
-            risks.append(
-                {
-                    "target": item.name,
-                    "riskType": "constraint",
-                    "level": "高" if item.severity == "high" else "中",
-                    "reason": item.summary,
-                    "suggestion": "建议在正式优化前先消除约束缺口",
-                }
-            )
+
+        for item in constraints:
+            if item.severity == "high":
+                risks.append(
+                    {
+                        "target": item.name,
+                        "riskType": "constraint",
+                        "level": "高",
+                        "reason": item.summary,
+                        "suggestion": "建议优先处理约束缺口，避免方案不可行。",
+                    }
+                )
         return risks
