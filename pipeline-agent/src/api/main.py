@@ -28,23 +28,26 @@ async def lifespan(app: FastAPI):
     except Exception as exc:  # noqa: BLE001
         logger.warning("Workflow initialization failed: %s", exc)
 
-    try:
-        from src.rag.pipeline import get_rag_pipeline
+    if settings.SKIP_STARTUP_WARMUP:
+        logger.info("Skipping startup warmup because SKIP_STARTUP_WARMUP=true")
+    else:
+        try:
+            from src.rag.pipeline import get_rag_pipeline
 
-        rag = get_rag_pipeline()
-        stats = rag.get_stats()
-        if not stats.get("exists") or stats.get("num_entities", 0) == 0:
-            count = rag.index_documents(knowledge_base_path="knowledge_base", recreate=False)
-            logger.info("Knowledge base startup index finished, documents=%s", count)
-        else:
-            sparse_chunks = rag.ensure_retriever_ready()
-            logger.info(
-                "Knowledge base collection already exists, skip startup re-index: entities=%s, sparse_chunks=%s",
-                stats.get("num_entities", 0),
-                sparse_chunks,
-            )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Knowledge base initialization failed (non-fatal): %s", exc)
+            rag = get_rag_pipeline()
+            stats = rag.get_stats()
+            if not stats.get("exists") or stats.get("num_entities", 0) == 0:
+                count = rag.index_documents(knowledge_base_path="knowledge_base", recreate=False)
+                logger.info("Knowledge base startup index finished, documents=%s", count)
+            else:
+                sparse_chunks = rag.ensure_retriever_ready()
+                logger.info(
+                    "Knowledge base collection already exists, skip startup re-index: entities=%s, sparse_chunks=%s",
+                    stats.get("num_entities", 0),
+                    sparse_chunks,
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Knowledge base initialization failed (non-fatal): %s", exc)
 
     try:
         from src.knowledge_graph import get_knowledge_graph_builder

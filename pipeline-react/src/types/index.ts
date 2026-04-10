@@ -48,6 +48,19 @@ export interface ReportResultPayload {
   report?: DynamicReportResponsePayload | null;
 }
 
+export interface SaveReportRequest {
+  title: string;
+  reportType: string;
+  reportTypeLabel: string;
+  selectedProjectIds: number[];
+  projectNames: string[];
+  rangeLabel: string;
+  intelligenceLabel: string;
+  outputFormat: 'markdown' | 'docx' | 'pdf';
+  sourceLabel: string;
+  result: ReportResultPayload;
+}
+
 export interface LoginParams {
   username: string;
   password: string;

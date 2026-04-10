@@ -8,7 +8,7 @@ from typing import Literal, Optional
 from urllib.parse import urlparse
 
 import redis as redis_lib
-from pydantic import Field, field_validator, model_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -27,7 +27,11 @@ class Settings(BaseSettings):
     DEBUG: bool = False
 
     # ===== LLM 配置 =====
-    OPENAI_API_KEY: str = Field(...)
+    DASHSCOPE_API_KEY: Optional[str] = Field(default=None)
+    OPENAI_API_KEY: str = Field(
+        ...,
+        validation_alias=AliasChoices("OPENAI_API_KEY", "DASHSCOPE_API_KEY"),
+    )
     OPENAI_API_BASE: str = Field(default="https://api.penguinsaichat.dpdns.org/v1")
     LLM_MODEL: str = Field(default="claude-opus-4-6")
     LLM_TEMPERATURE: float = Field(default=0.1)
@@ -39,7 +43,10 @@ class Settings(BaseSettings):
     LLM_HEAVY_MODEL: str = Field(default="claude-opus-4-6")
 
     # ===== Embedding 配置 =====
-    EMBEDDING_API_KEY: str = Field(...)
+    EMBEDDING_API_KEY: str = Field(
+        ...,
+        validation_alias=AliasChoices("EMBEDDING_API_KEY", "DASHSCOPE_API_KEY", "OPENAI_API_KEY"),
+    )
     EMBEDDING_API_BASE: str = Field(default="https://dashscope.aliyuncs.com/compatible-mode/v1")
     EMBEDDING_MODEL: str = Field(default="text-embedding-v3")
     EMBEDDING_DIMENSION: int = Field(default=1024)
@@ -144,6 +151,7 @@ class Settings(BaseSettings):
     API_PORT: int = Field(default=8100)
     API_WORKERS: int = Field(default=4)
     CORS_ALLOWED_ORIGINS: str = Field(default="http://localhost:5173,http://127.0.0.1:5173")
+    SKIP_STARTUP_WARMUP: bool = Field(default=False)
 
     # ===== 认证配置 =====
     AUTH_REQUIRED_IN_PRODUCTION: bool = Field(default=True)

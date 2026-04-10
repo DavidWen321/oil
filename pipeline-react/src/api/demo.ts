@@ -1,4 +1,4 @@
-﻿import { useUserStore } from '../stores/userStore';
+import { useUserStore } from '../stores/userStore';
 import type {
   CalculationHistory,
   HydraulicAnalysisParams,
@@ -13,6 +13,7 @@ import type {
   Project,
   PumpStation,
   R,
+  SaveReportRequest,
   SensitivityPoint,
   SensitivityResult,
   SensitivityVariableInfo,
@@ -64,11 +65,11 @@ type DemoStore = {
 let memoryStore: DemoStore | null = null;
 
 const SENSITIVITY_VARIABLES: SensitivityVariableInfo[] = [
-  { code: 'FLOW_RATE', name: '娴侀噺', unit: 'm3/h', minChangePercent: -20, maxChangePercent: 20 },
-  { code: 'VISCOSITY', name: '杩愬姩绮樺害', unit: 'm2/s', minChangePercent: -20, maxChangePercent: 20 },
-  { code: 'ROUGHNESS', name: '绮楃硻搴?, unit: 'm', minChangePercent: -20, maxChangePercent: 20 },
-  { code: 'DIAMETER', name: '绠″緞', unit: 'mm', minChangePercent: -15, maxChangePercent: 15 },
-  { code: 'INLET_PRESSURE', name: '棣栫珯杩涚珯鍘嬪ご', unit: 'm', minChangePercent: -15, maxChangePercent: 15 },
+  { code: 'FLOW_RATE', name: '流量', unit: 'm3/h', minChangePercent: -20, maxChangePercent: 20 },
+  { code: 'VISCOSITY', name: '运动粘度', unit: 'm2/s', minChangePercent: -20, maxChangePercent: 20 },
+  { code: 'ROUGHNESS', name: '粗糙度', unit: 'm', minChangePercent: -20, maxChangePercent: 20 },
+  { code: 'DIAMETER', name: '管径', unit: 'mm', minChangePercent: -15, maxChangePercent: 15 },
+  { code: 'INLET_PRESSURE', name: '首站进站压头', unit: 'm', minChangePercent: -15, maxChangePercent: 15 },
 ];
 
 function clone<T>(value: T): T {
@@ -95,7 +96,7 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function success<T>(data: T, msg = '鎿嶄綔鎴愬姛'): R<T> {
+function success<T>(data: T, msg = '操作成功'): R<T> {
   return {
     code: 200,
     msg,
@@ -160,8 +161,8 @@ function createInitialStore(): DemoStore {
     {
       proId: 1,
       number: 'P-2026-001',
-      name: '涓滈儴杈撴补骞茬嚎',
-      responsible: '璋冨害涓績',
+      name: '东部输油干线',
+      responsible: '调度中心',
       buildDate: '2026-03-01',
       createTime: '2026-04-01T09:00:00',
       updateTime: '2026-04-02T08:00:00',
@@ -169,8 +170,8 @@ function createInitialStore(): DemoStore {
     {
       proId: 2,
       number: 'P-2026-002',
-      name: '娌挎捣鎴愬搧娌圭閬?,
-      responsible: '杩愯浜岄儴',
+      name: '沿海成品油管道',
+      responsible: '运行二部',
       buildDate: '2026-02-18',
       createTime: '2026-03-28T14:30:00',
       updateTime: '2026-04-02T09:30:00',
@@ -178,8 +179,8 @@ function createInitialStore(): DemoStore {
     {
       proId: 3,
       number: 'P-2026-003',
-      name: '瑗垮寳澧炶緭璧板粖',
-      responsible: '宸ヨ壓浼樺寲缁?,
+      name: '西北增输走廊',
+      responsible: '工艺优化组',
       buildDate: '2026-01-12',
       createTime: '2026-03-25T11:20:00',
       updateTime: '2026-04-01T16:10:00',
@@ -190,7 +191,7 @@ function createInitialStore(): DemoStore {
     {
       id: 101,
       proId: 1,
-      name: '涓€绾夸富绠￠亾',
+      name: '一线主管道',
       length: 186.5,
       diameter: 720,
       thickness: 14,
@@ -205,7 +206,7 @@ function createInitialStore(): DemoStore {
     {
       id: 102,
       proId: 1,
-      name: '涓滈儴鑱旂粶娈?,
+      name: '东部联络段',
       length: 94.2,
       diameter: 630,
       thickness: 12,
@@ -220,7 +221,7 @@ function createInitialStore(): DemoStore {
     {
       id: 201,
       proId: 2,
-      name: '娌挎捣涓诲共娈?,
+      name: '沿海主干段',
       length: 210.4,
       diameter: 660,
       thickness: 13,
@@ -235,7 +236,7 @@ function createInitialStore(): DemoStore {
     {
       id: 301,
       proId: 3,
-      name: '瑗垮寳澧炶緭娈?,
+      name: '西北增输段',
       length: 158.8,
       diameter: 610,
       thickness: 11,
@@ -252,7 +253,7 @@ function createInitialStore(): DemoStore {
   const pumpStations: PumpStation[] = [
     {
       id: 1,
-      name: '1鍙锋车绔?,
+      name: '1号泵站',
       pumpEfficiency: 84,
       electricEfficiency: 92,
       displacement: 3200,
@@ -264,7 +265,7 @@ function createInitialStore(): DemoStore {
     },
     {
       id: 2,
-      name: '2鍙锋车绔?,
+      name: '2号泵站',
       pumpEfficiency: 78,
       electricEfficiency: 90,
       displacement: 2950,
@@ -276,7 +277,7 @@ function createInitialStore(): DemoStore {
     },
     {
       id: 3,
-      name: '3鍙锋车绔?,
+      name: '3号泵站',
       pumpEfficiency: 81,
       electricEfficiency: 91,
       displacement: 3080,
@@ -291,7 +292,7 @@ function createInitialStore(): DemoStore {
   const oilProperties: OilProperty[] = [
     {
       id: 1,
-      name: '0#鍘熸补',
+      name: '0#原油',
       density: 842,
       viscosity: 0.000023,
       createTime: '2026-04-01T10:30:00',
@@ -299,7 +300,7 @@ function createInitialStore(): DemoStore {
     },
     {
       id: 2,
-      name: '楂樺嚌鍘熸补',
+      name: '高凝原油',
       density: 865,
       viscosity: 0.000031,
       createTime: '2026-03-30T11:30:00',
@@ -307,7 +308,7 @@ function createInitialStore(): DemoStore {
     },
     {
       id: 3,
-      name: '杞昏川鍘熸补',
+      name: '轻质原油',
       density: 816,
       viscosity: 0.000017,
       createTime: '2026-03-28T17:20:00',
@@ -319,9 +320,9 @@ function createInitialStore(): DemoStore {
     {
       id: 1,
       calcType: 'HYDRAULIC',
-      calcTypeName: '姘村姏鍒嗘瀽',
+      calcTypeName: '水力分析',
       projectId: 1,
-      projectName: '涓滈儴杈撴补骞茬嚎',
+      projectName: '东部输油干线',
       userId: 1,
       userName: 'demo',
       inputParams: JSON.stringify({
@@ -344,23 +345,23 @@ function createInitialStore(): DemoStore {
       outputResult: JSON.stringify({
         frictionHeadLoss: 18.6,
         reynoldsNumber: 32680,
-        flowRegime: '婀嶆祦',
+        flowRegime: '湍流',
         hydraulicSlope: 0.01,
         totalHead: 66.75,
         firstStationOutPressure: 25.49,
         endStationInPressure: 12.52,
       }),
       status: 1,
-      statusName: '宸插畬鎴?,
-      remark: '涓滈儴杈撴补骞茬嚎杩戞湡杩愯骞崇ǔ銆?,
+      statusName: '已完成',
+      remark: '东部输油干线近期运行平稳。',
       createTime: '2026-04-02T08:30:00',
     },
     {
       id: 2,
       calcType: 'OPTIMIZATION',
-      calcTypeName: '娉电珯浼樺寲',
+      calcTypeName: '泵站优化',
       projectId: 1,
-      projectName: '涓滈儴杈撴补骞茬嚎',
+      projectName: '东部输油干线',
       userId: 1,
       userName: 'demo',
       inputParams: JSON.stringify({
@@ -391,19 +392,19 @@ function createInitialStore(): DemoStore {
         isFeasible: true,
         totalEnergyConsumption: 542880,
         totalCost: 434304,
-        description: '寤鸿閲囩敤 1 鍙?ZMI480 + 1 鍙?ZMI375 鐨勭粍鍚堬紝婊¤冻鏈珯鍘嬪姏绾︽潫涓旇兘鑰楁洿浣庛€?,
+        description: '建议采用 1 台 ZMI480 + 1 台 ZMI375 的组合，满足末站压力约束且能耗更低。',
       }),
       status: 1,
-      statusName: '宸插畬鎴?,
-      remark: '寤鸿浣滀负褰撳墠鐝鎺ㄨ崘鏂规銆?,
+      statusName: '已完成',
+      remark: '建议作为当前班次推荐方案。',
       createTime: '2026-04-01T14:20:00',
     },
     {
       id: 3,
       calcType: 'HYDRAULIC',
-      calcTypeName: '姘村姏鍒嗘瀽',
+      calcTypeName: '水力分析',
       projectId: 2,
-      projectName: '娌挎捣鎴愬搧娌圭閬?,
+      projectName: '沿海成品油管道',
       userId: 1,
       userName: 'demo',
       inputParams: JSON.stringify({
@@ -426,23 +427,23 @@ function createInitialStore(): DemoStore {
       outputResult: JSON.stringify({
         frictionHeadLoss: 22.34,
         reynoldsNumber: 27450,
-        flowRegime: '杩囨浮娴?,
+        flowRegime: '过渡流',
         hydraulicSlope: 0.01,
         totalHead: 65.25,
         firstStationOutPressure: 24.37,
         endStationInPressure: 9.37,
       }),
       status: 1,
-      statusName: '宸插畬鎴?,
-      remark: '娌挎捣娈垫渶杩戦娴湡寤鸿淇濈暀鏇撮珮瀹夊叏瑁曞害銆?,
+      statusName: '已完成',
+      remark: '沿海段最近风浪期建议保留更高安全裕度。',
       createTime: '2026-04-02T09:15:00',
     },
     {
       id: 4,
       calcType: 'SENSITIVITY',
-      calcTypeName: '鏁忔劅鎬у垎鏋?,
+      calcTypeName: '敏感性分析',
       projectId: 3,
-      projectName: '瑗垮寳澧炶緭璧板粖',
+      projectName: '西北增输走廊',
       userId: 1,
       userName: 'demo',
       inputParams: JSON.stringify({
@@ -468,7 +469,7 @@ function createInitialStore(): DemoStore {
         variables: [
           {
             variableType: 'FLOW_RATE',
-            variableName: '娴侀噺',
+            variableName: '流量',
             unit: 'm3/h',
             startPercent: -20,
             endPercent: 20,
@@ -480,7 +481,7 @@ function createInitialStore(): DemoStore {
         baseResult: {
           frictionHeadLoss: 14.21,
           reynoldsNumber: 28920,
-          flowRegime: '婀嶆祦',
+          flowRegime: '湍流',
           hydraulicSlope: 0.01,
           totalHead: 66.2,
           firstStationOutPressure: 24.94,
@@ -491,17 +492,17 @@ function createInitialStore(): DemoStore {
           {
             rank: 1,
             variableType: 'FLOW_RATE',
-            variableName: '娴侀噺',
+            variableName: '流量',
             sensitivityCoefficient: 0.87,
-            description: '娴侀噺鍙樺寲瀵规湯绔欏帇鍔涘奖鍝嶆渶鏄庢樉銆?,
+            description: '流量变化对末站压力影响最明显。',
           },
         ],
         duration: 180,
         totalCalculations: 9,
       }),
       status: 1,
-      statusName: '宸插畬鎴?,
-      remark: '娴侀噺鏄タ鍖楀杈撹蛋寤婂綋鍓嶆渶鏁忔劅鐨勮皟鑺傚彉閲忋€?,
+      statusName: '已完成',
+      remark: '流量是西北增输走廊当前最敏感的调节变量。',
       createTime: '2026-03-31T17:40:00',
     },
   ];
@@ -509,10 +510,10 @@ function createInitialStore(): DemoStore {
   const knowledgeDocuments: KnowledgeDocument[] = [
     {
       id: 1,
-      title: '杈撴补绠￠亾鍚仠鎿嶄綔瑙勮寖',
+      title: '输油管道启停操作规范',
       category: 'operations',
       sourceType: 'manual',
-      tags: '鎿嶄綔瑙勭▼,鍚仠',
+      tags: '操作规程,启停',
       fileName: 'pipeline-start-stop-guide.pdf',
       fileExtension: 'pdf',
       fileSize: 2485760,
@@ -531,10 +532,10 @@ function createInitialStore(): DemoStore {
     },
     {
       id: 2,
-      title: '娉电珯鑳借€椾紭鍖栨渚嬮泦',
+      title: '泵站能耗优化案例集',
       category: 'cases',
       sourceType: 'manual',
-      tags: '妗堜緥鍒嗘瀽,鑺傝兘',
+      tags: '案例分析,节能',
       fileName: 'pump-station-energy-cases.docx',
       fileExtension: 'docx',
       fileSize: 1835008,
@@ -553,10 +554,10 @@ function createInitialStore(): DemoStore {
     },
     {
       id: 3,
-      title: '鏁忔劅鎬у垎鏋愬弬鏁板彛寰勮鏄?,
+      title: '敏感性分析参数口径说明',
       category: 'formulas',
       sourceType: 'manual',
-      tags: '璁＄畻鍏紡,鏁忔劅鎬у垎鏋?,
+      tags: '计算公式,敏感性分析',
       fileName: 'sensitivity-parameter-spec.md',
       fileExtension: 'md',
       fileSize: 16512,
@@ -568,7 +569,7 @@ function createInitialStore(): DemoStore {
       chunkCount: 9,
       retryCount: 0,
       status: 'FAILED',
-      failureReason: '婕旂ず妯″紡涓嬩繚鐣欎竴鏉″け璐ユ牱渚嬶紝渚夸簬鏌ョ湅浠诲姟鍘嗗彶銆?,
+      failureReason: '演示模式下保留一条失败样例，便于查看任务历史。',
       lastIngestTime: '2026-04-02T09:12:00',
       createBy: 'demo',
       createTime: '2026-04-01T17:30:00',
@@ -599,7 +600,7 @@ function createInitialStore(): DemoStore {
       status: 'FAILED',
       agentDocId: 'demo-doc-2',
       chunkCount: 0,
-      failureReason: '棣栨瑙ｆ瀽鏃跺嚭鐜版枃妗ｇ储寮曡秴鏃躲€?,
+      failureReason: '首次解析时出现文档索引超时。',
       createBy: 'demo',
       startedAt: '2026-04-02T08:58:00',
       finishedAt: '2026-04-02T09:00:00',
@@ -628,7 +629,7 @@ function createInitialStore(): DemoStore {
       status: 'FAILED',
       agentDocId: 'demo-doc-3',
       chunkCount: 0,
-      failureReason: '婕旂ず妯″紡涓嬩繚鐣欎竴鏉″け璐ユ牱渚嬶紝渚夸簬鏍稿澶辫触鎬?UI銆?,
+      failureReason: '演示模式下保留一条失败样例，便于核对失败态 UI。',
       createBy: 'demo',
       startedAt: '2026-04-02T09:10:00',
       finishedAt: '2026-04-02T09:12:00',
@@ -698,9 +699,9 @@ function updateStore<T>(updater: (store: DemoStore) => T): T {
 
 function getProjectName(store: DemoStore, projectId?: number) {
   if (typeof projectId !== 'number') {
-    return '鏈懡鍚嶉」鐩?;
+    return '未命名项目';
   }
-  return store.projects.find((item) => item.proId === projectId)?.name ?? `椤圭洰 ${projectId}`;
+  return store.projects.find((item) => item.proId === projectId)?.name ?? `项目 ${projectId}`;
 }
 
 function buildPageResult<T>(
@@ -734,12 +735,12 @@ function normalizeRoughness(value: number) {
 
 function determineFlowRegime(reynoldsNumber: number) {
   if (reynoldsNumber < 2300) {
-    return '灞傛祦';
+    return '层流';
   }
   if (reynoldsNumber < 4000) {
-    return '杩囨浮娴?;
+    return '过渡流';
   }
-  return '婀嶆祦';
+  return '湍流';
 }
 
 function computeHydraulicResult(params: HydraulicAnalysisParams): HydraulicAnalysisResult {
@@ -795,7 +796,7 @@ function createHydraulicHistory(
   const history: CalculationHistory = {
     id: historyId,
     calcType: 'HYDRAULIC',
-    calcTypeName: '姘村姏鍒嗘瀽',
+    calcTypeName: '水力分析',
     projectId: payload.projectId,
     projectName: getProjectName(store, payload.projectId),
     userId: 1,
@@ -803,7 +804,7 @@ function createHydraulicHistory(
     inputParams: JSON.stringify(payload),
     outputResult: JSON.stringify(result),
     status: 1,
-    statusName: '宸插畬鎴?,
+    statusName: '已完成',
     remark,
     createTime: nowIso(),
   };
@@ -884,8 +885,8 @@ function computeOptimizationResult(params: OptimizationParams): OptimizationResu
   );
   const totalCost = round(totalEnergyConsumption * Math.max(params.electricityPrice ?? 0.8, 0), 2);
   const description = bestCandidate.isFeasible
-    ? `寤鸿閲囩敤 ${bestCandidate.pump480Num} 鍙?ZMI480 + ${bestCandidate.pump375Num} 鍙?ZMI375 鐨勭粍鍚堬紝鍦ㄦ弧瓒虫湯绔欏帇鍔涚害鏉熺殑鍓嶆彁涓嬪吋椤捐兘鑰椾笌鎴愭湰銆俙
-    : '褰撳墠鍙傛暟涓嬫湭鎵惧埌婊¤冻鏈珯鍘嬪姏绾︽潫鐨勭粍鍚堬紝寤鸿鎻愰珮杩涚珯鍘嬪ご鎴栭檷浣庤緭閲忓悗閲嶆柊璇勪及銆?;
+    ? `建议采用 ${bestCandidate.pump480Num} 台 ZMI480 + ${bestCandidate.pump375Num} 台 ZMI375 的组合，在满足末站压力约束的前提下兼顾能耗与成本。`
+    : '当前参数下未找到满足末站压力约束的组合，建议提高进站压头或降低输量后重新评估。';
 
   return {
     pump480Num: bestCandidate.pump480Num,
@@ -910,7 +911,7 @@ function createOptimizationHistory(
   const history: CalculationHistory = {
     id: historyId,
     calcType: 'OPTIMIZATION',
-    calcTypeName: '娉电珯浼樺寲',
+    calcTypeName: '泵站优化',
     projectId: payload.projectId,
     projectName: getProjectName(store, payload.projectId),
     userId: 1,
@@ -918,7 +919,7 @@ function createOptimizationHistory(
     inputParams: JSON.stringify(payload),
     outputResult: JSON.stringify(result),
     status: 1,
-    statusName: '宸插畬鎴?,
+    statusName: '已完成',
     remark,
     createTime: nowIso(),
   };
@@ -1039,7 +1040,7 @@ function computeQuickSensitivityResult(
         variableType: variableInfo.code,
         variableName: variableInfo.name,
         sensitivityCoefficient,
-        description: `${variableInfo.name} 瀵规湯绔欏帇鍔涚殑褰卞搷鏈€鏄捐憲銆俙,
+        description: `${variableInfo.name} 对末站压力的影响最显著。`,
       },
     ],
     duration: 160,
@@ -1059,7 +1060,7 @@ function createSensitivityHistory(
   const history: CalculationHistory = {
     id: historyId,
     calcType: 'SENSITIVITY',
-    calcTypeName: '鏁忔劅鎬у垎鏋?,
+    calcTypeName: '敏感性分析',
     projectId: payload.projectId,
     projectName: getProjectName(store, payload.projectId),
     userId: 1,
@@ -1081,8 +1082,8 @@ function createSensitivityHistory(
     }),
     outputResult: JSON.stringify(result),
     status: 1,
-    statusName: '宸插畬鎴?,
-    remark: `${variableInfo.name} 鏄綋鍓嶆紨绀烘牱渚嬩腑鐨勯噸鐐规晱鎰熷彉閲忋€俙,
+    statusName: '已完成',
+    remark: `${variableInfo.name} 是当前演示样例中的重点敏感变量。`,
     createTime: nowIso(),
   };
   store.histories.unshift(history);
@@ -1119,7 +1120,7 @@ function createKnowledgeDocumentFromFormData(
   },
 ) {
   const file = formData.get('file');
-  const title = String(formData.get('title') || (file instanceof File ? file.name.replace(/\.[^.]+$/, '') : '鏈懡鍚嶆枃妗?));
+  const title = String(formData.get('title') || (file instanceof File ? file.name.replace(/\.[^.]+$/, '') : '未命名文档'));
   const category = String(formData.get('category') || 'faq');
   const documentId = store.nextIds.knowledgeDocument++;
   const timestamp = nowIso();
@@ -1184,14 +1185,14 @@ function buildKnowledgeStats(documents: KnowledgeDocument[]): KnowledgeStatsPayl
 
 function buildGraphQueryPayload(query: string): KnowledgeGraphQueryPayload {
   const nodes = [
-    { id: 'project-energy', name: '椤圭洰鑳借€?, type: 'topic' },
-    { id: 'pump-station', name: '娉电珯缁勫悎', type: 'entity' },
-    { id: 'pressure-drop', name: '鍘嬪姏鎹熷け', type: 'metric' },
+    { id: 'project-energy', name: '项目能耗', type: 'topic' },
+    { id: 'pump-station', name: '泵站组合', type: 'entity' },
+    { id: 'pressure-drop', name: '压力损失', type: 'metric' },
   ];
   return {
     query,
     result: {
-      message: `宸插湪婕旂ず鐭ヨ瘑鍥捐氨涓绱㈠埌涓庘€?{query}鈥濈浉鍏崇殑 3 涓妭鐐广€俙,
+      message: `已在演示知识图谱中检索到与“${query}”相关的 3 个节点。`,
       total_matches: nodes.length,
       center_node: nodes[0].id,
       matched_nodes: nodes,
@@ -1216,8 +1217,8 @@ function buildKnowledgeSearchDebugPayload(
     doc_title: item.title,
     source: item.sourceType || 'manual',
     category: item.category || 'faq',
-    content_preview: `${item.title} 涓?${request.query} 鐩稿叧鐨勬紨绀哄唴瀹圭墖娈点€俙,
-    full_text_preview: `${item.title}锛氳繖鏄负婕旂ず妯″紡鍑嗗鐨勬绱㈢粨鏋滐紝鐢ㄤ簬楠岃瘉鍓嶇璋冭瘯瑙嗗浘銆俙,
+    content_preview: `${item.title} 与 ${request.query} 相关的演示内容片段。`,
+    full_text_preview: `${item.title}：这是为演示模式准备的检索结果，用于验证前端调试视图。`,
     score: round(0.92 - index * 0.12, 2),
     match_type: index === 0 ? 'hybrid' : 'dense',
   }));
@@ -1265,7 +1266,7 @@ function buildKnowledgeSearchDebugPayload(
 }
 
 function stripChatPrefix(message: string) {
-  const marker = '鐢ㄦ埛闂锛?;
+  const marker = '用户问题：';
   if (message.includes(marker)) {
     return message.split(marker).pop()?.trim() || message.trim();
   }
@@ -1275,32 +1276,32 @@ function stripChatPrefix(message: string) {
 export function buildDemoAssistantReply(message: string) {
   const question = stripChatPrefix(message);
   if (!question) {
-    return '婕旂ず妯″紡涓嬫湭鏀跺埌鏈夋晥闂銆備綘鍙互缁х画璇㈤棶椤圭洰銆佺閬撱€佹车绔欍€佽兘鑰楁垨浼樺寲鐩稿叧鍐呭銆?;
+    return '演示模式下未收到有效问题。你可以继续询问项目、管道、泵站、能耗或优化相关内容。';
   }
 
-  if (question.includes('浼樺寲') || question.includes('鑺傝兘')) {
+  if (question.includes('优化') || question.includes('节能')) {
     return [
-      '杩欐槸婕旂ず妯″紡涓嬬殑鏈湴鍥炲銆?,
-      `閽堝鈥?{question}鈥濓紝寤鸿浼樺厛妫€鏌ユ车绔欑粍鍚堛€佸崟浣嶈緭閲忚兘鑰楀拰鏈珯鍘嬪姏瑁曞害銆俙,
-      '鍙墽琛屽姩浣滐細',
-      '1. 鍏堝姣旀渶杩戜竴鍛ㄩ珮璐熻嵎鏃舵鐨勬车绔欏惎鍋滅瓥鐣ャ€?,
-      '2. 瀵规湯绔欏帇鍔涘亸浣庣殑绠℃鎻愰珮鐩戞祴棰戠巼锛岄伩鍏嶅湪楂樻懇闃诲伐鍐典笅鎸佺画婊¤礋鑽疯繍琛屻€?,
-      '3. 鍦ㄦ弧瓒宠緭閲忕害鏉熺殑鍓嶆彁涓嬶紝浼樺厛閫夋嫨鏇翠綆鎬绘壃绋嬬殑鍙缁勫悎銆?,
+      '这是演示模式下的本地回复。',
+      `针对“${question}”，建议优先检查泵站组合、单位输量能耗和末站压力裕度。`,
+      '可执行动作：',
+      '1. 先对比最近一周高负荷时段的泵站启停策略。',
+      '2. 对末站压力偏低的管段提高监测频率，避免在高摩阻工况下持续满负荷运行。',
+      '3. 在满足输量约束的前提下，优先选择更低总扬程的可行组合。',
     ].join('\n');
   }
 
-  if (question.includes('鍘嬪姏') || question.includes('姘村姏')) {
+  if (question.includes('压力') || question.includes('水力')) {
     return [
-      '杩欐槸婕旂ず妯″紡涓嬬殑鏈湴鍥炲銆?,
-      `閽堝鈥?{question}鈥濓紝褰撳墠搴旈噸鐐瑰叧娉ㄦ懇闃绘崯澶便€佹捣鎷旇惤宸拰杩涚珯鍘嬪ご涓変釜鍥犵礌銆俙,
-      '涓€鑸垽鏂『搴忔槸锛氬厛鐪嬫湯绔欏帇鍔涙槸鍚︿负姝ｏ紝鍐嶇湅鎽╅樆鎹熷け鍗犳€绘壃绋嬬殑姣斾緥锛屾渶鍚庢鏌ユ补鍝佺矘搴﹀拰绠″緞鏄惁鏀惧ぇ浜嗗帇闄嶃€?,
+      '这是演示模式下的本地回复。',
+      `针对“${question}”，当前应重点关注摩阻损失、海拔落差和进站压头三个因素。`,
+      '一般判断顺序是：先看末站压力是否为正，再看摩阻损失占总扬程的比例，最后检查油品粘度和管径是否放大了压降。',
     ].join('\n');
   }
 
   return [
-    '杩欐槸婕旂ず妯″紡涓嬬殑鏈湴鍥炲銆?,
-    `宸叉敹鍒颁綘鐨勯棶棰橈細${question}`,
-    '褰撳墠鍓嶇涓嶄細璁块棶鐪熷疄 AI 鏈嶅姟锛岃€屾槸鐩存帴杩斿洖鏈湴绀轰緥缁撹锛屾柟渚夸綘楠岃瘉鑱婂ぉ銆佺煡璇嗗簱鍜屾姤鍛婂伐浣滃彴鐨勪氦浜掓祦绋嬨€?,
+    '这是演示模式下的本地回复。',
+    `已收到你的问题：${question}`,
+    '当前前端不会访问真实 AI 服务，而是直接返回本地示例结论，方便你验证聊天、知识库和报告工作台的交互流程。',
   ].join('\n');
 }
 
@@ -1323,13 +1324,13 @@ export async function handleDemoHttpRequest<T>(
   const params = config?.params ?? {};
 
   if (method === 'GET' && path === '/project/list') {
-    return success(clone(getStore().projects), '鑾峰彇椤圭洰鍒楄〃鎴愬姛') as T;
+    return success(clone(getStore().projects), '获取项目列表成功') as T;
   }
 
   if (method === 'GET' && /^\/project\/\d+$/.test(path)) {
     const id = Number(path.split('/').pop());
     const project = getStore().projects.find((item) => item.proId === id);
-    return success(clone(project ?? null), '鑾峰彇椤圭洰鎴愬姛') as T;
+    return success(clone(project ?? null), '获取项目成功') as T;
   }
 
   if (method === 'POST' && path === '/project') {
@@ -1340,14 +1341,14 @@ export async function handleDemoHttpRequest<T>(
         number:
           payload.number?.trim() ||
           `P-${new Date().getFullYear()}-${String(store.nextIds.project + 996).slice(-3)}`,
-        name: payload.name?.trim() || `婕旂ず椤圭洰 ${store.nextIds.project}`,
-        responsible: payload.responsible?.trim() || '婕旂ず鐢ㄦ埛',
+        name: payload.name?.trim() || `演示项目 ${store.nextIds.project}`,
+        responsible: payload.responsible?.trim() || '演示用户',
         buildDate: payload.buildDate,
         createTime: nowIso(),
         updateTime: nowIso(),
       };
       store.projects.unshift(project);
-      return success(true, '鏂板椤圭洰鎴愬姛') as T;
+      return success(true, '新增项目成功') as T;
     });
   }
 
@@ -1358,7 +1359,7 @@ export async function handleDemoHttpRequest<T>(
       if (target) {
         Object.assign(target, payload, { updateTime: nowIso() });
       }
-      return success(true, '鏇存柊椤圭洰鎴愬姛') as T;
+      return success(true, '更新项目成功') as T;
     });
   }
 
@@ -1368,7 +1369,7 @@ export async function handleDemoHttpRequest<T>(
       store.projects = store.projects.filter((item) => !ids.includes(item.proId));
       store.pipelines = store.pipelines.filter((item) => !ids.includes(item.proId));
       store.histories = store.histories.filter((item) => !ids.includes(item.projectId ?? -1));
-      return success(true, '鍒犻櫎椤圭洰鎴愬姛') as T;
+      return success(true, '删除项目成功') as T;
     });
   }
 
@@ -1377,13 +1378,13 @@ export async function handleDemoHttpRequest<T>(
     const pipelines = getStore().pipelines
       .filter((item) => item.proId === projectId)
       .sort((left, right) => left.id - right.id);
-    return success(clone(pipelines), '鑾峰彇绠￠亾鍒楄〃鎴愬姛') as T;
+    return success(clone(pipelines), '获取管道列表成功') as T;
   }
 
   if (method === 'GET' && /^\/pipeline\/\d+$/.test(path)) {
     const id = Number(path.split('/').pop());
     const pipeline = getStore().pipelines.find((item) => item.id === id);
-    return success(clone(pipeline ?? null), '鑾峰彇绠￠亾鎴愬姛') as T;
+    return success(clone(pipeline ?? null), '获取管道成功') as T;
   }
 
   if (method === 'POST' && path === '/pipeline') {
@@ -1392,7 +1393,7 @@ export async function handleDemoHttpRequest<T>(
       const pipeline: Pipeline = {
         id: store.nextIds.pipeline++,
         proId: payload.proId ?? store.projects[0]?.proId ?? 1,
-        name: payload.name?.trim() || `婕旂ず绠￠亾 ${store.nextIds.pipeline}`,
+        name: payload.name?.trim() || `演示管道 ${store.nextIds.pipeline}`,
         length: payload.length ?? 120,
         diameter: payload.diameter ?? 610,
         thickness: payload.thickness ?? 10,
@@ -1405,7 +1406,7 @@ export async function handleDemoHttpRequest<T>(
         updateTime: nowIso(),
       };
       store.pipelines.unshift(pipeline);
-      return success(true, '鏂板绠￠亾鎴愬姛') as T;
+      return success(true, '新增管道成功') as T;
     });
   }
 
@@ -1416,7 +1417,7 @@ export async function handleDemoHttpRequest<T>(
       if (target) {
         Object.assign(target, payload, { updateTime: nowIso() });
       }
-      return success(true, '鏇存柊绠￠亾鎴愬姛') as T;
+      return success(true, '更新管道成功') as T;
     });
   }
 
@@ -1424,18 +1425,18 @@ export async function handleDemoHttpRequest<T>(
     const ids = parseNumberList(path.replace('/pipeline/', ''));
     return updateStore((store) => {
       store.pipelines = store.pipelines.filter((item) => !ids.includes(item.id));
-      return success(true, '鍒犻櫎绠￠亾鎴愬姛') as T;
+      return success(true, '删除管道成功') as T;
     });
   }
 
   if (method === 'GET' && path === '/pump-station/list') {
-    return success(clone(getStore().pumpStations), '鑾峰彇娉电珯鍒楄〃鎴愬姛') as T;
+    return success(clone(getStore().pumpStations), '获取泵站列表成功') as T;
   }
 
   if (method === 'GET' && /^\/pump-station\/\d+$/.test(path)) {
     const id = Number(path.split('/').pop());
     const station = getStore().pumpStations.find((item) => item.id === id);
-    return success(clone(station ?? null), '鑾峰彇娉电珯鎴愬姛') as T;
+    return success(clone(station ?? null), '获取泵站成功') as T;
   }
 
   if (method === 'POST' && path === '/pump-station') {
@@ -1443,7 +1444,7 @@ export async function handleDemoHttpRequest<T>(
       const payload = (data as Partial<PumpStation>) ?? {};
       const station: PumpStation = {
         id: store.nextIds.pumpStation++,
-        name: payload.name?.trim() || `婕旂ず娉电珯 ${store.nextIds.pumpStation}`,
+        name: payload.name?.trim() || `演示泵站 ${store.nextIds.pumpStation}`,
         pumpEfficiency: payload.pumpEfficiency ?? 82,
         electricEfficiency: payload.electricEfficiency ?? 91,
         displacement: payload.displacement ?? 2800,
@@ -1454,7 +1455,7 @@ export async function handleDemoHttpRequest<T>(
         updateTime: nowIso(),
       };
       store.pumpStations.unshift(station);
-      return success(true, '鏂板娉电珯鎴愬姛') as T;
+      return success(true, '新增泵站成功') as T;
     });
   }
 
@@ -1465,7 +1466,7 @@ export async function handleDemoHttpRequest<T>(
       if (target) {
         Object.assign(target, payload, { updateTime: nowIso() });
       }
-      return success(true, '鏇存柊娉电珯鎴愬姛') as T;
+      return success(true, '更新泵站成功') as T;
     });
   }
 
@@ -1473,18 +1474,18 @@ export async function handleDemoHttpRequest<T>(
     const ids = parseNumberList(path.replace('/pump-station/', ''));
     return updateStore((store) => {
       store.pumpStations = store.pumpStations.filter((item) => !ids.includes(item.id));
-      return success(true, '鍒犻櫎娉电珯鎴愬姛') as T;
+      return success(true, '删除泵站成功') as T;
     });
   }
 
   if (method === 'GET' && path === '/oil-property/list') {
-    return success(clone(getStore().oilProperties), '鑾峰彇娌瑰搧鍒楄〃鎴愬姛') as T;
+    return success(clone(getStore().oilProperties), '获取油品列表成功') as T;
   }
 
   if (method === 'GET' && /^\/oil-property\/\d+$/.test(path)) {
     const id = Number(path.split('/').pop());
     const oilProperty = getStore().oilProperties.find((item) => item.id === id);
-    return success(clone(oilProperty ?? null), '鑾峰彇娌瑰搧鎴愬姛') as T;
+    return success(clone(oilProperty ?? null), '获取油品成功') as T;
   }
 
   if (method === 'POST' && path === '/oil-property') {
@@ -1492,14 +1493,14 @@ export async function handleDemoHttpRequest<T>(
       const payload = (data as Partial<OilProperty>) ?? {};
       const oilProperty: OilProperty = {
         id: store.nextIds.oilProperty++,
-        name: payload.name?.trim() || `婕旂ず娌瑰搧 ${store.nextIds.oilProperty}`,
+        name: payload.name?.trim() || `演示油品 ${store.nextIds.oilProperty}`,
         density: payload.density ?? 850,
         viscosity: payload.viscosity ?? 0.00002,
         createTime: nowIso(),
         updateTime: nowIso(),
       };
       store.oilProperties.unshift(oilProperty);
-      return success(true, '鏂板娌瑰搧鎴愬姛') as T;
+      return success(true, '新增油品成功') as T;
     });
   }
 
@@ -1510,7 +1511,7 @@ export async function handleDemoHttpRequest<T>(
       if (target) {
         Object.assign(target, payload, { updateTime: nowIso() });
       }
-      return success(true, '鏇存柊娌瑰搧鎴愬姛') as T;
+      return success(true, '更新油品成功') as T;
     });
   }
 
@@ -1518,24 +1519,24 @@ export async function handleDemoHttpRequest<T>(
     const ids = parseNumberList(path.replace('/oil-property/', ''));
     return updateStore((store) => {
       store.oilProperties = store.oilProperties.filter((item) => !ids.includes(item.id));
-      return success(true, '鍒犻櫎娌瑰搧鎴愬姛') as T;
+      return success(true, '删除油品成功') as T;
     });
   }
 
   if (method === 'GET' && path === '/knowledge-doc/list') {
-    return success(sortByCreateTimeDesc(clone(getStore().knowledgeDocuments)), '鑾峰彇鐭ヨ瘑鏂囨。鎴愬姛') as T;
+    return success(sortByCreateTimeDesc(clone(getStore().knowledgeDocuments)), '获取知识文档成功') as T;
   }
 
   if (method === 'GET' && /^\/knowledge-doc\/\d+\/tasks$/.test(path)) {
     const documentId = Number(path.split('/')[2]);
     const tasks = getStore().knowledgeTasks.filter((item) => item.documentId === documentId);
-    return success(sortByCreateTimeDesc(clone(tasks)), '鑾峰彇浠诲姟鍘嗗彶鎴愬姛') as T;
+    return success(sortByCreateTimeDesc(clone(tasks)), '获取任务历史成功') as T;
   }
 
   if (method === 'POST' && path === '/knowledge-doc/upload' && data instanceof FormData) {
     return updateStore((store) => {
       const document = createKnowledgeDocumentFromFormData(store, data);
-      return success(clone(document), '鐭ヨ瘑鏂囨。宸叉帴鏀跺苟瀹屾垚婕旂ず鍏ュ簱') as T;
+      return success(clone(document), '知识文档已接收并完成演示入库') as T;
     });
   }
 
@@ -1565,7 +1566,7 @@ export async function handleDemoHttpRequest<T>(
         };
         store.knowledgeTasks.unshift(task);
       }
-      return success(clone(document ?? null), '宸查噸鏂板姞鍏ユ紨绀哄叆搴撻槦鍒?) as T;
+      return success(clone(document ?? null), '已重新加入演示入库队列') as T;
     });
   }
 
@@ -1574,7 +1575,7 @@ export async function handleDemoHttpRequest<T>(
     return updateStore((store) => {
       store.knowledgeDocuments = store.knowledgeDocuments.filter((item) => item.id !== documentId);
       store.knowledgeTasks = store.knowledgeTasks.filter((item) => item.documentId !== documentId);
-      return success(true, '鍒犻櫎鐭ヨ瘑鏂囨。鎴愬姛') as T;
+      return success(true, '删除知识文档成功') as T;
     });
   }
 
@@ -1582,8 +1583,8 @@ export async function handleDemoHttpRequest<T>(
     return updateStore((store) => {
       const payload = (data as HydraulicAnalysisParams) ?? ({} as HydraulicAnalysisParams);
       const result = computeHydraulicResult(payload);
-      createHydraulicHistory(store, payload, result, '婕旂ず妯″紡涓嬪凡鑷姩鍐欏叆鏈湴鍘嗗彶璁板綍銆?);
-      return success(result, '姘村姏鍒嗘瀽瀹屾垚') as T;
+      createHydraulicHistory(store, payload, result, '演示模式下已自动写入本地历史记录。');
+      return success(result, '水力分析完成') as T;
     });
   }
 
@@ -1591,8 +1592,8 @@ export async function handleDemoHttpRequest<T>(
     return updateStore((store) => {
       const payload = (data as OptimizationParams) ?? ({} as OptimizationParams);
       const result = computeOptimizationResult(payload);
-      createOptimizationHistory(store, payload, result, '婕旂ず妯″紡涓嬪凡鑷姩鍐欏叆鏈湴鍘嗗彶璁板綍銆?);
-      return success(result, '浼樺寲璁＄畻瀹屾垚') as T;
+      createOptimizationHistory(store, payload, result, '演示模式下已自动写入本地历史记录。');
+      return success(result, '优化计算完成') as T;
     });
   }
 
@@ -1614,7 +1615,7 @@ export async function handleDemoHttpRequest<T>(
         payload.baseParams ?? ({} as HydraulicAnalysisParams),
         result,
       );
-      return success(result, '鏁忔劅鎬у垎鏋愬畬鎴?) as T;
+      return success(result, '敏感性分析完成') as T;
     });
   }
 
@@ -1624,12 +1625,12 @@ export async function handleDemoHttpRequest<T>(
       const payload = (data as HydraulicAnalysisParams) ?? ({} as HydraulicAnalysisParams);
       const result = computeQuickSensitivityResult(variableType, payload);
       createSensitivityHistory(store, variableType, payload, result);
-      return success(result, '鏁忔劅鎬у垎鏋愬畬鎴?) as T;
+      return success(result, '敏感性分析完成') as T;
     });
   }
 
   if (method === 'GET' && path === '/calculation/sensitivity/variables') {
-    return success(clone(SENSITIVITY_VARIABLES), '鑾峰彇鏁忔劅鍙橀噺鎴愬姛') as T;
+    return success(clone(SENSITIVITY_VARIABLES), '获取敏感变量成功') as T;
   }
 
   if (method === 'GET' && path === '/calculation/history/page') {
@@ -1666,7 +1667,7 @@ export async function handleDemoHttpRequest<T>(
         return true;
       }),
     );
-    return success(buildPageResult(clone(histories), params), '鑾峰彇璁＄畻鍘嗗彶鎴愬姛') as T;
+    return success(buildPageResult(clone(histories), params), '获取计算历史成功') as T;
   }
 
   if (method === 'GET' && /^\/calculation\/history\/project\/\d+$/.test(path)) {
@@ -1683,20 +1684,20 @@ export async function handleDemoHttpRequest<T>(
         return true;
       }),
     );
-    return success(buildPageResult(clone(histories), params), '鑾峰彇椤圭洰璁＄畻鍘嗗彶鎴愬姛') as T;
+    return success(buildPageResult(clone(histories), params), '获取项目计算历史成功') as T;
   }
 
   if (method === 'GET' && /^\/calculation\/history\/\d+$/.test(path)) {
     const historyId = Number(path.split('/').pop());
     const history = getStore().histories.find((item) => item.id === historyId) ?? null;
-    return success(clone(history), '鑾峰彇鍘嗗彶璇︽儏鎴愬姛') as T;
+    return success(clone(history), '获取历史详情成功') as T;
   }
 
   if (method === 'DELETE' && /^\/calculation\/history\/\d+$/.test(path)) {
     const historyId = Number(path.split('/').pop());
     return updateStore((store) => {
       store.histories = store.histories.filter((item) => item.id !== historyId);
-      return success(undefined as void, '鍒犻櫎鍘嗗彶璁板綍鎴愬姛') as T;
+      return success(undefined as void, '删除历史记录成功') as T;
     });
   }
 
@@ -1707,11 +1708,31 @@ export async function handleDemoHttpRequest<T>(
     return updateStore((store) => {
       const before = store.histories.length;
       store.histories = store.histories.filter((item) => !ids.includes(item.id));
-      return success(before - store.histories.length, '鎵归噺鍒犻櫎鎴愬姛') as T;
+      return success(before - store.histories.length, '批量删除成功') as T;
     });
-  };
+  }
+
+  if (method === 'POST' && path === '/calculation/history/report') {
+    return updateStore((store) => {
+      const payload = (data as SaveReportRequest) ?? ({} as SaveReportRequest);
+      const historyId = store.nextIds.history++;
+      const history: CalculationHistory = {
+        id: historyId,
+        calcType: 'AI_REPORT',
+        calcTypeName: payload.reportTypeLabel || '智能报告',
+        projectId: payload.selectedProjectIds?.[0],
+        projectName: payload.projectNames?.join('、') || '演示项目',
+        userId: 1,
+        userName: 'demo',
+        inputParams: JSON.stringify(payload),
+        outputResult: JSON.stringify(payload.result ?? {}),
+        status: 1,
+        statusName: '已完成',
+        remark: payload.result?.conclusion || '演示模式下生成的本地报告归档记录。',
+        createTime: nowIso(),
+      };
       store.histories.unshift(history);
-      return success(clone(history), '鏅鸿兘鎶ュ憡宸插綊妗?) as T;
+      return success(clone(history), '智能报告已归档') as T;
     });
   }
 
@@ -1725,7 +1746,7 @@ export async function handleDemoHttpRequest<T>(
         oilPropertyCount: store.oilProperties.length,
         historyCount: store.histories.length,
       },
-      '鑾峰彇缁熻姒傝鎴愬姛',
+      '获取统计概览成功',
     ) as T;
   }
 
@@ -1736,11 +1757,11 @@ export async function handleDemoHttpRequest<T>(
         date: item.createTime?.slice(0, 10) || `Day-${index + 1}`,
         count: index + 1,
       })),
-      '鑾峰彇瓒嬪娍鏁版嵁鎴愬姛',
+      '获取趋势数据成功',
     ) as T;
   }
 
-  throw new Error(`婕旂ず妯″紡鏆傛湭瀹炵幇鎺ュ彛: ${method} ${path}`);
+  throw new Error(`演示模式暂未实现接口: ${method} ${path}`);
 }
 
 export async function handleDemoAgentRequest<T>(path: string, init?: RequestInit): Promise<T> {
@@ -1759,7 +1780,7 @@ export async function handleDemoAgentRequest<T>(path: string, init?: RequestInit
   if (pathname === '/chat/confirm' && init?.method === 'POST') {
     const payload = readJsonBody<{ selected_option?: string }>(init.body);
     return {
-      response: `婕旂ず妯″紡宸茬‘璁ら€夐」锛?{payload?.selected_option || '榛樿閫夐」'}銆俙,
+      response: `演示模式已确认选项：${payload?.selected_option || '默认选项'}。`,
     } as T;
   }
 
@@ -1767,7 +1788,7 @@ export async function handleDemoAgentRequest<T>(path: string, init?: RequestInit
     return {
       trace_id: pathname.split('/').pop(),
       status: 'completed',
-      message: '婕旂ず妯″紡涓嬫湭杩炴帴鐪熷疄閾捐矾璺熻釜鏈嶅姟銆?,
+      message: '演示模式下未连接真实链路跟踪服务。',
     } as T;
   }
 
@@ -1780,10 +1801,10 @@ export async function handleDemoAgentRequest<T>(path: string, init?: RequestInit
     const baseline: KnowledgeStageBaseline = {
       supported_file_types: ['pdf', 'docx', 'md', 'txt'],
       required_metadata_fields: ['title', 'category'],
-      minimal_pipeline: ['鏂囦欢涓婁紶', '鏂囨湰鍒囩墖', '鍚戦噺鍐欏叆', '绱㈠紩鐧昏'],
+      minimal_pipeline: ['文件上传', '文本切片', '向量写入', '索引登记'],
       module_boundaries: {
-        frontend: ['涓婁紶椤甸潰', '浠诲姟鍘嗗彶', '鐘舵€佸睍绀?],
-        backend: ['鏂囨。鐧昏', '浠诲姟璋冨害', '鍚戦噺绱㈠紩'],
+        frontend: ['上传页面', '任务历史', '状态展示'],
+        backend: ['文档登记', '任务调度', '向量索引'],
       },
     };
     return baseline as T;
@@ -1814,7 +1835,7 @@ export async function handleDemoAgentRequest<T>(path: string, init?: RequestInit
   ) {
     const formData = init.body;
     return updateStore((store) => {
-      const title = String(formData.get('title') || '鏈懡鍚嶆枃妗?);
+      const title = String(formData.get('title') || '未命名文档');
       const tagsValue = String(formData.get('tags') || '');
       const document = createKnowledgeDocumentFromFormData(store, formData, {
         sourceType: String(formData.get('source') || 'manual'),
@@ -1825,7 +1846,7 @@ export async function handleDemoAgentRequest<T>(path: string, init?: RequestInit
       const response: KnowledgeUploadResponse = {
         success: true,
         document: buildKnowledgeSummary(document),
-        message: '婕旂ず鐭ヨ瘑鏂囨。宸插啓鍏ユ湰鍦扮ず渚嬪簱',
+        message: '演示知识文档已写入本地示例库',
       };
       return response as T;
     });
@@ -1846,7 +1867,7 @@ export async function handleDemoAgentRequest<T>(path: string, init?: RequestInit
         doc_id: docId,
         file_deleted: true,
         index_deleted: true,
-        message: '婕旂ず鐭ヨ瘑鏂囨。宸插垹闄?,
+        message: '演示知识文档已删除',
       };
       return response as T;
     });
@@ -1859,7 +1880,7 @@ export async function handleDemoAgentRequest<T>(path: string, init?: RequestInit
       recreate: payload?.recreate ?? true,
       documents_indexed: getStore().knowledgeDocuments.length,
       registry_total: getStore().knowledgeDocuments.length,
-      message: '婕旂ず妯″紡涓嬪凡瀹屾垚鏈湴閲嶅缓绱㈠紩',
+      message: '演示模式下已完成本地重建索引',
     };
     return response as T;
   }
@@ -1869,7 +1890,5 @@ export async function handleDemoAgentRequest<T>(path: string, init?: RequestInit
     return buildKnowledgeSearchDebugPayload(payload, getStore().knowledgeDocuments) as T;
   }
 
-  throw new Error(`婕旂ず妯″紡鏆傛湭瀹炵幇 Agent 鎺ュ彛: ${pathname}`);
+  throw new Error(`演示模式暂未实现 Agent 接口: ${pathname}`);
 }
-
-
