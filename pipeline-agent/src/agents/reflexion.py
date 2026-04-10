@@ -11,16 +11,17 @@ from langchain_core.prompts import ChatPromptTemplate
 
 from src.config import settings
 from src.models.state import PlanStep, ReflexionMemory
+from src.skills import get_skill_runtime
 from src.utils import logger
-
-from .prompts import REFLEXION_PROMPT
 
 
 class ReflexionAgent:
     """Self-reflection agent."""
+    SKILL_NAME = "reflexion"
 
     def __init__(self) -> None:
         self._llm: Optional[ChatOpenAI] = None
+        self._skill_runtime = get_skill_runtime()
 
     @property
     def llm(self) -> ChatOpenAI:
@@ -43,19 +44,22 @@ class ReflexionAgent:
     ) -> dict:
         """Reflect on a failed step and return recovery strategy."""
 
-        prompt = ChatPromptTemplate.from_template(REFLEXION_PROMPT)
+        prompt = ChatPromptTemplate.from_messages([("human", "{input}")])
         chain = prompt | self.llm | StrOutputParser()
 
         try:
-            response = chain.invoke(
+            prompt_input = self._skill_runtime.render_prompt(
+                self.SKILL_NAME,
+                "prompt",
                 {
                     "step_description": failed_step.get("description", ""),
                     "agent": failed_step.get("agent", ""),
                     "error_message": error,
                     "context": json.dumps(context or {}, ensure_ascii=False),
                     "previous_reflexions": json.dumps(history[-3:], ensure_ascii=False),
-                }
+                },
             )
+            response = chain.invoke({"input": prompt_input})
             return self._parse_response(response)
         except Exception as exc:
             logger.warning(f"Reflexion failed, fallback is used: {exc}")

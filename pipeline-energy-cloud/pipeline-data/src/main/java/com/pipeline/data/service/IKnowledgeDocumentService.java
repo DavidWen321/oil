@@ -15,7 +15,9 @@ public interface IKnowledgeDocumentService extends IService<KnowledgeDocument> {
     List<KnowledgeIngestTask> listTasks(Long documentId);
 
     KnowledgeDocument uploadDocument(MultipartFile file, String title, String category,
-                                     String sourceType, String tags, String remark);
+                                     String sourceType, String tags, String remark,
+                                     String author, String summary, String language,
+                                     String version, String externalId, String effectiveAt);
 
     KnowledgeDocument retryDocument(Long id);
 

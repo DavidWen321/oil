@@ -11,13 +11,14 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_classic.agents import AgentExecutor, create_tool_calling_agent
 
 from src.config import settings
+from src.skills import get_skill_runtime
+from src.tools.mcp_langchain_adapter import get_mcp_langchain_tools
 from src.utils import logger
-from src.tools.calculation_tools import CALCULATION_TOOLS
-from src.tools.java_service_tools import JAVA_SERVICE_TOOLS
-from .prompts import CALC_AGENT_SYSTEM_PROMPT, CALC_AGENT_TASK_PROMPT
 
 
 class CalcAgent:
+    SKILL_NAME = "hydraulic-calc"
+
     """
     Calc Agent
 
@@ -31,8 +32,8 @@ class CalcAgent:
         """初始化Calc Agent"""
         self._llm = None
         self._agent_executor = None
-        # 合并本地计算工具和Java服务工具
-        self.tools = CALCULATION_TOOLS + JAVA_SERVICE_TOOLS
+        self.tools = None
+        self._skill_runtime = get_skill_runtime()
 
     @property
     def llm(self) -> ChatOpenAI:
@@ -51,8 +52,13 @@ class CalcAgent:
     def agent_executor(self) -> AgentExecutor:
         """获取Agent执行器"""
         if self._agent_executor is None:
+            if self.tools is None:
+                self.tools = get_mcp_langchain_tools(
+                    ["calculation-mcp"],
+                    exclude_tools=["hydraulic_calculation", "run_sensitivity_analysis"],
+                )
             prompt = ChatPromptTemplate.from_messages([
-                ("system", CALC_AGENT_SYSTEM_PROMPT),
+                ("system", self._skill_runtime.get_prompt(self.SKILL_NAME, "system")),
                 ("human", "{input}"),
                 ("placeholder", "{agent_scratchpad}")
             ])
@@ -94,9 +100,13 @@ class CalcAgent:
             else:
                 data_str = "无预置数据，需要从用户输入中提取参数"
 
-            input_text = CALC_AGENT_TASK_PROMPT.format(
-                task=task,
-                available_data=data_str
+            input_text = self._skill_runtime.render_prompt(
+                self.SKILL_NAME,
+                "task",
+                {
+                    "task": task,
+                    "available_data": data_str,
+                },
             )
 
             result = self.agent_executor.invoke({

@@ -1,26 +1,21 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import { Spin } from 'antd';
+import MainLayout from './components/layout/MainLayout';
 import { useUserStore } from './stores/userStore';
 
 const Login = lazy(() => import('./pages/auth/Login'));
 const Dashboard = lazy(() => import('./pages/dashboard/Dashboard'));
-const SystemSettings = lazy(() => import('./pages/system/SystemSettings'));
 
 const ProjectList = lazy(() => import('./pages/data/ProjectList'));
 const PipelineList = lazy(() => import('./pages/data/PipelineList'));
 const PumpStationList = lazy(() => import('./pages/data/PumpStationList'));
 const OilPropertyList = lazy(() => import('./pages/data/OilPropertyList'));
-const KnowledgeBase = lazy(() => import('./pages/data/KnowledgeBase'));
+const KnowledgeEntry = lazy(() => import('./pages/ai/KnowledgeEntry'));
 
 const HydraulicAnalysis = lazy(() => import('./pages/calculation/HydraulicAnalysis'));
 const Optimization = lazy(() => import('./pages/calculation/Optimization'));
 const SensitivityAnalysis = lazy(() => import('./pages/calculation/SensitivityAnalysis'));
-
-const FaultDiagnosis = lazy(() => import('./pages/features/FaultDiagnosis'));
-const SchemeComparison = lazy(() => import('./pages/features/SchemeComparison'));
-const CarbonCalculation = lazy(() => import('./pages/features/CarbonCalculation'));
-const RealtimeMonitor = lazy(() => import('./pages/features/RealtimeMonitor'));
 
 const Report = lazy(() => import('./pages/report/Report'));
 const AIChat = lazy(() => import('./pages/ai/AIChat'));
@@ -132,38 +127,6 @@ export const router = createBrowserRouter([
         ),
       },
       {
-        path: 'features/diagnosis',
-        element: (
-          <Suspense fallback={<Loading />}>
-            <FaultDiagnosis />
-          </Suspense>
-        ),
-      },
-      {
-        path: 'features/comparison',
-        element: (
-          <Suspense fallback={<Loading />}>
-            <SchemeComparison />
-          </Suspense>
-        ),
-      },
-      {
-        path: 'features/carbon',
-        element: (
-          <Suspense fallback={<Loading />}>
-            <CarbonCalculation />
-          </Suspense>
-        ),
-      },
-      {
-        path: 'features/monitor',
-        element: (
-          <Suspense fallback={<Loading />}>
-            <RealtimeMonitor />
-          </Suspense>
-        ),
-      },
-      {
         path: 'report',
         element: (
           <Suspense fallback={<Loading />}>
@@ -181,9 +144,13 @@ export const router = createBrowserRouter([
       },
       {
         path: 'ai/knowledge',
+        element: <Navigate to="/ai/trace" replace />,
+      },
+      {
+        path: 'ai/trace',
         element: (
           <Suspense fallback={<Loading />}>
-            <KnowledgeBase />
+            <KnowledgeEntry />
           </Suspense>
         ),
       },
