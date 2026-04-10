@@ -11,12 +11,14 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_classic.agents import AgentExecutor, create_tool_calling_agent
 
 from src.config import settings
+from src.skills import get_skill_runtime
+from src.tools.mcp_langchain_adapter import get_mcp_langchain_tools
 from src.utils import logger
-from src.tools.database_tools import DATABASE_TOOLS
-from .prompts import DATA_AGENT_SYSTEM_PROMPT, DATA_AGENT_TASK_PROMPT
 
 
 class DataAgent:
+    SKILL_NAME = "data-query"
+
     """
     Data Agent
 
@@ -30,6 +32,7 @@ class DataAgent:
         """初始化Data Agent"""
         self._llm = None
         self._agent_executor = None
+        self._skill_runtime = get_skill_runtime()
 
     @property
     def llm(self) -> ChatOpenAI:
@@ -56,20 +59,24 @@ class DataAgent:
         """获取Agent执行器"""
         if self._agent_executor is None:
             prompt = ChatPromptTemplate.from_messages([
-                ("system", DATA_AGENT_SYSTEM_PROMPT),
+                ("system", self._skill_runtime.get_prompt(self.SKILL_NAME, "system")),
                 ("human", "{input}"),
                 ("placeholder", "{agent_scratchpad}")
             ])
+            tools = get_mcp_langchain_tools(
+                ["database-mcp"],
+                exclude_tools=["query_database"],
+            )
 
             agent = create_tool_calling_agent(
                 llm=self.llm,
-                tools=DATABASE_TOOLS,
+                tools=tools,
                 prompt=prompt
             )
 
             self._agent_executor = AgentExecutor(
                 agent=agent,
-                tools=DATABASE_TOOLS,
+                tools=tools,
                 verbose=True,
                 max_iterations=5,
                 handle_parsing_errors=True
@@ -90,8 +97,14 @@ class DataAgent:
         try:
             logger.info(f"Data Agent执行任务: {task}")
 
+            task_input = self._skill_runtime.render_prompt(
+                self.SKILL_NAME,
+                "task",
+                {"task": task},
+            )
+
             result = self.agent_executor.invoke({
-                "input": task
+                "input": task_input
             })
 
             output = result.get("output", "")

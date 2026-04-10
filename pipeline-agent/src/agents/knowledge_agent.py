@@ -10,14 +10,16 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
 from src.config import settings
+from src.skills import get_skill_runtime
 from src.utils import logger
 from src.rag import get_rag_pipeline, RAGResponse
 from src.models.enums import RetrievalQuality
 from src.rag.self_rag import RetrievalDecision
-from .prompts import KNOWLEDGE_AGENT_SYSTEM_PROMPT, KNOWLEDGE_AGENT_TASK_PROMPT
 
 
 class KnowledgeAgent:
+    SKILL_NAME = "knowledge-qa"
+
     """
     Knowledge Agent
 
@@ -31,6 +33,7 @@ class KnowledgeAgent:
         """初始化Knowledge Agent"""
         self._llm = None
         self._rag_pipeline = None
+        self._skill_runtime = get_skill_runtime()
 
     @property
     def llm(self) -> ChatOpenAI:
@@ -130,16 +133,23 @@ class KnowledgeAgent:
 
             # 构建Prompt
             prompt = ChatPromptTemplate.from_messages([
-                ("system", KNOWLEDGE_AGENT_SYSTEM_PROMPT),
-                ("human", KNOWLEDGE_AGENT_TASK_PROMPT)
+                ("system", self._skill_runtime.get_prompt(self.SKILL_NAME, "system")),
+                ("human", "{input}")
             ])
 
             chain = prompt | self.llm | StrOutputParser()
+            task_input = self._skill_runtime.render_prompt(
+                self.SKILL_NAME,
+                "task",
+                {
+                    "question": question,
+                    "context": rag_response.context,
+                    "sources": sources_str,
+                },
+            )
 
             answer = chain.invoke({
-                "question": question,
-                "context": rag_response.context,
-                "sources": sources_str
+                "input": task_input
             })
 
             # 添加引用说明

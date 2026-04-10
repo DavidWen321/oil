@@ -24,71 +24,22 @@ from langgraph.types import Command
 
 from src.agents.knowledge_agent import get_knowledge_agent
 from src.config import settings
+from src.mcp import ensure_builtin_mcp_servers_sync
+from src.skills import get_skill_runtime
 from src.tool_search import get_tool_search_engine
+from src.tools.mcp_langchain_adapter import get_mcp_langchain_tools
 from src.tools.agent_tools import (
     ALWAYS_LOADED_TOOL_NAMES,
-    REACT_TOOLS,
-    TOOL_NAME_TO_TOOL,
-    get_all_tool_names,
+    get_all_registered_tool_names,
     get_tools_by_names,
 )
 from src.utils import generate_session_id, logger
 
-
-# ═══════════════════════════════════════════════════════════════
-# System Prompt — 不包含任何"对问候语直接回复"的指令
-# ═══════════════════════════════════════════════════════════════
-
-REACT_SYSTEM_PROMPT = """你是管道能耗分析系统的 AI 助手。
-
-## 你的能力
-你可以自然地与用户对话，也可以在需要时调用以下工具：
-1. query_database — 查询数据库中的项目、管道、泵站、油品数据
-2. hydraulic_calculation — 执行水力计算（雷诺数、摩阻、压降、泵优化）
-3. search_knowledge_base — 检索管道工程知识库（规范、标准、原理）
-4. query_fault_cause — 通过知识图谱进行故障因果推理
-5. query_standards — 查询相关标准规范
-6. query_equipment_chain — 查询设备关联链路
-7. run_sensitivity_analysis — 执行参数敏感性分析
-8. plan_complex_task — 对需要多步协作的复杂任务进行规划和分步执行
-
-## 行为准则
-- 你是一个自然、智能的对话伙伴。对于问候、闲聊、感谢、告别等，自然地回应即可。
-- 当用户的问题需要查数据、做计算、检索知识时，调用对应的工具。
-- 执行计算前如果缺少管道参数，先调用 query_database 获取。
-- 只有真正需要多步协作（查数据→计算→对比→出报告）的复杂任务才使用 plan_complex_task。
-- 用与用户相同的语言回答。
-- 数值结果保留合适的有效数字并带单位。
-- 引用规范时注明出处编号。
-"""
-
-
-# ═══════════════════════════════════════════════════════════════
-# LLM 实例（单例）
-# ═══════════════════════════════════════════════════════════════
-
-REACT_SYSTEM_PROMPT += """
-
-补充规则：
-- 对于已录入文档、FAQ、运维手册中的事实性问答，优先调用 search_knowledge_base。
-- 这类问题包括但不限于项目代号、上线日期、规则阈值、刷新周期、支持方式、口令、环境名称、主题名称。
-- 仅当用户明确要求查询结构化业务数据，或知识库检索未命中时，再调用 query_database。
-"""
-
 _base_llm: Optional[ChatOpenAI] = None
 _final_llm: Optional[ChatOpenAI] = None
 _llm_tools_cache: Dict[str, Any] = {}
-
-FINAL_SYNTHESIS_PROMPT = """你是最终回答整合节点。
-
-请基于用户问题、工具执行后的草稿回答以及工具调用记录，输出最终回复。
-
-要求：
-1. 使用与用户一致的语言。
-2. 保留工具结果中的关键事实，不要编造未出现的信息。
-3. 如果草稿回答已经足够完整，只做必要的精炼和组织。
-4. 如果没有工具调用，也可以直接润色草稿回答。
-"""
+_workflow_tools_cache: Dict[str, List[Any]] = {}
+_skill_runtime = get_skill_runtime()
 
 
 def _get_base_llm() -> ChatOpenAI:
@@ -126,6 +77,14 @@ def _get_final_llm() -> ChatOpenAI:
     return _final_llm
 
 
+def _get_react_system_prompt() -> str:
+    return _skill_runtime.get_prompt("chat-orchestrator", "system")
+
+
+def _get_final_synthesis_prompt() -> str:
+    return _skill_runtime.get_prompt("final-synthesis", "system")
+
+
 def _extract_latest_user_query(messages: List[Any]) -> str:
     for message in reversed(messages):
         if isinstance(message, dict) and message.get("role") == "user":
@@ -141,10 +100,11 @@ def _extract_latest_user_query(messages: List[Any]) -> str:
 def _merge_tool_names(always_loaded: List[str], dynamic: List[str]) -> List[str]:
     merged: List[str] = []
     seen = set()
+    known_names = set(get_all_registered_tool_names())
     for name in always_loaded + dynamic:
         if name in seen:
             continue
-        if name not in TOOL_NAME_TO_TOOL:
+        if name not in known_names:
             continue
         merged.append(name)
         seen.add(name)
@@ -157,7 +117,7 @@ def _parse_csv_setting(raw: str) -> List[str]:
 
 def _select_active_tools(user_query: str) -> Dict[str, Any]:
     if not settings.TOOL_SEARCH_ENABLED:
-        names = get_all_tool_names()
+        names = get_all_registered_tool_names()
         return {
             "selected_names": names,
             "scored_tools": [{"name": name, "score": 1.0, "forced": False} for name in names],
@@ -190,7 +150,7 @@ def _select_active_tools(user_query: str) -> Dict[str, Any]:
     dynamic_tools = [name for name, _ in dynamic_scored]
     selected = _merge_tool_names(ALWAYS_LOADED_TOOL_NAMES, dynamic_tools)
     if not selected:
-        selected = get_all_tool_names()
+        selected = get_all_registered_tool_names()
 
     score_map = {name: float(score) for name, score in dynamic_scored}
     scored_tools = []
@@ -207,7 +167,7 @@ def _select_active_tools(user_query: str) -> Dict[str, Any]:
     return {
         "selected_names": selected,
         "scored_tools": scored_tools,
-        "total_tools": len(get_all_tool_names()),
+        "total_tools": len(get_all_registered_tool_names()),
         "duration_ms": duration_ms,
         "mode": "hybrid",
         "filters": {
@@ -218,19 +178,52 @@ def _select_active_tools(user_query: str) -> Dict[str, Any]:
 
 
 def _get_llm_with_tools(tool_names: List[str]) -> Any:
-    selected_names = [name for name in tool_names if name in TOOL_NAME_TO_TOOL]
+    selected_names = [name for name in tool_names if name in get_all_registered_tool_names()]
     if not selected_names:
-        selected_names = get_all_tool_names()
+        selected_names = get_all_registered_tool_names()
 
     cache_key = "|".join(sorted(selected_names))
     cached = _llm_tools_cache.get(cache_key)
     if cached is not None:
         return cached
 
-    selected_tools = get_tools_by_names(selected_names)
+    selected_tools = _get_workflow_tools(selected_names)
     llm_with_tools = _get_base_llm().bind_tools(selected_tools)
     _llm_tools_cache[cache_key] = llm_with_tools
     return llm_with_tools
+
+
+def _get_workflow_tools(tool_names: List[str]) -> List[Any]:
+    selected_names = [name for name in tool_names if name in get_all_registered_tool_names()]
+    if not selected_names:
+        selected_names = get_all_registered_tool_names()
+
+    cache_key = "|".join(sorted(selected_names))
+    cached = _workflow_tools_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    try:
+        mcp_tools = get_mcp_langchain_tools(
+            ["database-mcp", "calculation-mcp", "knowledge-mcp"],
+            include_tools=selected_names,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Workflow MCP tool resolution fallback triggered: {}", exc)
+        mcp_tools = []
+    resolved_names = {tool.name for tool in mcp_tools}
+    missing_names = [name for name in selected_names if name not in resolved_names]
+    fallback_tools = get_tools_by_names(missing_names)
+    combined_tools = mcp_tools + fallback_tools
+
+    _workflow_tools_cache[cache_key] = combined_tools
+    return combined_tools
+
+
+def _get_all_workflow_tool_names() -> List[str]:
+    """Return the full workflow-executable tool set after builtin MCP sync."""
+    ensure_builtin_mcp_servers_sync(["database-mcp", "calculation-mcp", "knowledge-mcp"])
+    return get_all_registered_tool_names()
 
 
 def _synthesize_final_response(
@@ -246,7 +239,7 @@ def _synthesize_final_response(
 
     try:
         prompt = ChatPromptTemplate.from_messages([
-            ("system", FINAL_SYNTHESIS_PROMPT),
+            ("system", _get_final_synthesis_prompt()),
             (
                 "human",
                 "用户问题:\n{user_input}\n\n草稿回答:\n{draft_response}\n\n工具调用记录(JSON):\n{tool_calls}",
@@ -330,7 +323,7 @@ def agent_node(state: MessagesState) -> dict:
         selection.get("duration_ms", 0.0),
         ", ".join(active_tool_names),
     )
-    full_messages = [SystemMessage(content=REACT_SYSTEM_PROMPT)] + list(messages)
+    full_messages = [SystemMessage(content=_get_react_system_prompt())] + list(messages)
     response = llm.invoke(full_messages)
     return {"messages": [response]}
 
@@ -343,7 +336,7 @@ def agent_node(state: MessagesState) -> dict:
 def create_react_graph() -> StateGraph:
     graph = StateGraph(MessagesState)
     graph.add_node("agent", agent_node)
-    graph.add_node("tools", ToolNode(REACT_TOOLS))
+    graph.add_node("tools", ToolNode(_get_workflow_tools(_get_all_workflow_tool_names())))
     graph.add_edge(START, "agent")
     graph.add_conditional_edges("agent", tools_condition)
     graph.add_edge("tools", "agent")

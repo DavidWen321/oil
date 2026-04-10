@@ -18,6 +18,7 @@ from src.agents import (
     get_reflexion_agent,
     get_supervisor,
 )
+from src.agents.result_contracts import is_error_result, result_to_data, result_to_text
 from src.models.state import AgentState, PlanStep, ReflexionMemory
 from src.observability import TraceEventType, emit_trace_event, get_tracer
 from src.utils import generate_task_id, now_iso
@@ -135,6 +136,7 @@ def data_agent_node(state: AgentState) -> Dict[str, Any]:
     return _run_step_with_agent(
         state=state,
         agent_name="data_agent",
+        skill_name="data-query",
         execute=lambda desc, _state: get_data_agent().execute(desc),
     )
 
@@ -165,6 +167,7 @@ def calc_agent_node(state: AgentState) -> Dict[str, Any]:
     return _run_step_with_agent(
         state=state,
         agent_name="calc_agent",
+        skill_name="hydraulic-calc",
         execute=_execute,
     )
 
@@ -175,6 +178,7 @@ def knowledge_agent_node(state: AgentState) -> Dict[str, Any]:
     return _run_step_with_agent(
         state=state,
         agent_name="knowledge_agent",
+        skill_name="knowledge-qa",
         execute=lambda desc, _state: get_knowledge_agent().execute(desc),
     )
 
@@ -185,7 +189,8 @@ def graph_agent_node(state: AgentState) -> Dict[str, Any]:
     return _run_step_with_agent(
         state=state,
         agent_name="graph_agent",
-        execute=lambda desc, _state: get_graph_agent().execute(desc),
+        skill_name="graph-reasoning",
+        execute=lambda desc, _state: get_graph_agent().execute(desc, summarize=True),
     )
 
 
@@ -405,7 +410,7 @@ def synthesizer_node(state: AgentState) -> Dict[str, Any]:
         {
             "agent": step.get("agent"),
             "task": step.get("description"),
-            "result": _to_result_text(step.get("result")),
+            "result": result_to_text(step.get("result")),
         }
         for step in state.get("plan", [])
         if step.get("status") == "completed"
@@ -492,6 +497,7 @@ def _build_plan_steps(raw_steps: List[dict]) -> List[PlanStep]:
 def _run_step_with_agent(
     state: AgentState,
     agent_name: str,
+    skill_name: Optional[str],
     execute: Callable[[str, AgentState], Any],
 ) -> Dict[str, Any]:
     plan = state.get("plan", [])
@@ -517,7 +523,7 @@ def _run_step_with_agent(
     emit_trace_event(
         trace_id,
         TraceEventType.TOOL_CALLED,
-        {"tool": f"{agent_name}.execute", "task": description},
+        {"tool": f"skill.{skill_name or agent_name}", "task": description},
         step_number=step_number,
         agent=agent_name,
     )
@@ -526,8 +532,8 @@ def _run_step_with_agent(
         result = execute(description, state)
         duration = int((time.perf_counter() - start_time) * 1000)
 
-        if _looks_like_error_text(result):
-            raise RuntimeError(_to_result_text(result))
+        if is_error_result(result):
+            raise RuntimeError(result_to_text(result))
 
         step["status"] = "completed"
         step["result"] = result
@@ -537,7 +543,7 @@ def _run_step_with_agent(
         emit_trace_event(
             trace_id,
             TraceEventType.STEP_COMPLETED,
-            {"result_preview": _to_result_text(result)[:300]},
+            {"result_preview": result_to_text(result)[:300]},
             step_number=step_number,
             agent=agent_name,
             duration_ms=duration,
@@ -545,7 +551,7 @@ def _run_step_with_agent(
         emit_trace_event(
             trace_id,
             TraceEventType.TOOL_RESULT,
-            {"tool": f"{agent_name}.execute", "result_preview": _to_result_text(result)[:200]},
+            {"tool": f"skill.{skill_name or agent_name}", "result_preview": result_to_text(result)[:200]},
             step_number=step_number,
             agent=agent_name,
         )
@@ -557,14 +563,14 @@ def _run_step_with_agent(
         }
 
         if agent_name == "data_agent":
-            parsed = _to_result_data(result)
+            parsed = result_to_data(result)
             update["pipeline_data"] = parsed
             if isinstance(parsed, dict) and "oil" in parsed:
                 update["oil_property_data"] = parsed["oil"]
         elif agent_name == "calc_agent":
-            update["calculation_result"] = _to_result_data(result)
+            update["calculation_result"] = result_to_data(result)
         elif agent_name == "knowledge_agent":
-            update["knowledge_context"] = _to_result_text(result)
+            update["knowledge_context"] = result_to_text(result)
 
         return update
 
@@ -591,75 +597,11 @@ def _run_step_with_agent(
             "last_error_agent": agent_name,
         }
 
-
-def _to_result_text(value: Any) -> str:
-    if value is None:
-        return ""
-    if isinstance(value, str):
-        return value
-    try:
-        return json.dumps(value, ensure_ascii=False)
-    except Exception:
-        return str(value)
-
-
-def _to_result_data(value: Any) -> dict:
-    """将 agent 执行结果转为结构化 dict。
-
-    优先级:
-    1. 已经是 dict → 直接返回
-    2. 是 JSON 字符串 → 解析后返回
-    3. JSON 字符串中有 "data" 字段 → 提取 data 字段
-    4. 其他 → 包装为 {"raw": value}
-    """
-    if isinstance(value, dict):
-        return value
-
-    if isinstance(value, str):
-        text = value.strip()
-
-        try:
-            parsed = json.loads(text)
-            if isinstance(parsed, dict):
-                if "data" in parsed and parsed.get("success") is True:
-                    return parsed["data"] if isinstance(parsed["data"], dict) else parsed
-                return parsed
-            if isinstance(parsed, list):
-                return {"items": parsed}
-        except (json.JSONDecodeError, ValueError):
-            pass
-
-        start = text.find("{")
-        end = text.rfind("}")
-        if start != -1 and end > start:
-            try:
-                parsed = json.loads(text[start:end + 1])
-                if isinstance(parsed, dict):
-                    if "data" in parsed and parsed.get("success") is True:
-                        return parsed["data"] if isinstance(parsed["data"], dict) else parsed
-                    return parsed
-            except (json.JSONDecodeError, ValueError):
-                pass
-
-        return {"raw": value}
-
-    return {"raw": value}
-
-
 def _extract_schemes(value: Any) -> List[dict]:
     if value is None:
         return []
 
-    data: Any = value
-    if isinstance(value, str):
-        text = value.strip()
-        if text.startswith("{") and text.endswith("}"):
-            try:
-                data = json.loads(text)
-            except Exception:
-                return []
-        else:
-            return []
+    data: Any = result_to_data(value)
 
     if isinstance(data, dict):
         for key in ["schemes", "allSchemes", "all_combinations", "allCombinations"]:
@@ -668,17 +610,3 @@ def _extract_schemes(value: Any) -> List[dict]:
                 return [item for item in items if isinstance(item, dict)]
 
     return []
-
-
-def _looks_like_error_text(value: Any) -> bool:
-    if not isinstance(value, str):
-        return False
-    text = value.strip()
-    if not text:
-        return False
-    # Only match short texts that start with explicit error prefixes
-    if len(text) > 100:
-        return False
-    lower = text.lower()
-    error_prefixes = ["错误:", "error:", "失败:", "exception:", "调用失败"]
-    return any(lower.startswith(prefix) for prefix in error_prefixes)

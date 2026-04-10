@@ -1,66 +1,74 @@
-"""
-知识图谱 Agent — 通过 query_type 参数决定查询类型，不做关键词路由。
-query_type 由 agent_tools.py 中的 3 个独立工具传入，
-而这 3 个工具由 ReAct 主图的 LLM 自主选择调用。
-"""
+"""Knowledge graph agent with optional skill-backed summarization."""
 
 from __future__ import annotations
 
 import json
 from typing import Any, Optional
 
+from src.skills import get_skill_runtime
 from src.utils import logger
 
 
 class GraphAgent:
-    """知识图谱查询 Agent。"""
+    """Execute graph queries and optionally summarize them with a skill."""
 
-    def __init__(self):
+    SKILL_NAME = "graph-reasoning"
+
+    def __init__(self) -> None:
         self._graph = None
+        self._llm: Any = None
+        self._skill_runtime = get_skill_runtime()
 
     def _get_graph(self):
-        """懒加载知识图谱实例。"""
         if self._graph is None:
             try:
                 from src.knowledge_graph import get_knowledge_graph_builder
 
                 self._graph = get_knowledge_graph_builder()
-            except Exception as e:
-                logger.error(f"Failed to load knowledge graph: {e}")
+            except Exception as exc:  # noqa: BLE001
+                logger.error("Failed to load knowledge graph: {}", exc)
                 self._graph = None
         return self._graph
 
-    def execute(self, query: str, query_type: Optional[str] = None) -> Any:
-        """
-        执行知识图谱查询。
+    def _get_llm(self):
+        if self._llm is None:
+            from langchain_openai import ChatOpenAI
 
-        Args:
-            query: 用户的查询文本
-            query_type: 查询类型，由调用方（agent_tools.py 中的工具）指定：
-                - "fault_cause": 故障因果推理
-                - "standards": 标准规范查询
-                - "equipment_chain": 设备关联链路查询
-                - None: 综合查询（模糊匹配）
+            from src.config import settings
 
-        Returns:
-            query_type 指定时返回文本（供工具调用）；
-            query_type 为 None 时返回结构化结果（兼容 /graph/query 接口）。
+            self._llm = ChatOpenAI(
+                api_key=settings.OPENAI_API_KEY,
+                base_url=settings.OPENAI_API_BASE,
+                model=settings.final_synthesis_model_name,
+                temperature=0.2,
+                max_tokens=2048,
+            )
+        return self._llm
+
+    def execute(
+        self,
+        query: str,
+        query_type: Optional[str] = None,
+        summarize: bool = False,
+    ) -> Any:
+        """Run one graph query.
+
+        Raw graph results remain the default contract for legacy tool and API
+        callers. Natural-language summarization is opt-in.
         """
+
         graph = self._get_graph()
         if graph is None:
             return "知识图谱服务不可用，请稍后重试。"
 
         try:
             if query_type == "fault_cause":
-                # 当前项目方法名为 query_fault_causes
                 result = graph.query_fault_causes(query)
             elif query_type == "standards":
-                # 当前项目方法名为 find_related_standards
                 result = graph.find_related_standards(query)
             elif query_type == "equipment_chain":
                 result = graph.query_equipment_chain(query)
             else:
-                # 综合查询：优先使用 query_fuzzy（若存在），否则走文本匹配+子图
                 if hasattr(graph, "query_fuzzy"):
                     result = graph.query_fuzzy(query)
                 else:
@@ -73,22 +81,65 @@ class GraphAgent:
             if not result:
                 return f"未找到与 '{query}' 相关的知识图谱信息。"
 
-            # 兼容旧的 /graph/query 接口：保持结构化对象返回
-            if query_type is None:
-                if isinstance(result, dict):
-                    return result
-                return {"result": result}
+            if summarize:
+                return self._summarize_result(
+                    query=query,
+                    query_type=query_type or "general",
+                    result=result,
+                )
 
-            if isinstance(result, (dict, list)):
-                return json.dumps(result, ensure_ascii=False)
-            return str(result)
+            return self._format_raw_result(result=result, query_type=query_type)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("GraphAgent execute failed: {}", exc)
+            return f"知识图谱查询失败: {exc}"
 
-        except Exception as e:
-            logger.error(f"GraphAgent execute failed: {e}")
-            return f"知识图谱查询失败: {str(e)}"
+    @staticmethod
+    def _format_raw_result(*, result: Any, query_type: Optional[str]) -> Any:
+        if query_type is None:
+            if isinstance(result, dict):
+                return result
+            return {"result": result}
+
+        if isinstance(result, (dict, list)):
+            return json.dumps(result, ensure_ascii=False)
+        return str(result)
+
+    def _summarize_result(self, *, query: str, query_type: str, result: Any) -> str:
+        result_text = (
+            json.dumps(result, ensure_ascii=False, indent=2)
+            if isinstance(result, (dict, list))
+            else str(result)
+        )
+        prompt_input = self._skill_runtime.render_prompt(
+            self.SKILL_NAME,
+            "task",
+            {
+                "query": query,
+                "query_type": query_type,
+                "graph_result": result_text,
+            },
+        )
+
+        try:
+            from langchain_core.output_parsers import StrOutputParser
+            from langchain_core.prompts import ChatPromptTemplate
+
+            prompt = ChatPromptTemplate.from_messages(
+                [
+                    ("system", self._skill_runtime.get_prompt(self.SKILL_NAME, "system")),
+                    ("human", "{input}"),
+                ]
+            )
+            chain = prompt | self._get_llm() | StrOutputParser()
+            return chain.invoke({"input": prompt_input}).strip() or result_text
+        except ModuleNotFoundError as exc:
+            logger.warning("GraphAgent summarize skipped because LLM stack is unavailable: {}", exc)
+            return result_text
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("GraphAgent summarize fallback triggered: {}", exc)
+            return result_text
 
 
-# 单例
 _graph_agent: Optional[GraphAgent] = None
 
 

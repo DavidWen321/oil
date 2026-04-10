@@ -21,6 +21,25 @@ async def lifespan(app: FastAPI):
     logger.info("Debug mode: %s", settings.DEBUG)
 
     try:
+        from src.mcp import (
+            ensure_builtin_mcp_servers_async,
+            get_mcp_hub,
+        )
+
+        mcp_hub = get_mcp_hub()
+        ready_servers = await ensure_builtin_mcp_servers_async()
+        total_tools = 0
+
+        for server_name in ready_servers:
+            tool_defs = await mcp_hub.list_tools(server_name)
+            total_tools += len(tool_defs)
+            logger.info("MCP server ready: %s, tools=%s", server_name, len(tool_defs))
+
+        logger.info("MCP hub initialized: servers=%s, total_tools=%s", mcp_hub.server_names(), total_tools)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("MCP hub initialization failed (non-fatal): %s", exc)
+
+    try:
         from src.workflows import get_workflow
 
         get_workflow()
@@ -57,35 +76,6 @@ async def lifespan(app: FastAPI):
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("Knowledge graph initialization failed: %s", exc)
-
-    try:
-        from src.mcp import (
-            CalculationMCPServer,
-            DatabaseMCPServer,
-            KnowledgeMCPServer,
-            get_mcp_hub,
-        )
-        from src.tool_search import sync_tool_registry_from_mcp
-
-        mcp_hub = get_mcp_hub()
-        server_factories = [
-            ("database-mcp", DatabaseMCPServer),
-            ("calculation-mcp", CalculationMCPServer),
-            ("knowledge-mcp", KnowledgeMCPServer),
-        ]
-        total_tools = 0
-
-        for server_name, factory in server_factories:
-            if not mcp_hub.has_server(server_name):
-                await mcp_hub.register(server_name, factory())
-            tool_defs = await mcp_hub.list_tools(server_name)
-            sync_tool_registry_from_mcp(server_name, tool_defs)
-            total_tools += len(tool_defs)
-            logger.info("MCP server ready: %s, tools=%s", server_name, len(tool_defs))
-
-        logger.info("MCP hub initialized: servers=%s, total_tools=%s", mcp_hub.server_names(), total_tools)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("MCP hub initialization failed (non-fatal): %s", exc)
 
     yield
 
