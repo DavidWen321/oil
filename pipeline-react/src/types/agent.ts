@@ -300,6 +300,13 @@ export interface DynamicReportSectionPayload {
   table?: DynamicReportTableData | null;
 }
 
+export interface DynamicReportAiAnalysisPayload {
+  summary: string[];
+  metricAnalysis: string[];
+  riskJudgement: DynamicReportRiskItem[];
+  suggestions: DynamicReportSuggestionItem[];
+}
+
 export interface DynamicReportRequestPayload {
   selected_project_ids: number[];
   project_names?: string[];
@@ -336,6 +343,7 @@ export interface DynamicReportResponsePayload {
   title: string;
   abstract: string;
   source: 'ai' | 'rules' | 'hybrid';
+  aiAnalysis?: DynamicReportAiAnalysisPayload;
   summary: string[];
   highlights: string[];
   risks: DynamicReportRiskItem[];

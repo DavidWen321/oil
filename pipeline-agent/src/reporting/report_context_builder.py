@@ -41,8 +41,59 @@ def build_report_context(
     pipeline_name = request.selected_pipeline_name or (str(data.pipelines[0].get("name")) if data.pipelines else "-")
     pump_scope = "全部泵站" if not request.selected_pump_station_names else "指定泵站"
     oil_name = request.selected_oil_name or (str(data.oil_properties[0].get("name")) if data.oil_properties else "-")
+    history_overview = data.history_overview or {}
+    risk_flags = [
+        {
+            "targetName": str(item.get("target") or "-"),
+            "riskCode": str(item.get("riskType") or "unknown"),
+            "level": str(item.get("level") or "中"),
+            "message": str(item.get("reason") or ""),
+            "suggestion": str(item.get("suggestion") or ""),
+        }
+        for item in diagnosis.risks
+    ]
 
     return {
+        "project": {
+            "projectCount": len(data.projects),
+            "projectNames": project_names,
+            "pipelineCount": len(data.pipelines),
+            "pumpCount": len(data.pump_stations),
+            "oilCount": len(data.oil_properties),
+            "reportType": report_type_label(request),
+        },
+        "params": {
+            "analysisObject": analysis_object_label(request.analysis_object),
+            "pipelineName": pipeline_name,
+            "pumpStationScope": pump_scope,
+            "oilType": oil_name,
+            "focusPoints": request.focuses or [],
+            "targetThroughput": request.target_throughput,
+            "minOutletPressure": request.min_pressure,
+            "optimizationGoal": optimization_goal_label(request.optimization_goal),
+            "allowCombination": bool(request.allow_pump_adjust),
+            "dataSource": _pick_data_source(request.user_prompt),
+            "externalApiEnhance": _pick_external_api(request.user_prompt),
+        },
+        "charts": {
+            "historyDaily": metrics.trend_metrics.get("history_daily", []),
+            "operationDaily": metrics.trend_metrics.get("operation_daily", []),
+            "operationPoints": metrics.trend_metrics.get("operation_points", []),
+        },
+        "metrics": {
+            **metrics.overview_metrics,
+            **metrics.constraint_metrics,
+            "constraintChecks": len(diagnosis.constraints),
+        },
+        "history": {
+            "total": int(history_overview.get("totalCount") or metrics.overview_metrics.get("history_total_count") or 0),
+            "success": int(history_overview.get("successCount") or metrics.overview_metrics.get("history_success_count") or 0),
+            "failed": int(history_overview.get("failedCount") or metrics.overview_metrics.get("history_failed_count") or 0),
+            "successRate": metrics.overview_metrics.get("success_rate"),
+            "records": data.history_records,
+        },
+        "risk_flags": risk_flags,
+        "pump_data": metrics.object_metrics.get("pump_stations", []),
         "report_meta": {
             "project_name": "、".join(project_names) if project_names else "-",
             "report_type": report_type_label(request),
@@ -67,6 +118,8 @@ def build_report_context(
             "issues": [item.__dict__ for item in diagnosis.issues],
             "risks": diagnosis.risks,
             "causes": [item.__dict__ for item in diagnosis.causes],
+            "constraints": [item.__dict__ for item in diagnosis.constraints],
+            "recommendations": [item.__dict__ for item in diagnosis.recommendations],
         },
         "decision": {
             "recommended_options": [item.__dict__ for item in decision.recommended_options],

@@ -1329,12 +1329,42 @@ function renderSummaryList(items: string[]) {
   );
 }
 
+function getHydraulicSummaryItems(report: DynamicReportResponsePayload, fallback: string[] = []) {
+  const skillItems = report.aiAnalysis?.summary ?? [];
+  if (skillItems.length) {
+    return skillItems;
+  }
+  return report.summary.length ? report.summary : fallback;
+}
+
+function getHydraulicMetricItems(report: DynamicReportResponsePayload, fallback: string[] = []) {
+  const skillItems = report.aiAnalysis?.metricAnalysis ?? [];
+  if (skillItems.length) {
+    return skillItems;
+  }
+  return report.highlights.length ? report.highlights : fallback;
+}
+
+function getHydraulicRiskItems(report: DynamicReportResponsePayload) {
+  const skillItems = report.aiAnalysis?.riskJudgement ?? [];
+  return skillItems.length ? skillItems : report.risks;
+}
+
+function getHydraulicSuggestionItems(report: DynamicReportResponsePayload) {
+  const skillItems = report.aiAnalysis?.suggestions ?? [];
+  return skillItems.length ? skillItems : report.suggestions;
+}
+
 function renderHydraulicAiReportContent(report: DynamicReportResponsePayload, snapshot: HydraulicReportSnapshot) {
   const inputSources = [snapshot.input];
   const outputSources = [snapshot.output];
   const startAltitude = toFiniteNumber(pickFirstValue(inputSources, ['startAltitude']));
   const endAltitude = toFiniteNumber(pickFirstValue(inputSources, ['endAltitude']));
   const elevationDiff = startAltitude !== null && endAltitude !== null ? Number((endAltitude - startAltitude).toFixed(2)) : null;
+  const summaryItems = getHydraulicSummaryItems(report);
+  const metricItems = getHydraulicMetricItems(report);
+  const riskItems = getHydraulicRiskItems(report);
+  const suggestionItems = getHydraulicSuggestionItems(report);
 
   const headerCards = filterMetricCards([
     { label: '标题', value: report.title || '-', tone: 'blue', span: 6 },
@@ -1471,17 +1501,17 @@ function renderHydraulicAiReportContent(report: DynamicReportResponsePayload, sn
       <Card size="small" title="AI分析">
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
           <Card size="small" title="结果摘要">
-            {renderSummaryList(report.summary)}
+            {renderSummaryList(summaryItems)}
           </Card>
 
           <Card size="small" title="指标分析">
-            {renderSummaryList(report.highlights)}
+            {renderSummaryList(metricItems)}
           </Card>
 
           <Card size="small" title="风险判断">
-            {report.risks.length ? (
+            {riskItems.length ? (
               <Space direction="vertical" size={12} style={{ width: '100%' }}>
-                {report.risks.map((item, index) => (
+                {riskItems.map((item, index) => (
                   <div key={`${item.target}-${index}`}>
                     <Space wrap>
                       <Tag color="red">{item.level}</Tag>
@@ -1498,9 +1528,9 @@ function renderHydraulicAiReportContent(report: DynamicReportResponsePayload, sn
           </Card>
 
           <Card size="small" title="运行建议">
-            {report.suggestions.length ? (
+            {suggestionItems.length ? (
               <Space direction="vertical" size={12} style={{ width: '100%' }}>
-                {report.suggestions.map((item, index) => (
+                {suggestionItems.map((item, index) => (
                   <div key={`${item.target}-${index}`}>
                     <Space wrap>
                       <Tag color="blue">{item.priority}</Tag>
@@ -1540,8 +1570,10 @@ function renderHydraulicAiReportContentV2(report: DynamicReportResponsePayload, 
   const startAltitude = toFiniteNumber(pickFirstValue(inputSources, ['startAltitude']));
   const endAltitude = toFiniteNumber(pickFirstValue(inputSources, ['endAltitude']));
   const elevationDiff = startAltitude !== null && endAltitude !== null ? Number((endAltitude - startAltitude).toFixed(2)) : null;
-  const summaryItems = report.summary.length ? report.summary : [report.conclusion || report.abstract || HYDRAULIC_REPORT_CORE_SENTENCE];
-  const highlightItems = report.highlights.length ? report.highlights : [report.abstract || HYDRAULIC_REPORT_CORE_SENTENCE];
+  const summaryItems = getHydraulicSummaryItems(report, [report.conclusion || report.abstract || HYDRAULIC_REPORT_CORE_SENTENCE]);
+  const highlightItems = getHydraulicMetricItems(report, [report.abstract || HYDRAULIC_REPORT_CORE_SENTENCE]);
+  const riskItems = getHydraulicRiskItems(report);
+  const suggestionItems = getHydraulicSuggestionItems(report);
 
   const headerCards = filterMetricCards([
     { label: '标题', value: report.title || '-', tone: 'blue', span: 6 },
@@ -1698,9 +1730,9 @@ function renderHydraulicAiReportContentV2(report: DynamicReportResponsePayload, 
           </Card>
 
           <Card size="small" title="风险判断">
-            {report.risks.length ? (
+            {riskItems.length ? (
               <Space direction="vertical" size={12} style={{ width: '100%' }}>
-                {report.risks.map((item, index) => (
+                {riskItems.map((item, index) => (
                   <div key={`${item.target}-${index}`}>
                     <Space wrap>
                       <Tag color="red">{item.level}</Tag>
@@ -1717,9 +1749,9 @@ function renderHydraulicAiReportContentV2(report: DynamicReportResponsePayload, 
           </Card>
 
           <Card size="small" title="运行建议">
-            {report.suggestions.length ? (
+            {suggestionItems.length ? (
               <Space direction="vertical" size={12} style={{ width: '100%' }}>
-                {report.suggestions.map((item, index) => (
+                {suggestionItems.map((item, index) => (
                   <div key={`${item.target}-${index}`}>
                     <Space wrap>
                       <Tag color="blue">{item.priority}</Tag>

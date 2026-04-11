@@ -284,6 +284,15 @@ class DynamicReportSection(BaseModel):
     table: Optional[ReportTableData] = None
 
 
+class DynamicReportAiAnalysis(BaseModel):
+    """Skill-driven AI analysis blocks for the report page."""
+
+    summary: list[str] = Field(default_factory=list)
+    metricAnalysis: list[str] = Field(default_factory=list)
+    riskJudgement: list[ReportRiskItem] = Field(default_factory=list)
+    suggestions: list[ReportSuggestionItem] = Field(default_factory=list)
+
+
 class DynamicReportRequest(BaseModel):
     """Report generation request from the report center."""
 
@@ -324,6 +333,7 @@ class DynamicReportResponse(BaseModel):
     title: str
     abstract: str = ""
     source: Literal["ai", "rules", "hybrid"] = "hybrid"
+    aiAnalysis: DynamicReportAiAnalysis = Field(default_factory=DynamicReportAiAnalysis)
     summary: list[str] = Field(default_factory=list)
     highlights: list[str] = Field(default_factory=list)
     risks: list[ReportRiskItem] = Field(default_factory=list)

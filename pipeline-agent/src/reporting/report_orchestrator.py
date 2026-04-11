@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from src.models.schemas import DynamicReportRequest, DynamicReportResponse
+from src.models.schemas import DynamicReportAiAnalysis, DynamicReportRequest, DynamicReportResponse
 
 from .data_loader import load_report_data
-from .diagnosis_engine import DiagnosisEngine
 from .decision_engine import DecisionEngine
+from .diagnosis_engine import DiagnosisEngine
 from .labeling import output_style_key, range_label, report_type_label
 from .llm_writer import explain_report
 from .metric_engine import build_metric_snapshot
@@ -13,11 +13,12 @@ from .report_context_builder import build_report_context
 from .section_generator import (
     build_highlights,
     build_raw_text,
-    build_sections,
-    build_summary,
     build_risk_items,
+    build_sections,
     build_suggestion_items,
+    build_summary,
 )
+from .skills import build_report_ai_sections
 
 
 def _title_prefix(projects: list[dict]) -> str:
@@ -26,7 +27,14 @@ def _title_prefix(projects: list[dict]) -> str:
         return "全局"
     if len(names) <= 3:
         return "、".join(names)
-    return f"{'、'.join(names[:3])}等{len(names)}个项目"
+    return f"{'、'.join(names[:3])} 等{len(names)}个项目"
+
+
+def _is_hydraulic_report(request: DynamicReportRequest) -> bool:
+    prompt = str(request.user_prompt or "")
+    focuses = {str(item).strip() for item in request.focuses}
+    hydraulic_focuses = {"雷诺数", "流态", "摩阻损失", "水力坡降", "总扬程", "末站进站压头"}
+    return "水力" in prompt or bool(hydraulic_focuses & focuses)
 
 
 def generate_report(request: DynamicReportRequest) -> DynamicReportResponse:
@@ -90,14 +98,17 @@ def generate_report(request: DynamicReportRequest) -> DynamicReportResponse:
     final_highlights = [str(item).strip() for item in polished.get("highlights") or highlights if str(item).strip()]
     final_conclusion = str(polished.get("conclusion") or conclusion).strip()
 
+    ai_analysis = build_report_ai_sections(report_context) if _is_hydraulic_report(request) else DynamicReportAiAnalysis()
+
     return DynamicReportResponse(
         title=final_title,
         abstract=final_abstract,
         source="hybrid" if polished else "rules",
-        summary=final_summary,
-        highlights=final_highlights,
-        risks=risks,
-        suggestions=suggestions,
+        aiAnalysis=ai_analysis,
+        summary=ai_analysis.summary if ai_analysis.summary else final_summary,
+        highlights=ai_analysis.metricAnalysis if ai_analysis.metricAnalysis else final_highlights,
+        risks=ai_analysis.riskJudgement if ai_analysis.riskJudgement else risks,
+        suggestions=ai_analysis.suggestions if ai_analysis.suggestions else suggestions,
         conclusion=final_conclusion,
         sections=sections,
         metadata={
