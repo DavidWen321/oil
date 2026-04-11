@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react';
+﻿import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react';
 import dayjs, { type Dayjs } from 'dayjs';
 import {
   Alert,
@@ -108,6 +108,34 @@ type OptimizationReportSnapshot = {
   generatedAt?: string | null;
   input: Record<string, unknown>;
   output: Record<string, unknown>;
+};
+
+type OptimizationComparisonProjectSnapshot = OptimizationReportSnapshot & {
+  projectId: number | undefined;
+  projectNumber: string | undefined;
+  responsible: string | undefined;
+};
+
+type OptimizationComparisonReportSnapshot = {
+  projects: OptimizationComparisonProjectSnapshot[];
+};
+
+type OptimizationComparisonProjectMetrics = {
+  projectName: string;
+  projectNumber: string;
+  responsible: string;
+  recommendedCombination: string;
+  currentCondition: string;
+  feasibilityText: string;
+  recommendationText: string;
+  totalHead: number | null;
+  totalPressureDrop: number | null;
+  endStationInPressure: number | null;
+  totalEnergyConsumption: number | null;
+  totalCost: number | null;
+  isFeasible: boolean | null;
+  riskLevel: string;
+  comparisonScore: number;
 };
 
 type SensitivityReportSnapshot = {
@@ -511,6 +539,25 @@ function toFiniteNumber(value: unknown) {
   return Number.isFinite(next) ? next : null;
 }
 
+function parseBooleanValue(value: unknown) {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value > 0 : null;
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['true', 'yes', '是', '可行', '可用', '1'].includes(normalized)) {
+      return true;
+    }
+    if (['false', 'no', '否', '不可行', '不可用', '0'].includes(normalized)) {
+      return false;
+    }
+  }
+  return null;
+}
+
 function buildHydraulicSnapshot(input: unknown, output: unknown, projectName?: string | null, generatedAt?: string | null) {
   const inputRecord = asRecord(input);
   const outputRecord = asRecord(output);
@@ -620,6 +667,245 @@ function extractOptimizationSnapshotFromReport(report: DynamicReportResponsePayl
       ? String(getValueByPath(metadata, 'optimizationSnapshot.generatedAt'))
       : null,
   );
+}
+
+function createOptimizationComparisonProjectSnapshot(
+  input: unknown,
+  output: unknown,
+  projectName?: string | null,
+  generatedAt?: string | null,
+  projectId?: number,
+  projectNumber?: string,
+  responsible?: string,
+) {
+  const baseSnapshot = createOptimizationReportSnapshot(input, output, projectName, generatedAt);
+  if (!baseSnapshot) {
+    return null;
+  }
+
+  return {
+    ...baseSnapshot,
+    projectId,
+    projectNumber,
+    responsible,
+  } satisfies OptimizationComparisonProjectSnapshot;
+}
+
+function createOptimizationComparisonProjectSnapshotFromHistory(
+  record?: Pick<
+    HistoryTableRow,
+    | 'projectName'
+    | 'createTime'
+    | 'inputParams'
+    | 'outputResult'
+    | 'projectId'
+    | 'projectNumber'
+    | 'responsible'
+  > | null,
+) {
+  if (!record) {
+    return null;
+  }
+
+  const parsedOutput = parseJson(record.outputResult);
+  const outputRecord = asRecord(getValueByPath(parsedOutput, 'data')) ?? asRecord(parsedOutput);
+  const projectId =
+    typeof record.projectId === 'number'
+      ? record.projectId
+      : typeof record.projectId === 'string'
+        ? Number(record.projectId)
+        : undefined;
+
+  return createOptimizationComparisonProjectSnapshot(
+    parseJson(record.inputParams),
+    outputRecord,
+    record.projectName,
+    record.createTime,
+    Number.isFinite(projectId) ? projectId : undefined,
+    record.projectNumber,
+    record.responsible,
+  );
+}
+
+function normalizeOptimizationComparisonProjectSnapshot(
+  snapshot: OptimizationComparisonProjectSnapshot,
+): OptimizationComparisonProjectSnapshot {
+  return {
+    ...snapshot,
+    projectName: snapshot.projectName ?? null,
+    generatedAt: snapshot.generatedAt ?? null,
+    input: snapshot.input ?? {},
+    output: snapshot.output ?? {},
+    projectId: snapshot.projectId,
+    projectNumber: snapshot.projectNumber ?? undefined,
+    responsible: snapshot.responsible ?? undefined,
+  };
+}
+
+function extractOptimizationComparisonSnapshotFromReport(report: DynamicReportResponsePayload) {
+  const metadata = asRecord(report.metadata);
+  const rawProjects = getValueByPath(metadata, 'optimizationComparisonSnapshot.projects');
+  if (!Array.isArray(rawProjects)) {
+    return null;
+  }
+
+  const projects = rawProjects
+    .map((project) => {
+      const projectRecord = asRecord(project);
+      if (!projectRecord) {
+        return null;
+      }
+
+      return createOptimizationComparisonProjectSnapshot(
+        getValueByPath(projectRecord, 'input'),
+        getValueByPath(projectRecord, 'output'),
+        typeof projectRecord.projectName === 'string' ? projectRecord.projectName : null,
+        typeof projectRecord.generatedAt === 'string' ? projectRecord.generatedAt : null,
+        typeof projectRecord.projectId === 'number' ? projectRecord.projectId : undefined,
+        typeof projectRecord.projectNumber === 'string' ? projectRecord.projectNumber : undefined,
+        typeof projectRecord.responsible === 'string' ? projectRecord.responsible : undefined,
+      );
+    })
+    .filter(Boolean)
+    .map((item) => normalizeOptimizationComparisonProjectSnapshot(item as OptimizationComparisonProjectSnapshot));
+
+  return projects.length >= 2
+    ? ({
+        projects,
+      } satisfies OptimizationComparisonReportSnapshot)
+    : null;
+}
+
+function buildOptimizationComparisonRiskLevel(metrics: {
+  isFeasible: boolean | null;
+  totalCost: number | null;
+  totalEnergyConsumption: number | null;
+  endStationInPressure: number | null;
+  totalPressureDrop: number | null;
+  totalHead: number | null;
+}) {
+  if (metrics.isFeasible === false) {
+    return '高';
+  }
+
+  const highSignals = [
+    metrics.endStationInPressure !== null && metrics.endStationInPressure < 20,
+    metrics.totalEnergyConsumption !== null && metrics.totalEnergyConsumption > 2000,
+    metrics.totalCost !== null && metrics.totalCost > 6000,
+  ];
+
+  if (highSignals.some(Boolean)) {
+    return '高';
+  }
+
+  const mediumSignals = [
+    metrics.totalPressureDrop !== null && metrics.totalPressureDrop > 250,
+    metrics.totalHead !== null && metrics.totalHead > 350,
+  ];
+
+  if (mediumSignals.some(Boolean)) {
+    return '中';
+  }
+
+  if (metrics.isFeasible === true) {
+    return '低';
+  }
+
+  return '待判定';
+}
+
+function getOptimizationRiskPriority(level: string) {
+  if (level === '高') {
+    return 0;
+  }
+  if (level === '中') {
+    return 1;
+  }
+  if (level === '低') {
+    return 2;
+  }
+  return 3;
+}
+
+function buildOptimizationComparisonProjectMetrics(
+  snapshot: OptimizationComparisonProjectSnapshot,
+): OptimizationComparisonProjectMetrics {
+  const outputSources = [snapshot.output];
+  const totalHead = toFiniteNumber(pickFirstValue(outputSources, ['totalHead']));
+  const totalPressureDrop = toFiniteNumber(pickFirstValue(outputSources, ['totalPressureDrop', 'pressureDrop']));
+  const endStationInPressure = toFiniteNumber(pickFirstValue(outputSources, ['endStationInPressure', 'inPressure']));
+  const totalEnergyConsumption = toFiniteNumber(pickFirstValue(outputSources, ['totalEnergyConsumption', 'energyConsumption']));
+  const totalCost = toFiniteNumber(pickFirstValue(outputSources, ['totalCost', 'cost']));
+  const isFeasible = parseBooleanValue(pickFirstValue(outputSources, ['isFeasible', 'feasible', 'feasibility']));
+  const recommendationText =
+    formatValue(pickFirstValue(outputSources, ['description', 'recommendation', 'remark'])) || '当前数据不足以支持进一步判断';
+  const feasibilityText =
+    typeof pickFirstValue(outputSources, ['feasibilityText']) === 'string'
+      ? String(pickFirstValue(outputSources, ['feasibilityText']))
+      : isFeasible === null
+        ? '待判定'
+        : isFeasible
+          ? '可行'
+          : '不可行';
+
+  const metrics = {
+    projectName: snapshot.projectName || '未命名项目',
+    projectNumber: snapshot.projectNumber || '-',
+    responsible: snapshot.responsible || '-',
+    recommendedCombination: buildOptimizationPumpCombination(outputSources),
+    currentCondition: buildOptimizationCurrentCondition(snapshot.input),
+    feasibilityText,
+    recommendationText,
+    totalHead,
+    totalPressureDrop,
+    endStationInPressure,
+    totalEnergyConsumption,
+    totalCost,
+    isFeasible,
+    riskLevel: '待判定',
+    comparisonScore: 0,
+  } satisfies OptimizationComparisonProjectMetrics;
+
+  metrics.riskLevel = buildOptimizationComparisonRiskLevel(metrics);
+  return metrics;
+}
+
+function attachOptimizationComparisonScores(items: OptimizationComparisonProjectMetrics[]) {
+  const safeMax = (values: number[]) => (values.length ? Math.max(...values) : 1);
+  const safeMin = (values: number[]) => (values.length ? Math.min(...values) : 0);
+  const headValues = items.map((item) => item.totalHead ?? 0);
+  const pressureDropValues = items.map((item) => item.totalPressureDrop ?? 0);
+  const pressureValues = items.map((item) => item.endStationInPressure ?? 0);
+  const energyValues = items.map((item) => item.totalEnergyConsumption ?? 0);
+  const costValues = items.map((item) => item.totalCost ?? 0);
+
+  const maxHead = safeMax(headValues);
+  const maxPressureDrop = safeMax(pressureDropValues);
+  const maxPressure = safeMax(pressureValues);
+  const maxEnergy = safeMax(energyValues);
+  const maxCost = safeMax(costValues);
+  const minEnergy = safeMin(energyValues);
+  const minCost = safeMin(costValues);
+
+  return items.map((item) => {
+    const feasibilityScore = item.isFeasible === false ? 0 : item.isFeasible === true ? 30 : 18;
+    const energyScore =
+      item.totalEnergyConsumption === null || maxEnergy === minEnergy
+        ? 12
+        : 20 * (1 - (item.totalEnergyConsumption - minEnergy) / (maxEnergy - minEnergy));
+    const costScore =
+      item.totalCost === null || maxCost === minCost ? 15 : 25 * (1 - (item.totalCost - minCost) / (maxCost - minCost));
+    const pressureScore = maxPressure === 0 ? 8 : 15 * ((item.endStationInPressure ?? 0) / maxPressure);
+    const headScore = maxHead === 0 ? 3 : 5 * ((item.totalHead ?? 0) / maxHead);
+    const dropPenalty = maxPressureDrop === 0 ? 0 : 5 * ((item.totalPressureDrop ?? 0) / maxPressureDrop);
+    const riskPenalty = item.riskLevel === '高' ? 15 : item.riskLevel === '中' ? 8 : item.riskLevel === '低' ? 4 : 6;
+
+    const rawScore = feasibilityScore + energyScore + costScore + pressureScore + headScore - dropPenalty - riskPenalty;
+    return {
+      ...item,
+      comparisonScore: Number.isFinite(rawScore) ? Number(rawScore.toFixed(1)) : 0,
+    } satisfies OptimizationComparisonProjectMetrics;
+  });
 }
 
 function buildPumpDisplay(sources: unknown[]) {
@@ -743,6 +1029,23 @@ function buildOptimizationUserPrompt() {
     '只能依据输入数据分析，不允许编造不存在的数据；若数据不足，请明确说明“当前数据不足以支持进一步判断”。',
     `最核心的一句话请围绕这层意思展开：${OPTIMIZATION_REPORT_CORE_SENTENCE}`,
   ].join('');
+}
+
+function buildOptimizationComparisonSmartPrompt(snapshot: OptimizationComparisonReportSnapshot) {
+  const projectNames = snapshot.projects
+    .map((project) => project.projectName)
+    .filter((name): name is string => Boolean(name))
+    .join('、');
+  return [
+    '请基于真实泵站优化结果数据生成多项目泵站优化对比智能报告，要求智能化表达，不要固定模板格式。',
+    '这是一份对比报告，需要判断多个项目的优劣与风险差异，给出排序和理由。',
+    projectNames ? `对比项目包括：${projectNames}。` : '',
+    '请结合可行性、末站进站压头、总扬程、总能耗、总成本、推荐泵组合与风险表现进行综合判断。',
+    '允许根据数据差异自动调整分析结构，但不要虚构任何不存在的数据。',
+    '如数据不足，请明确说明“当前数据不足以支持进一步判断”。',
+  ]
+    .filter(Boolean)
+    .join('');
 }
 
 function buildSensitivityUserPrompt() {
@@ -1432,6 +1735,395 @@ function renderHydraulicAiReportContentV2(report: DynamicReportResponsePayload, 
               <Text type="secondary">暂无运行建议</Text>
             )}
           </Card>
+        </Space>
+      </Card>
+    </Space>
+  );
+}
+
+function createOptimizationComparisonReportPresentation(
+  report: DynamicReportResponsePayload,
+  snapshot: OptimizationComparisonReportSnapshot,
+) {
+  const metrics = attachOptimizationComparisonScores(
+    snapshot.projects.map((project) => buildOptimizationComparisonProjectMetrics(project)),
+  );
+  const sortedByScore = [...metrics].sort((a, b) => b.comparisonScore - a.comparisonScore);
+  const bestProject = sortedByScore[0];
+  const costLeader = [...metrics].sort((a, b) => (a.totalCost ?? Number.POSITIVE_INFINITY) - (b.totalCost ?? Number.POSITIVE_INFINITY))[0];
+  const energyLeader = [...metrics].sort(
+    (a, b) => (a.totalEnergyConsumption ?? Number.POSITIVE_INFINITY) - (b.totalEnergyConsumption ?? Number.POSITIVE_INFINITY),
+  )[0];
+  const pressureLeader = [...metrics].sort(
+    (a, b) => (b.endStationInPressure ?? Number.NEGATIVE_INFINITY) - (a.endStationInPressure ?? Number.NEGATIVE_INFINITY),
+  )[0];
+  const riskLeader = [...metrics].sort((a, b) => getOptimizationRiskPriority(a.riskLevel) - getOptimizationRiskPriority(b.riskLevel))[0];
+  const projectNames = metrics.map((item) => item.projectName).join('、');
+
+  const summaryFallback = [
+    bestProject ? `${bestProject.projectName}综合评分最高，成本与能耗表现更均衡。` : '当前数据不足以支持进一步判断。',
+    riskLeader ? `${riskLeader.projectName}风险等级为${riskLeader.riskLevel}，需重点关注可行性与压头保障。` : '风险等级暂无清晰结论。',
+  ];
+
+  const highlightFallback = [
+    costLeader ? `最低总成本项目：${costLeader.projectName}（${formatValue(costLeader.totalCost, '万元')}）。` : '',
+    energyLeader ? `最低年能耗项目：${energyLeader.projectName}（${formatValue(energyLeader.totalEnergyConsumption, '万kWh')}）。` : '',
+    pressureLeader ? `末站进站压头最高项目：${pressureLeader.projectName}（${formatValue(pressureLeader.endStationInPressure, 'm')}）。` : '',
+  ].filter(Boolean);
+
+  const conclusionFallback = bestProject
+    ? `${bestProject.projectName}在可行性、成本与能耗维度表现更优，建议优先作为推荐方案。`
+    : report.conclusion;
+
+  return {
+    ...report,
+    title: report.title || `${projectNames || '多项目'}泵站优化对比报告`,
+    abstract: report.abstract || summaryFallback[0],
+    summary: report.summary.length ? report.summary : summaryFallback,
+    highlights: report.highlights.length ? report.highlights : highlightFallback,
+    conclusion: report.conclusion || conclusionFallback || report.abstract,
+    metadata: {
+      ...(report.metadata ?? {}),
+      optimizationComparisonSnapshot: snapshot,
+    },
+  } satisfies DynamicReportResponsePayload;
+}
+
+function renderOptimizationComparisonAiReportContent(
+  report: DynamicReportResponsePayload,
+  snapshot: OptimizationComparisonReportSnapshot,
+) {
+  const metrics = attachOptimizationComparisonScores(
+    snapshot.projects.map((project) => buildOptimizationComparisonProjectMetrics(project)),
+  );
+  const sortedByScore = [...metrics].sort((a, b) => b.comparisonScore - a.comparisonScore);
+  const bestProject = sortedByScore[0];
+  const costLeader = [...metrics].sort((a, b) => (a.totalCost ?? Number.POSITIVE_INFINITY) - (b.totalCost ?? Number.POSITIVE_INFINITY))[0];
+  const energyLeader = [...metrics].sort(
+    (a, b) => (a.totalEnergyConsumption ?? Number.POSITIVE_INFINITY) - (b.totalEnergyConsumption ?? Number.POSITIVE_INFINITY),
+  )[0];
+  const pressureLeader = [...metrics].sort(
+    (a, b) => (b.endStationInPressure ?? Number.NEGATIVE_INFINITY) - (a.endStationInPressure ?? Number.NEGATIVE_INFINITY),
+  )[0];
+  const riskLeader = [...metrics].sort((a, b) => getOptimizationRiskPriority(a.riskLevel) - getOptimizationRiskPriority(b.riskLevel))[0];
+  const latestProject = [...snapshot.projects]
+    .filter((item) => item.generatedAt)
+    .sort((a, b) => dayjs(b.generatedAt ?? 0).valueOf() - dayjs(a.generatedAt ?? 0).valueOf())[0];
+
+  const headerCards = filterMetricCards([
+    { label: '报告标题', value: report.title || '多项目泵站优化对比报告', tone: 'blue', span: 12 },
+    { label: '对比项目数', value: `${metrics.length} 个`, tone: 'cyan', span: 4 },
+    { label: '综合最优', value: bestProject?.projectName || '-', tone: 'green', span: 4 },
+    { label: '最高风险', value: riskLeader ? `${riskLeader.projectName}（${riskLeader.riskLevel}）` : '-', tone: 'amber', span: 4 },
+  ]);
+
+  const resultCards = filterMetricCards([
+    {
+      label: '综合评分最高',
+      value: bestProject ? `${bestProject.projectName} ${bestProject.comparisonScore} 分` : '-',
+      tone: 'blue',
+      span: 6,
+    },
+    {
+      label: '最低总成本',
+      value: costLeader ? `${costLeader.projectName} ${formatValue(costLeader.totalCost, '万元')}` : '-',
+      tone: 'cyan',
+      span: 6,
+    },
+    {
+      label: '最低年能耗',
+      value: energyLeader ? `${energyLeader.projectName} ${formatValue(energyLeader.totalEnergyConsumption, '万kWh')}` : '-',
+      tone: 'green',
+      span: 6,
+    },
+    {
+      label: '最高末站压头',
+      value: pressureLeader ? `${pressureLeader.projectName} ${formatValue(pressureLeader.endStationInPressure, 'm')}` : '-',
+      tone: 'purple',
+      span: 6,
+    },
+  ]);
+
+  const comparisonChartOption: EChartsOption = {
+    tooltip: { trigger: 'axis' },
+    grid: { left: 48, right: 24, top: 32, bottom: 40 },
+    xAxis: {
+      type: 'category',
+      data: sortedByScore.map((item) => item.projectName),
+      axisLabel: { color: '#64748b' },
+      axisLine: { lineStyle: { color: '#cbd5e1' } },
+    },
+    yAxis: {
+      type: 'value',
+      name: '综合评分',
+      nameTextStyle: { color: '#64748b' },
+      axisLine: { show: false },
+      axisLabel: { color: '#64748b' },
+      splitLine: { lineStyle: { color: '#e2e8f0' } },
+    },
+    series: [
+      {
+        type: 'bar',
+        barMaxWidth: 36,
+        itemStyle: { color: '#6d83ff', borderRadius: [10, 10, 0, 0] },
+        data: sortedByScore.map((item) => item.comparisonScore),
+      },
+    ],
+  };
+
+  const costEnergyChartOption: EChartsOption = {
+    tooltip: { trigger: 'axis' },
+    grid: { left: 48, right: 40, top: 32, bottom: 40 },
+    xAxis: {
+      type: 'category',
+      data: metrics.map((item) => item.projectName),
+      axisLabel: { color: '#64748b' },
+      axisLine: { lineStyle: { color: '#cbd5e1' } },
+    },
+    yAxis: [
+      {
+        type: 'value',
+        name: '总成本 (万元)',
+        nameTextStyle: { color: '#64748b' },
+        axisLine: { show: false },
+        axisLabel: { color: '#64748b' },
+        splitLine: { lineStyle: { color: '#e2e8f0' } },
+      },
+      {
+        type: 'value',
+        name: '年能耗 (万kWh)',
+        nameTextStyle: { color: '#64748b' },
+        axisLine: { show: false },
+        axisLabel: { color: '#64748b' },
+        splitLine: { show: false },
+      },
+    ],
+    series: [
+      {
+        type: 'bar',
+        name: '总成本',
+        barMaxWidth: 32,
+        itemStyle: { color: '#5ad8a6', borderRadius: [8, 8, 0, 0] },
+        data: metrics.map((item) => item.totalCost ?? 0),
+      },
+      {
+        type: 'line',
+        name: '年能耗',
+        yAxisIndex: 1,
+        smooth: true,
+        symbolSize: 10,
+        lineStyle: { width: 3, color: '#ffb84d' },
+        itemStyle: { color: '#ffb84d' },
+        data: metrics.map((item) => item.totalEnergyConsumption ?? 0),
+      },
+    ],
+  };
+
+  const pressureChartOption: EChartsOption = {
+    tooltip: { trigger: 'axis' },
+    grid: { left: 48, right: 24, top: 32, bottom: 40 },
+    xAxis: {
+      type: 'category',
+      data: metrics.map((item) => item.projectName),
+      axisLabel: { color: '#64748b' },
+      axisLine: { lineStyle: { color: '#cbd5e1' } },
+    },
+    yAxis: {
+      type: 'value',
+      name: 'm',
+      nameTextStyle: { color: '#64748b' },
+      axisLine: { show: false },
+      axisLabel: { color: '#64748b' },
+      splitLine: { lineStyle: { color: '#e2e8f0' } },
+    },
+    series: [
+      {
+        type: 'bar',
+        name: '总扬程',
+        barMaxWidth: 28,
+        itemStyle: { color: '#7c6cff', borderRadius: [8, 8, 0, 0] },
+        data: metrics.map((item) => item.totalHead ?? 0),
+      },
+      {
+        type: 'bar',
+        name: '总压降',
+        barMaxWidth: 28,
+        itemStyle: { color: '#9ab9ff', borderRadius: [8, 8, 0, 0] },
+        data: metrics.map((item) => item.totalPressureDrop ?? 0),
+      },
+      {
+        type: 'line',
+        name: '末站进站压头',
+        smooth: true,
+        symbolSize: 10,
+        lineStyle: { width: 3, color: '#ff7a8c' },
+        itemStyle: { color: '#ff7a8c' },
+        data: metrics.map((item) => item.endStationInPressure ?? 0),
+      },
+    ],
+  };
+
+  const analysisSummary = report.summary.length
+    ? report.summary
+    : [
+        bestProject ? `${bestProject.projectName}综合评分最高，建议优先作为推荐方案。` : '当前数据不足以支持进一步判断。',
+        costLeader && energyLeader
+          ? `${costLeader.projectName}在成本上最优，${energyLeader.projectName}在能耗上更具优势。`
+          : '成本与能耗差异不明显。',
+      ];
+
+  const analysisHighlights = report.highlights.length
+    ? report.highlights
+    : [
+        pressureLeader ? `末站进站压头最高的是${pressureLeader.projectName}，更利于末端压力保障。` : '',
+        riskLeader ? `${riskLeader.projectName}风险等级${riskLeader.riskLevel}，需要重点复核。` : '',
+      ].filter(Boolean);
+
+  const riskRecognition = report.risks.length
+    ? report.risks.map((item) => `${item.target}：${item.reason}`)
+    : [
+        riskLeader
+          ? `${riskLeader.projectName}风险等级${riskLeader.riskLevel}，建议重点检查泵组组合与压头冗余。`
+          : '当前数据不足以支持进一步判断。',
+      ];
+
+  const suggestionList = report.suggestions.length
+    ? report.suggestions.map((item) => `${item.target}：${item.action}（预期：${item.expected}）`)
+    : [
+        bestProject ? `优先推进${bestProject.projectName}，同步复核高风险项目的泵组匹配。` : '当前数据不足以支持进一步判断。',
+      ];
+
+  const comparisonColumns: ColumnsType<OptimizationComparisonProjectMetrics & { key: string }> = [
+    { title: '项目名称', dataIndex: 'projectName', key: 'projectName', width: 180 },
+    { title: '项目编号', dataIndex: 'projectNumber', key: 'projectNumber', width: 140 },
+    { title: '负责人', dataIndex: 'responsible', key: 'responsible', width: 120 },
+    { title: '可行性', dataIndex: 'feasibilityText', key: 'feasibilityText', width: 120 },
+    {
+      title: '总成本(万元)',
+      dataIndex: 'totalCost',
+      key: 'totalCost',
+      width: 140,
+      render: (value: number | null) => formatValue(value, '万元'),
+    },
+    {
+      title: '年能耗(万kWh)',
+      dataIndex: 'totalEnergyConsumption',
+      key: 'totalEnergyConsumption',
+      width: 150,
+      render: (value: number | null) => formatValue(value, '万kWh'),
+    },
+    {
+      title: '总扬程(m)',
+      dataIndex: 'totalHead',
+      key: 'totalHead',
+      width: 120,
+      render: (value: number | null) => formatValue(value, 'm'),
+    },
+    {
+      title: '末站进站压头(m)',
+      dataIndex: 'endStationInPressure',
+      key: 'endStationInPressure',
+      width: 150,
+      render: (value: number | null) => formatValue(value, 'm'),
+    },
+    {
+      title: '综合评分',
+      dataIndex: 'comparisonScore',
+      key: 'comparisonScore',
+      width: 120,
+      render: (value: number) => `${value} 分`,
+    },
+    { title: '风险等级', dataIndex: 'riskLevel', key: 'riskLevel', width: 120 },
+  ];
+
+  const comparisonDataSource = metrics.map((item, index) => ({
+    key: `${item.projectName}-${index}`,
+    ...item,
+  }));
+
+  return (
+    <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      <Card size="small" title="报告头">
+        {renderDetailMetricCards(headerCards, {
+          equalWidth: true,
+          singleLine: true,
+          compact: true,
+          minColumnWidth: 180,
+          minHeight: 88,
+          valueFontSize: 'clamp(14px, 1.8vw, 18px)',
+        })}
+      </Card>
+
+      <Card size="small" title="综合结果卡片">
+        {renderDetailMetricCards(resultCards, {
+          singleLine: true,
+          compact: true,
+          minColumnWidth: 200,
+          minHeight: 88,
+          valueFontSize: 'clamp(14px, 1.8vw, 18px)',
+        })}
+      </Card>
+
+      <Card size="small" title="对比图表">
+        <Row gutter={[16, 16]}>
+          <Col xs={24} xl={12}>
+            <Card size="small" title="综合评分对比">
+              <Chart option={comparisonChartOption} height={300} />
+            </Card>
+          </Col>
+          <Col xs={24} xl={12}>
+            <Card size="small" title="成本与能耗对比">
+              <Chart option={costEnergyChartOption} height={300} />
+            </Card>
+          </Col>
+          <Col xs={24}>
+            <Card size="small" title="压头与压降对比">
+              <Chart option={pressureChartOption} height={320} />
+            </Card>
+          </Col>
+        </Row>
+      </Card>
+
+      <Card size="small" title="项目对比明细">
+        <Table
+          columns={comparisonColumns}
+          dataSource={comparisonDataSource}
+          pagination={false}
+          size="small"
+          scroll={{ x: 1300 }}
+        />
+      </Card>
+
+      <Card size="small" title="AI分析">
+        <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          <Card size="small" title="结果摘要">
+            {renderSummaryList(analysisSummary)}
+          </Card>
+
+          <Card size="small" title="指标洞察">
+            {renderSummaryList(analysisHighlights)}
+          </Card>
+
+          <Card size="small" title="风险识别">
+            {renderSummaryList(riskRecognition)}
+          </Card>
+
+          <Card size="small" title="优化建议">
+            {renderSummaryList(suggestionList)}
+          </Card>
+
+          <Alert
+            type="info"
+            showIcon
+            message="结论"
+            description={
+              report.conclusion ||
+              (bestProject ? `${bestProject.projectName}综合表现领先，可作为当前优先方案。` : '当前数据不足以支持进一步判断。')
+            }
+          />
+          {latestProject ? (
+            <Text type="secondary">最近更新：{latestProject.projectName}（{formatTime(latestProject.generatedAt ?? undefined)}）</Text>
+          ) : null}
         </Space>
       </Card>
     </Space>
@@ -2634,6 +3326,11 @@ function renderReportContent(report: DynamicReportResponsePayload) {
     return renderSensitivityAiReportContentV2(report, sensitivitySnapshot);
   }
 
+  const optimizationComparisonSnapshot = extractOptimizationComparisonSnapshotFromReport(report);
+  if (optimizationComparisonSnapshot) {
+    return renderOptimizationComparisonAiReportContent(report, optimizationComparisonSnapshot);
+  }
+
   const optimizationSnapshot = extractOptimizationSnapshotFromReport(report);
   if (optimizationSnapshot) {
     return renderOptimizationAiReportContentV2(report, optimizationSnapshot);
@@ -3049,6 +3746,11 @@ export default function ReportPreview() {
     [historyTableRows],
   );
 
+  const selectedGenerationRecords = useMemo(
+    () => calculationRecords.filter((record) => selectedHistoryKeys.includes(record.key)),
+    [calculationRecords, selectedHistoryKeys],
+  );
+
   const aiReportRecords = useMemo<AiReportHistoryRow[]>(
     () =>
       reportHistoryRows
@@ -3105,6 +3807,45 @@ export default function ReportPreview() {
         : null),
     [latestOptimizationLink, selectedCalcType, selectedOptimizationRecord],
   );
+
+  const selectedOptimizationRecords = useMemo(
+    () =>
+      selectedGenerationRecords.filter(
+        (record) => record.calcType === 'OPTIMIZATION' || record.calcTypeLabel.includes('优化'),
+      ),
+    [selectedGenerationRecords],
+  );
+
+  const preferredOptimizationComparisonSnapshot = useMemo(() => {
+    if (selectedGenerationRecords.length < 2) {
+      return null;
+    }
+
+    if (selectedOptimizationRecords.length !== selectedGenerationRecords.length) {
+      return null;
+    }
+
+    const projectMap = new Map<string, OptimizationComparisonProjectSnapshot>();
+    selectedOptimizationRecords.forEach((record) => {
+      const snapshot = createOptimizationComparisonProjectSnapshotFromHistory(record);
+      if (!snapshot) {
+        return;
+      }
+      const uniqueKey = `${snapshot.projectId ?? ''}-${snapshot.projectName ?? ''}`;
+      if (!projectMap.has(uniqueKey)) {
+        projectMap.set(uniqueKey, snapshot);
+      }
+    });
+
+    const projects = [...projectMap.values()];
+    if (projects.length < 2) {
+      return null;
+    }
+
+    return {
+      projects,
+    } satisfies OptimizationComparisonReportSnapshot;
+  }, [selectedGenerationRecords, selectedOptimizationRecords]);
 
   const selectedSensitivityRecord = useMemo(
     () =>
@@ -3503,20 +4244,30 @@ export default function ReportPreview() {
         : undefined;
 
       const normalizedHydraulicPrompt = preferredHydraulicSnapshot ? buildHydraulicUserPrompt() : hydraulicPrompt;
-      const normalizedOptimizationPrompt = preferredOptimizationSnapshot ? buildOptimizationUserPrompt() : undefined;
+      const normalizedOptimizationPrompt = preferredOptimizationComparisonSnapshot
+        ? buildOptimizationComparisonSmartPrompt(preferredOptimizationComparisonSnapshot)
+        : preferredOptimizationSnapshot
+          ? buildOptimizationUserPrompt()
+          : undefined;
       const normalizedSensitivityPrompt = preferredSensitivitySnapshot ? buildSensitivityUserPrompt() : undefined;
       const activePrompt = normalizedSensitivityPrompt ?? normalizedOptimizationPrompt ?? normalizedHydraulicPrompt;
       const activeFocuses = preferredSensitivitySnapshot
         ? ['基准结果', '敏感系数', '最大影响幅度', '排名', '压力变化趋势', '摩阻损失变化趋势', '流态变化']
-        : preferredHydraulicSnapshot
-          ? ['雷诺数', '流态', '摩阻损失', '水力坡降', '总扬程', '末站进站压头']
-          : undefined;
-      void activeFocuses;
+        : preferredOptimizationComparisonSnapshot
+          ? ['综合评分', '总成本', '年能耗', '末站进站压头', '总扬程', '可行性', '风险等级']
+          : preferredOptimizationSnapshot
+            ? ['推荐泵组合', '总扬程', '末站进站压头', '能耗', '总成本', '可行性']
+            : preferredHydraulicSnapshot
+              ? ['雷诺数', '流态', '摩阻损失', '水力坡降', '总扬程', '末站进站压头']
+              : undefined;
+      const reportTypeLabel = preferredOptimizationComparisonSnapshot
+        ? '多项目泵站优化对比报告'
+        : REPORT_TYPE_OPTIONS.find((item) => item.value === reportType)?.label;
       const result = await agentApi.generateDynamicReport({
         selected_project_ids: activeProjectIds,
         project_names: selectedNames,
         report_type: reportType,
-        report_type_label: REPORT_TYPE_OPTIONS.find((item) => item.value === reportType)?.label,
+        report_type_label: reportTypeLabel,
         intelligence_level: 'enhanced',
         output_format: 'markdown',
         include_summary: true,
@@ -3526,9 +4277,7 @@ export default function ReportPreview() {
         range_preset: dateRange ? 'custom' : 'all',
         custom_start: dateRange ? dateRange[0].format('YYYY-MM-DD') : undefined,
         custom_end: dateRange ? dateRange[1].format('YYYY-MM-DD') : undefined,
-        focuses: preferredHydraulicSnapshot
-          ? ['雷诺数', '流态', '摩阻损失', '水力坡降', '总扬程', '末站进站压头']
-          : undefined,
+        focuses: activeFocuses,
         user_prompt: activePrompt,
       });
 
@@ -3540,6 +4289,8 @@ export default function ReportPreview() {
               sensitivitySnapshot: preferredSensitivitySnapshot,
             },
           }
+        : preferredOptimizationComparisonSnapshot
+          ? createOptimizationComparisonReportPresentation(result, preferredOptimizationComparisonSnapshot)
         : preferredOptimizationSnapshot
           ? {
               ...result,
@@ -3564,7 +4315,7 @@ export default function ReportPreview() {
       const archivePayload: SaveReportRequest = {
         title: enrichedReport.title,
         reportType,
-        reportTypeLabel: REPORT_TYPE_OPTIONS.find((item) => item.value === reportType)?.label || '智能报告',
+        reportTypeLabel: reportTypeLabel || '智能报告',
         selectedProjectIds: activeProjectIds,
         projectNames: selectedNames,
         rangeLabel: dateRange
@@ -3613,6 +4364,7 @@ export default function ReportPreview() {
     allProjectIds,
     dateRange,
     preferredHydraulicSnapshot,
+    preferredOptimizationComparisonSnapshot,
     preferredOptimizationSnapshot,
     preferredSensitivitySnapshot,
     projects,
