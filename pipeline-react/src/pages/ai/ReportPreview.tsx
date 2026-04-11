@@ -38,6 +38,10 @@ import { calculationHistoryApi, projectApi } from '../../api';
 import { agentApi } from '../../api/agent';
 import AnimatedPage from '../../components/common/AnimatedPage';
 import Chart from '../../components/common/Chart';
+import {
+  SENSITIVITY_REPORT_PAGE_COPY,
+  type SensitivitySmartReportPayload,
+} from '../../components/reporting/sensitivityReportSchema';
 import { useCalculationLinkStore } from '../../stores/calculationLinkStore';
 import type { CalculationHistory, PageResult, Project, R, SaveReportRequest } from '../../types';
 import type { DynamicReportResponsePayload } from '../../types/agent';
@@ -99,6 +103,13 @@ type HydraulicReportSnapshot = {
   output: Record<string, unknown>;
 };
 
+type OptimizationReportSnapshot = {
+  projectName?: string | null;
+  generatedAt?: string | null;
+  input: Record<string, unknown>;
+  output: Record<string, unknown>;
+};
+
 type SensitivityReportSnapshot = {
   projectName?: string | null;
   generatedAt?: string | null;
@@ -126,6 +137,13 @@ const REPORT_TYPE_OPTIONS: Array<{ label: string; value: ReportType }> = [
   { label: '运行简报', value: 'OPERATION_BRIEF' },
 ];
 
+const ARCHIVED_REPORT_TYPES = new Set<ReportType>([
+  'AI_REPORT',
+  'RISK_REVIEW',
+  'ENERGY_DIAGNOSIS',
+  'OPERATION_BRIEF',
+]);
+
 const CALC_TYPE_LABELS: Record<string, string> = {
   HYDRAULIC: '水力分析',
   OPTIMIZATION: '泵站优化',
@@ -141,6 +159,9 @@ const HYDRAULIC_REPORT_CORE_SENTENCE =
 
 const SENSITIVITY_REPORT_CORE_SENTENCE =
   '基于真实敏感性计算结果，重点分析变量变化对压力、摩阻损失和流态的影响程度，用排名图、趋势图和风险结论告诉用户哪个变量最值得重点控制。';
+
+const OPTIMIZATION_REPORT_CORE_SENTENCE =
+  '基于真实优化结果，围绕推荐泵组合的可行性、压力保障能力、能耗水平和总成本进行解释和判断，告诉用户这个方案为什么被选中、能不能用、值不值得用。';
 
 const cardStyle: CSSProperties = {
   borderRadius: 20,
@@ -542,6 +563,65 @@ function extractHydraulicSnapshotFromReport(report: DynamicReportResponsePayload
   );
 }
 
+function createOptimizationReportSnapshot(
+  input: unknown,
+  output: unknown,
+  projectName?: string | null,
+  generatedAt?: string | null,
+) {
+  const inputRecord = asRecord(input);
+  const outputRecord = asRecord(output);
+  if (!inputRecord || !outputRecord) {
+    return null;
+  }
+
+  return {
+    projectName: projectName ?? null,
+    generatedAt: generatedAt ?? null,
+    input: inputRecord,
+    output: outputRecord,
+  } satisfies OptimizationReportSnapshot;
+}
+
+function createOptimizationReportSnapshotFromHistory(
+  record?: Pick<HistoryTableRow, 'projectName' | 'createTime' | 'inputParams' | 'outputResult'> | null,
+) {
+  if (!record) {
+    return null;
+  }
+
+  const parsedOutput = parseJson(record.outputResult);
+  const outputRecord = asRecord(getValueByPath(parsedOutput, 'data')) ?? asRecord(parsedOutput);
+  return createOptimizationReportSnapshot(parseJson(record.inputParams), outputRecord, record.projectName, record.createTime);
+}
+
+function createOptimizationReportSnapshotFromLinkedRecord(record?: {
+  projectName?: string | null;
+  updatedAt?: string;
+  input?: Record<string, unknown>;
+  output?: Record<string, unknown>;
+} | null) {
+  if (!record) {
+    return null;
+  }
+
+  return createOptimizationReportSnapshot(record.input, record.output, record.projectName, record.updatedAt);
+}
+
+function extractOptimizationSnapshotFromReport(report: DynamicReportResponsePayload) {
+  const metadata = asRecord(report.metadata);
+  return createOptimizationReportSnapshot(
+    getValueByPath(metadata, 'optimizationSnapshot.input'),
+    getValueByPath(metadata, 'optimizationSnapshot.output'),
+    typeof getValueByPath(metadata, 'optimizationSnapshot.projectName') === 'string'
+      ? String(getValueByPath(metadata, 'optimizationSnapshot.projectName'))
+      : null,
+    typeof getValueByPath(metadata, 'optimizationSnapshot.generatedAt') === 'string'
+      ? String(getValueByPath(metadata, 'optimizationSnapshot.generatedAt'))
+      : null,
+  );
+}
+
 function buildPumpDisplay(sources: unknown[]) {
   const pump480Num = pickFirstValue(sources, ['pump480Num']);
   const pump375Num = pickFirstValue(sources, ['pump375Num']);
@@ -621,6 +701,47 @@ function buildHydraulicUserPrompt() {
     '第四块：图表，包含压头变化图、扬程构成图。',
     '第五块：AI分析，包含结果摘要、指标分析、风险判断、运行建议。',
     `最重要的一句话请围绕这层意思展开：${HYDRAULIC_REPORT_CORE_SENTENCE}`,
+  ].join('');
+}
+
+function buildOptimizationPumpCombination(sources: unknown[]) {
+  const pump480Num = toFiniteNumber(pickFirstValue(sources, ['pump480Num']));
+  const pump375Num = toFiniteNumber(pickFirstValue(sources, ['pump375Num']));
+  const parts: string[] = [];
+
+  if (pump480Num !== null && pump480Num > 0) {
+    parts.push(`480 泵 ${pump480Num} 台`);
+  }
+  if (pump375Num !== null && pump375Num > 0) {
+    parts.push(`375 泵 ${pump375Num} 台`);
+  }
+
+  return parts.length ? parts.join(' + ') : '当前数据不足以支持进一步判断';
+}
+
+function buildOptimizationCurrentCondition(inputPayload: Record<string, unknown>) {
+  const sources = [inputPayload];
+  const parts = [
+    `流量 ${formatValue(pickFirstValue(sources, ['flowRate']), 'm3/h')}`,
+    `密度 ${formatValue(pickFirstValue(sources, ['density']), 'kg/m3')}`,
+    `管径 ${formatValue(pickFirstValue(sources, ['diameter']), 'mm')}`,
+    `首站进站压头 ${formatValue(pickFirstValue(sources, ['inletPressure']), 'm')}`,
+  ].filter((item) => !item.includes('-'));
+
+  return parts.length ? parts.join('，') : '当前数据不足以支持进一步判断';
+}
+
+function buildOptimizationUserPrompt() {
+  return [
+    '请基于真实泵站优化结果数据生成泵站优化智能报告，并严格按照以下结构输出：',
+    '1. 报告标题。',
+    '2. 报告说明，说明本报告基于当前项目泵站优化计算结果自动生成，主要分析推荐泵组合的扬程匹配、末站压头保障、能耗水平、运行成本及整体可行性。',
+    '3. 基本信息，包含项目名称、分析类型、生成时间、当前工况说明、数据来源。',
+    '4. 核心结果卡片，包含推荐泵组合、总扬程、总压降、末站进站压头、可行性、年能耗、总成本。',
+    '5. 图表分析区，至少包含推荐方案核心指标图、能耗与成本图、泵组合说明图。',
+    '6. 智能分析正文，固定输出结果摘要、关键指标分析、风险识别、优化建议四块内容。',
+    '只能依据输入数据分析，不允许编造不存在的数据；若数据不足，请明确说明“当前数据不足以支持进一步判断”。',
+    `最核心的一句话请围绕这层意思展开：${OPTIMIZATION_REPORT_CORE_SENTENCE}`,
   ].join('');
 }
 
@@ -846,11 +967,18 @@ function getCalcTypeLabel(record: Pick<CalculationHistory, 'calcType' | 'calcTyp
 }
 
 function isAiReportHistory(record: Pick<CalculationHistory, 'calcType' | 'calcTypeName'>) {
-  if (record.calcType === 'AI_REPORT') {
+  if (record.calcType && ARCHIVED_REPORT_TYPES.has(record.calcType as ReportType)) {
     return true;
   }
 
   const typeText = `${record.calcTypeName ?? ''} ${record.calcType ?? ''}`.toUpperCase();
+  if (
+    typeText.includes('RISK_REVIEW') ||
+    typeText.includes('ENERGY_DIAGNOSIS') ||
+    typeText.includes('OPERATION_BRIEF')
+  ) {
+    return true;
+  }
   return typeText.includes('REPORT') || typeText.includes('智能报告');
 }
 
@@ -1310,6 +1438,320 @@ function renderHydraulicAiReportContentV2(report: DynamicReportResponsePayload, 
   );
 }
 
+function renderOptimizationAiReportContentV2(
+  report: DynamicReportResponsePayload,
+  snapshot: OptimizationReportSnapshot,
+) {
+  const outputSources = [snapshot.output];
+  const projectName = snapshot.projectName || '当前项目';
+  const generatedAt = formatTime(snapshot.generatedAt ?? undefined);
+  const recommendedCombination = buildOptimizationPumpCombination(outputSources);
+  const totalHead = toFiniteNumber(pickFirstValue(outputSources, ['totalHead']));
+  const totalPressureDrop = toFiniteNumber(pickFirstValue(outputSources, ['totalPressureDrop', 'pressureDrop']));
+  const endStationInPressure = toFiniteNumber(
+    pickFirstValue(outputSources, ['endStationInPressure', 'terminalInPressure']),
+  );
+  const totalEnergyConsumption = toFiniteNumber(
+    pickFirstValue(outputSources, ['totalEnergyConsumption', 'annualEnergyConsumption', 'energyConsumption']),
+  );
+  const totalCost = toFiniteNumber(pickFirstValue(outputSources, ['totalCost', 'annualCost']));
+  const isFeasibleValue = pickFirstValue(outputSources, ['isFeasible', 'feasible']);
+  const isFeasible = typeof isFeasibleValue === 'boolean' ? isFeasibleValue : null;
+  const feasibilityText =
+    isFeasible === null ? '当前数据不足以支持进一步判断' : isFeasible ? '可行' : '不可行';
+  const recommendationText =
+    formatValue(pickFirstValue(outputSources, ['description', 'recommendation', 'remark'])) || '当前数据不足以支持进一步判断';
+  const currentCondition = buildOptimizationCurrentCondition(snapshot.input);
+  const displayTitle =
+    report.title && report.title.includes('优化')
+      ? report.title
+      : `${projectName}泵站运行优化分析报告`;
+  const displayDescription =
+    report.abstract ||
+    '本报告基于当前项目泵站优化计算结果自动生成，主要针对推荐泵组合方案的扬程匹配情况、末站压头保障能力、能耗水平、运行成本及整体可行性进行分析，为泵站运行调度和方案选择提供参考。';
+
+  const summaryItems = report.summary.length
+    ? report.summary
+    : [
+        `本次泵站优化分析基于当前工况参数，对系统运行所需扬程、压降、末站压力以及能耗成本进行了综合评估。`,
+        `结果显示，系统推荐泵组合为 ${recommendedCombination}，对应总扬程为 ${formatValue(totalHead, 'm')}，总压降为 ${formatValue(totalPressureDrop, 'm')}，末站进站压头为 ${formatValue(endStationInPressure, 'm')}，方案可行性判定为 ${feasibilityText}。`,
+        `同时，该方案年能耗为 ${formatValue(totalEnergyConsumption, 'kWh')}，总成本为 ${formatValue(totalCost, '元')}。整体来看，当前推荐方案能够在满足运行要求的基础上兼顾一定的经济性与实施可行性。`,
+      ];
+
+  const keyFindingItems = report.highlights.length
+    ? report.highlights
+    : [
+        `推荐泵组合为 ${recommendedCombination}，反映了系统在当前工况下所需的设备配置水平。`,
+        `总扬程 ${formatValue(totalHead, 'm')} 与总压降 ${formatValue(totalPressureDrop, 'm')} 共同决定了推荐方案需要覆盖的能量需求与损失水平。`,
+        `末站进站压头为 ${formatValue(endStationInPressure, 'm')}，该指标用于衡量推荐方案对末端压力的保障能力。`,
+        `推荐说明为：${recommendationText}。该说明直接反映了当前方案被选中的主要依据。`,
+      ];
+
+  const riskFallbackItems = [
+    isFeasible === false ? '当前方案可行性不足，说明推荐泵组合无法完全满足系统在当前工况下的运行需求。' : null,
+    endStationInPressure !== null && endStationInPressure < 10
+      ? '当前推荐方案下末站进站压头偏低，说明系统末端压力裕量有限，后续在工况波动下可能存在风险。'
+      : null,
+    totalHead !== null && totalHead >= 100
+      ? '当前工况下总扬程需求较高，说明泵站需要持续提供较大能量输出，设备可能长期处于较高负荷。'
+      : null,
+    totalPressureDrop !== null && totalPressureDrop >= 20
+      ? '当前总压降较大，说明输送过程中的能量损耗较明显，可能增加泵站负荷并影响运行经济性。'
+      : null,
+    totalEnergyConsumption !== null && totalEnergyConsumption >= 1000000
+      ? '当前推荐方案年能耗较高，长期运行的电力消耗水平较大，可能放大运行成本压力。'
+      : null,
+    totalCost !== null && totalCost >= 800000
+      ? '当前方案总成本偏高，说明虽然方案可能满足技术运行要求，但长期运行经济压力较大。'
+      : null,
+    !report.risks.length && isFeasible !== false && (endStationInPressure === null || endStationInPressure >= 10)
+      ? '综合当前优化结果，推荐方案在扬程匹配、末站压力保障及运行经济性方面整体表现较为稳定，暂未发现明显异常风险。'
+      : null,
+  ].filter((item): item is string => Boolean(item));
+
+  const suggestionFallbackItems = [
+    endStationInPressure !== null && endStationInPressure < 10
+      ? '建议进一步校核泵站扬程配置与首站运行参数，必要时通过调整泵组合或优化工况提高末端压力保障能力。'
+      : null,
+    totalHead !== null && totalHead >= 100
+      ? '对于总扬程需求较高的工况，建议重点关注设备实际输出能力与长期稳定运行表现。'
+      : null,
+    totalPressureDrop !== null && totalPressureDrop >= 20
+      ? '建议结合流量、管径、粘度及管道条件进一步分析阻力来源，为降低输送损失提供依据。'
+      : null,
+    totalEnergyConsumption !== null && totalEnergyConsumption >= 1000000
+      ? '建议从泵组合选择、运行时长安排及设备效率等方面进一步优化，以降低长期能源消耗。'
+      : null,
+    totalCost !== null && totalCost >= 800000
+      ? '建议在保证可行性的前提下，对比不同运行方案的能耗与成本表现，优先选择经济性更优的方案。'
+      : null,
+    '建议将泵站优化结果与水力分析和敏感性分析结果结合使用，在技术满足性、经济合理性和运行稳定性之间进行综合平衡。',
+  ].filter((item): item is string => Boolean(item));
+
+  const basicInfoCards = filterMetricCards([
+    { label: '项目名称', value: projectName, tone: 'blue', span: 6 },
+    { label: '分析类型', value: '泵站优化', tone: 'purple', span: 6 },
+    { label: '生成时间', value: generatedAt, tone: 'green', span: 6 },
+    { label: '数据来源', value: '系统优化结果', tone: 'amber', span: 6 },
+    { label: '当前工况说明', value: currentCondition, tone: 'cyan', span: 12 },
+  ]);
+
+  const coreResultCards = filterMetricCards([
+    { label: '推荐泵组合', value: recommendedCombination, tone: 'purple', span: 8 },
+    { label: '总扬程', value: formatValue(totalHead, 'm'), tone: 'blue', span: 4 },
+    { label: '总压降', value: formatValue(totalPressureDrop, 'm'), tone: 'cyan', span: 4 },
+    { label: '末站进站压头', value: formatValue(endStationInPressure, 'm'), tone: 'green', span: 4 },
+    { label: '可行性', value: feasibilityText, tone: isFeasible === false ? 'amber' : 'green', span: 4 },
+    { label: '年能耗', value: formatValue(totalEnergyConsumption, 'kWh'), tone: 'blue', span: 4 },
+    { label: '总成本', value: formatValue(totalCost, '元'), tone: 'amber', span: 4 },
+  ]);
+
+  const coreMetricsChartOption: EChartsOption = {
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+    grid: { left: 48, right: 24, top: 32, bottom: 40 },
+    xAxis: {
+      type: 'category',
+      data: ['总扬程', '总压降', '末站进站压头'],
+      axisLine: { lineStyle: { color: '#cbd5e1' } },
+      axisLabel: { color: '#64748b' },
+    },
+    yAxis: {
+      type: 'value',
+      name: 'm',
+      nameTextStyle: { color: '#64748b' },
+      axisLabel: { color: '#64748b' },
+      splitLine: { lineStyle: { color: '#e2e8f0' } },
+    },
+    series: [
+      {
+        type: 'bar',
+        barMaxWidth: 42,
+        itemStyle: { color: '#4e86f7', borderRadius: [10, 10, 0, 0] },
+        data: [totalHead, totalPressureDrop, endStationInPressure],
+      },
+    ],
+  };
+
+  const energyCostChartOption: EChartsOption = {
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+    grid: { left: 48, right: 48, top: 32, bottom: 40 },
+    xAxis: {
+      type: 'category',
+      data: ['年能耗', '总成本'],
+      axisLine: { lineStyle: { color: '#cbd5e1' } },
+      axisLabel: { color: '#64748b' },
+    },
+    yAxis: [
+      {
+        type: 'value',
+        name: 'kWh',
+        axisLabel: { color: '#64748b' },
+        nameTextStyle: { color: '#64748b' },
+        splitLine: { lineStyle: { color: '#e2e8f0' } },
+      },
+      {
+        type: 'value',
+        name: '元',
+        axisLabel: { color: '#64748b' },
+        nameTextStyle: { color: '#64748b' },
+        splitLine: { show: false },
+      },
+    ],
+    series: [
+      {
+        name: '年能耗',
+        type: 'bar',
+        barMaxWidth: 36,
+        itemStyle: { color: '#12b981', borderRadius: [10, 10, 0, 0] },
+        data: [totalEnergyConsumption, null],
+      },
+      {
+        name: '总成本',
+        type: 'bar',
+        yAxisIndex: 1,
+        barMaxWidth: 36,
+        itemStyle: { color: '#f59e0b', borderRadius: [10, 10, 0, 0] },
+        data: [null, totalCost],
+      },
+    ],
+  };
+
+  const schemeChartOption: EChartsOption = {
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+    grid: { left: 48, right: 24, top: 32, bottom: 40 },
+    xAxis: {
+      type: 'category',
+      data: ['480泵台数', '375泵台数', '可行性'],
+      axisLine: { lineStyle: { color: '#cbd5e1' } },
+      axisLabel: { color: '#64748b' },
+    },
+    yAxis: {
+      type: 'value',
+      name: '值',
+      nameTextStyle: { color: '#64748b' },
+      axisLabel: { color: '#64748b' },
+      splitLine: { lineStyle: { color: '#e2e8f0' } },
+    },
+    series: [
+      {
+        type: 'bar',
+        barMaxWidth: 42,
+        itemStyle: { color: '#7c6cff', borderRadius: [10, 10, 0, 0] },
+        data: [
+          toFiniteNumber(pickFirstValue(outputSources, ['pump480Num'])),
+          toFiniteNumber(pickFirstValue(outputSources, ['pump375Num'])),
+          isFeasible === null ? null : isFeasible ? 1 : 0,
+        ],
+      },
+    ],
+  };
+
+  return (
+    <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      <div>
+        <Title level={4} style={{ marginBottom: 8 }}>
+          {displayTitle}
+        </Title>
+        <Paragraph type="secondary" style={{ marginBottom: 0 }}>
+          {displayDescription}
+        </Paragraph>
+      </div>
+
+      <Card size="small" title="基本信息">
+        {renderDetailMetricCards(basicInfoCards, {
+          singleLine: true,
+          compact: true,
+          minColumnWidth: 220,
+          minHeight: 88,
+          valueFontSize: 'clamp(14px, 1.8vw, 18px)',
+        })}
+      </Card>
+
+      <Card size="small" title="核心结果卡片">
+        {renderDetailMetricCards(coreResultCards, {
+          minColumnWidth: 190,
+          minHeight: 88,
+          valueFontSize: 'clamp(14px, 1.8vw, 18px)',
+        })}
+      </Card>
+
+      <Card size="small" title="图表分析区">
+        <Row gutter={[16, 16]}>
+          <Col xs={24} xl={12}>
+            <Card size="small" title="推荐方案核心指标图">
+              <Chart option={coreMetricsChartOption} height={300} />
+            </Card>
+          </Col>
+          <Col xs={24} xl={12}>
+            <Card size="small" title="能耗与成本图">
+              <Chart option={energyCostChartOption} height={300} />
+            </Card>
+          </Col>
+          <Col xs={24}>
+            <Card size="small" title="泵组合说明图">
+              <Chart option={schemeChartOption} height={280} />
+              <Paragraph style={{ margin: '12px 0 0' }} type="secondary">
+                推荐说明：{recommendationText}
+              </Paragraph>
+            </Card>
+          </Col>
+        </Row>
+      </Card>
+
+      <Card size="small" title="智能分析正文">
+        <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          <Card size="small" title="结果摘要">
+            {renderSummaryList(summaryItems)}
+          </Card>
+
+          <Card size="small" title="关键指标分析">
+            {renderSummaryList(keyFindingItems)}
+          </Card>
+
+          <Card size="small" title="风险识别">
+            {report.risks.length ? (
+              <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                {report.risks.map((item, index) => (
+                  <div key={`${item.target}-${index}`}>
+                    <Space wrap>
+                      <Tag color="red">{item.level}</Tag>
+                      <Text strong>{item.target}</Text>
+                      <Text>{item.riskType}</Text>
+                    </Space>
+                    <Paragraph style={{ margin: '8px 0 0' }}>{item.reason}</Paragraph>
+                  </div>
+                ))}
+              </Space>
+            ) : (
+              renderSummaryList(riskFallbackItems.length ? riskFallbackItems : ['当前数据不足以支持进一步判断。'])
+            )}
+          </Card>
+
+          <Card size="small" title="优化建议">
+            {report.suggestions.length ? (
+              <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                {report.suggestions.map((item, index) => (
+                  <div key={`${item.target}-${index}`}>
+                    <Space wrap>
+                      <Tag color="blue">{item.priority}</Tag>
+                      <Text strong>{item.target}</Text>
+                    </Space>
+                    <Paragraph style={{ margin: '8px 0 0' }}>
+                      {item.action}。原因：{item.reason}。预期：{item.expected}
+                    </Paragraph>
+                  </div>
+                ))}
+              </Space>
+            ) : (
+              renderSummaryList(suggestionFallbackItems)
+            )}
+          </Card>
+        </Space>
+      </Card>
+    </Space>
+  );
+}
+
 function renderSensitivityAiReportContent(report: DynamicReportResponsePayload, snapshot: SensitivityReportSnapshot) {
   const inputPayload = snapshot.input;
   const inputBase = asRecord(getValueByPath(inputPayload, 'baseParams')) ?? inputPayload;
@@ -1680,10 +2122,521 @@ function renderSensitivityAiReportContent(report: DynamicReportResponsePayload, 
   );
 }
 
+void renderSensitivityAiReportContent;
+
+function renderSensitivityAiReportContentV2(
+  report: DynamicReportResponsePayload,
+  snapshot: SensitivityReportSnapshot,
+) {
+  const inputPayload = snapshot.input;
+  const inputBase = asRecord(getValueByPath(inputPayload, 'baseParams')) ?? inputPayload;
+  const outputPayload = snapshot.output;
+  const baseResult = asRecord(getValueByPath(outputPayload, 'baseResult')) ?? outputPayload;
+  const variableResults = asRecordArray(getValueByPath(outputPayload, 'variableResults'));
+  const rankingRows = toSortedSensitivityRankingRows(outputPayload);
+  const primaryVariableResult = getSensitivityPrimaryVariableResult(outputPayload);
+  const topRank = rankingRows[0];
+  const topVariableName = String(
+    topRank?.variableName ??
+      primaryVariableResult?.variableName ??
+      primaryVariableResult?.variableType ??
+      buildSensitiveVariableDisplay(inputPayload, inputBase),
+  );
+  const topRankNumber = toFiniteNumber(topRank?.rank) ?? 1;
+  const sensitivityCoefficient = toFiniteNumber(
+    topRank?.sensitivityCoefficient ?? primaryVariableResult?.sensitivityCoefficient,
+  );
+  const maxImpactPercent =
+    toFiniteNumber(primaryVariableResult?.maxImpactPercent) ??
+    variableResults.reduce<number | null>((current, item) => {
+      const next = toFiniteNumber(item.maxImpactPercent);
+      if (next === null) {
+        return current;
+      }
+      if (current === null) {
+        return next;
+      }
+      return Math.max(current, next);
+    }, null);
+  const pointRows = asRecordArray(primaryVariableResult?.dataPoints).sort((a, b) => {
+    const changeA = toFiniteNumber(a.changePercent) ?? 0;
+    const changeB = toFiniteNumber(b.changePercent) ?? 0;
+    return changeA - changeB;
+  });
+  const firstPoint = pointRows[0];
+  const lastPoint = pointRows[pointRows.length - 1];
+  const flowRegimeValues = pointRows
+    .map((item) => formatValue(item.flowRegime))
+    .filter((item) => item && item !== '-');
+  const flowRegimeChanged = new Set(flowRegimeValues).size > 1;
+  const minEndStationPressure = pointRows.reduce<number | null>((current, item) => {
+    const next = toFiniteNumber(item.endStationPressure);
+    if (next === null) {
+      return current;
+    }
+    if (current === null) {
+      return next;
+    }
+    return Math.min(current, next);
+  }, null);
+  const baseEndStationPressure = toFiniteNumber(
+    pickFirstValue([baseResult], ['endStationInPressure', 'endStationPressure', 'terminalInPressure']),
+  );
+  const baseResultStatus =
+    baseEndStationPressure === null ? '当前数据不足以支持进一步判断' : baseEndStationPressure >= 0 ? '正常' : '存在压力风险';
+  const riskLevel = evaluateSensitivityRiskLevel({
+    sensitivityCoefficient,
+    maxImpactPercent,
+    minEndStationPressure,
+    flowRegimeChanged,
+  });
+  const sensitivityImpactLevel = classifySensitivityImpactLevel(sensitivityCoefficient);
+  const projectName = snapshot.projectName || '当前项目';
+  const displayTitle =
+    report.title && report.title.includes('敏感')
+      ? report.title
+      : `${projectName}关键变量敏感性分析报告`;
+  const displayDescription = report.abstract || SENSITIVITY_REPORT_PAGE_COPY.defaultDescription;
+  const baseCondition = buildSensitivityBaseCondition(inputPayload, inputBase);
+  const variableTypeText = buildSensitiveVariableDisplay(inputPayload, inputBase);
+
+  const pressureTrendText =
+    firstPoint && lastPoint
+      ? toFiniteNumber(lastPoint.endStationPressure) !== null && toFiniteNumber(firstPoint.endStationPressure) !== null
+        ? (toFiniteNumber(lastPoint.endStationPressure) ?? 0) > (toFiniteNumber(firstPoint.endStationPressure) ?? 0)
+          ? '整体上升'
+          : (toFiniteNumber(lastPoint.endStationPressure) ?? 0) < (toFiniteNumber(firstPoint.endStationPressure) ?? 0)
+            ? '整体下降'
+            : '变化不明显'
+        : '当前数据不足以支持进一步判断'
+      : '当前数据不足以支持进一步判断';
+  const frictionTrendText =
+    firstPoint && lastPoint
+      ? toFiniteNumber(lastPoint.frictionHeadLoss) !== null && toFiniteNumber(firstPoint.frictionHeadLoss) !== null
+        ? (toFiniteNumber(lastPoint.frictionHeadLoss) ?? 0) > (toFiniteNumber(firstPoint.frictionHeadLoss) ?? 0)
+          ? '整体上升'
+          : (toFiniteNumber(lastPoint.frictionHeadLoss) ?? 0) < (toFiniteNumber(firstPoint.frictionHeadLoss) ?? 0)
+            ? '整体下降'
+            : '变化不明显'
+        : '当前数据不足以支持进一步判断'
+      : '当前数据不足以支持进一步判断';
+
+  const summaryItems = report.summary.length
+    ? report.summary
+    : [
+        `本次敏感性分析以 ${topVariableName} 作为敏感变量，基准工况下系统结果为 ${baseResultStatus}。`,
+        `当前变量的敏感系数为 ${formatValue(sensitivityCoefficient)}，最大影响幅度为 ${formatValue(maxImpactPercent, '%')}，在影响程度排序中位列第 ${topRankNumber} 位。`,
+        `整体来看，该变量对系统运行结果具有 ${sensitivityImpactLevel} 影响，是评估系统稳定性的重要因素之一。`,
+      ];
+  const keyFindingItems = report.highlights.length
+    ? report.highlights
+    : [
+        `基准工况为 ${baseCondition}，可作为比较不同变化比例结果的参考基础。`,
+        `${topVariableName} 的敏感系数为 ${formatValue(sensitivityCoefficient)}，属于${sensitivityImpactLevel}影响，应作为后续运行控制重点关注的参数。`,
+        `随着 ${topVariableName} 变化，末站进站压力${pressureTrendText}，摩阻损失${frictionTrendText}。`,
+        flowRegimeChanged
+          ? '不同变化比例下流态发生变化，说明系统存在明显运行状态切换风险。'
+          : '不同变化比例下流态整体稳定，暂未出现明显流态切换。',
+      ];
+  const riskFallbackItems = [
+    sensitivityCoefficient !== null && sensitivityCoefficient >= 0.8
+      ? '当前变量敏感系数较高，系统对该变量变化反应明显，应重点加强监测与控制。'
+      : null,
+    maxImpactPercent !== null && maxImpactPercent >= 20
+      ? '当前变量带来的最大影响幅度较大，说明在设定波动范围内系统结果变化明显，存在较高的不稳定风险。'
+      : null,
+    minEndStationPressure !== null && minEndStationPressure < 0
+      ? '部分变化比例下末站进站压力低于 0，说明系统压力稳定性存在明显风险。'
+      : null,
+    flowRegimeChanged ? '不同变化比例下流态发生变化，变量波动可能改变系统流动特征，应重点关注临界区间。' : null,
+  ].filter((item): item is string => Boolean(item));
+  const suggestionFallbackItems = [
+    `建议将 ${topVariableName} 作为运行控制中的重点监测对象，在实际调度和参数管理中优先保证该变量稳定。`,
+    pressureTrendText !== '变化不明显' && pressureTrendText !== '当前数据不足以支持进一步判断'
+      ? '建议进一步校核不同工况下的压力分布情况，确保关键节点压力满足运行要求。'
+      : null,
+    frictionTrendText !== '变化不明显' && frictionTrendText !== '当前数据不足以支持进一步判断'
+      ? '建议结合流量、管径、粘度等参数进一步评估阻力增长原因，为优化运行方案提供依据。'
+      : null,
+    flowRegimeChanged ? '建议在后续分析中增加流态临界区间校核，避免系统在运行波动中进入不稳定状态。' : null,
+  ].filter((item): item is string => Boolean(item));
+
+  const reportViewModel: SensitivitySmartReportPayload = {
+    title: displayTitle,
+    description: displayDescription,
+    basicInfo: {
+      projectName,
+      analysisType: '敏感性分析',
+      sensitiveVariableType: variableTypeText,
+      baseCondition,
+      generatedAt: formatTime(snapshot.generatedAt ?? undefined),
+    },
+    resultCards: {
+      baseResult: baseResultStatus,
+      mostSensitiveVariable: topVariableName || '-',
+      sensitivityCoefficient: formatValue(sensitivityCoefficient),
+      maxImpactPercent: formatValue(maxImpactPercent, '%'),
+      impactRanking: `第 ${topRankNumber} 名`,
+      riskLevel,
+    },
+    chartMeta: {
+      sensitivityRanking: {
+        title: '敏感系数排名图',
+        chartType: 'bar-horizontal',
+        xField: 'sensitivityCoefficient',
+        yFields: ['variableName'],
+        description: '展示不同变量的敏感系数，并按影响强弱排序。',
+      },
+      changeTrend: {
+        title: '变化比例-结果变化趋势图',
+        chartType: 'line',
+        xField: 'changeRateLabel',
+        yFields: ['pressure', 'frictionLoss'],
+        description: '展示不同变化比例下末站压力与摩阻损失的变化趋势。',
+      },
+      maxImpact: {
+        title: '最大影响幅度对比图',
+        chartType: 'bar',
+        xField: 'variableName',
+        yFields: ['maxImpactPercent'],
+        description: '对比各敏感变量带来的最大影响幅度。',
+      },
+    },
+    rankingData: rankingRows.map((item) => ({
+      rank: toFiniteNumber(item.rank) ?? 0,
+      variableName: String(item.variableName ?? item.variableType ?? '-'),
+      sensitivityCoefficient: toFiniteNumber(item.sensitivityCoefficient),
+      description: String(item.description ?? ''),
+    })),
+    trendData: pointRows.map((item) => ({
+      changeRateLabel: `${formatValue(item.changePercent)}%`,
+      changeRateValue: toFiniteNumber(item.changePercent) ?? 0,
+      pressure: toFiniteNumber(item.endStationPressure),
+      frictionLoss: toFiniteNumber(item.frictionHeadLoss),
+      pressureChangePercent: toFiniteNumber(item.pressureChangePercent),
+      frictionChangePercent: toFiniteNumber(item.frictionChangePercent),
+      flowState: formatValue(item.flowRegime),
+    })),
+    impactData: variableResults.map((item) => ({
+      variableName: String(item.variableName ?? item.variableType ?? '-'),
+      maxImpactPercent: toFiniteNumber(item.maxImpactPercent),
+    })),
+    analysis: {
+      resultSummary: summaryItems,
+      keyChangeAnalysis: keyFindingItems,
+      riskRecognition: riskFallbackItems.length ? riskFallbackItems : ['当前数据不足以支持进一步判断。'],
+      optimizationSuggestions: suggestionFallbackItems.length
+        ? suggestionFallbackItems
+        : ['当前数据不足以支持进一步判断。'],
+    },
+  };
+
+  const basicInfoCards = filterMetricCards([
+    { label: SENSITIVITY_REPORT_PAGE_COPY.labels.projectName, value: reportViewModel.basicInfo.projectName, tone: 'blue', span: 6 },
+    { label: SENSITIVITY_REPORT_PAGE_COPY.labels.analysisType, value: reportViewModel.basicInfo.analysisType, tone: 'purple', span: 6 },
+    {
+      label: SENSITIVITY_REPORT_PAGE_COPY.labels.sensitiveVariableType,
+      value: reportViewModel.basicInfo.sensitiveVariableType,
+      tone: 'cyan',
+      span: 6,
+    },
+    { label: SENSITIVITY_REPORT_PAGE_COPY.labels.baseCondition, value: reportViewModel.basicInfo.baseCondition, tone: 'green', span: 12 },
+    { label: SENSITIVITY_REPORT_PAGE_COPY.labels.generatedAt, value: reportViewModel.basicInfo.generatedAt, tone: 'amber', span: 6 },
+  ]);
+
+  const coreResultCards = filterMetricCards([
+    { label: SENSITIVITY_REPORT_PAGE_COPY.labels.baseResult, value: reportViewModel.resultCards.baseResult, tone: 'blue', span: 4 },
+    {
+      label: SENSITIVITY_REPORT_PAGE_COPY.labels.mostSensitiveVariable,
+      value: reportViewModel.resultCards.mostSensitiveVariable,
+      tone: 'purple',
+      span: 4,
+    },
+    {
+      label: SENSITIVITY_REPORT_PAGE_COPY.labels.sensitivityCoefficient,
+      value: reportViewModel.resultCards.sensitivityCoefficient,
+      tone: 'cyan',
+      span: 4,
+    },
+    {
+      label: SENSITIVITY_REPORT_PAGE_COPY.labels.maxImpactPercent,
+      value: reportViewModel.resultCards.maxImpactPercent,
+      tone: 'amber',
+      span: 4,
+    },
+    { label: SENSITIVITY_REPORT_PAGE_COPY.labels.impactRanking, value: reportViewModel.resultCards.impactRanking, tone: 'green', span: 4 },
+    { label: SENSITIVITY_REPORT_PAGE_COPY.labels.riskLevel, value: reportViewModel.resultCards.riskLevel, tone: 'purple', span: 4 },
+  ]);
+
+  const rankingChartOption: EChartsOption = {
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+    grid: { left: 120, right: 24, top: 24, bottom: 24 },
+    xAxis: {
+      type: 'value',
+      name: SENSITIVITY_REPORT_PAGE_COPY.labels.sensitivityCoefficient,
+      nameTextStyle: { color: '#64748b' },
+      axisLabel: { color: '#64748b' },
+      splitLine: { lineStyle: { color: '#e2e8f0' } },
+    },
+    yAxis: {
+      type: 'category',
+      data: reportViewModel.rankingData.map((item) => item.variableName).reverse(),
+      axisLabel: { color: '#475569' },
+    },
+    series: [
+      {
+        type: 'bar',
+        data: reportViewModel.rankingData.map((item) => item.sensitivityCoefficient).reverse(),
+        barMaxWidth: 24,
+        itemStyle: { color: '#7c6cff', borderRadius: [0, 8, 8, 0] },
+      },
+    ],
+  };
+
+  const trendChartOption: EChartsOption = {
+    tooltip: { trigger: 'axis' },
+    legend: {
+      data: ['末站进站压力', '摩阻损失'],
+      top: 0,
+      textStyle: { color: '#64748b' },
+    },
+    grid: { left: 48, right: 48, top: 48, bottom: 32 },
+    xAxis: {
+      type: 'category',
+      name: '变化比例',
+      data: reportViewModel.trendData.map((item) => item.changeRateLabel),
+      axisLabel: { color: '#64748b' },
+      axisLine: { lineStyle: { color: '#cbd5e1' } },
+    },
+    yAxis: [
+      {
+        type: 'value',
+        name: '压力',
+        axisLabel: { color: '#64748b' },
+        nameTextStyle: { color: '#64748b' },
+        splitLine: { lineStyle: { color: '#e2e8f0' } },
+      },
+      {
+        type: 'value',
+        name: '摩阻损失',
+        axisLabel: { color: '#64748b' },
+        nameTextStyle: { color: '#64748b' },
+        splitLine: { show: false },
+      },
+    ],
+    series: [
+      {
+        name: '末站进站压力',
+        type: 'line',
+        smooth: true,
+        symbolSize: 8,
+        lineStyle: { width: 3, color: '#4e86f7' },
+        itemStyle: { color: '#4e86f7' },
+        data: reportViewModel.trendData.map((item) => item.pressure),
+      },
+      {
+        name: '摩阻损失',
+        type: 'line',
+        yAxisIndex: 1,
+        smooth: true,
+        symbolSize: 8,
+        lineStyle: { width: 3, color: '#12b981' },
+        itemStyle: { color: '#12b981' },
+        data: reportViewModel.trendData.map((item) => item.frictionLoss),
+      },
+    ],
+  };
+
+  const impactChartOption: EChartsOption = {
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+    grid: { left: 48, right: 24, top: 24, bottom: 48 },
+    xAxis: {
+      type: 'category',
+      data: reportViewModel.impactData.map((item) => item.variableName),
+      axisLabel: { color: '#64748b' },
+      axisLine: { lineStyle: { color: '#cbd5e1' } },
+    },
+    yAxis: {
+      type: 'value',
+      name: '最大影响幅度(%)',
+      axisLabel: { color: '#64748b' },
+      nameTextStyle: { color: '#64748b' },
+      splitLine: { lineStyle: { color: '#e2e8f0' } },
+    },
+    series: [
+      {
+        type: 'bar',
+        barMaxWidth: 38,
+        itemStyle: { color: '#f59e0b', borderRadius: [8, 8, 0, 0] },
+        data: reportViewModel.impactData.map((item) => item.maxImpactPercent),
+      },
+    ],
+  };
+
+  const trendTableColumns: ColumnsType<(typeof reportViewModel.trendData)[number] & { key: string }> = [
+    { title: '变化比例', dataIndex: 'changeRateLabel', key: 'changeRateLabel', width: 120 },
+    {
+      title: '压力',
+      dataIndex: 'pressure',
+      key: 'pressure',
+      width: 120,
+      render: (value: number | null) => formatValue(value),
+    },
+    {
+      title: '压力变化',
+      dataIndex: 'pressureChangePercent',
+      key: 'pressureChangePercent',
+      width: 140,
+      render: (value: number | null) => formatValue(value, '%'),
+    },
+    {
+      title: '摩阻损失',
+      dataIndex: 'frictionLoss',
+      key: 'frictionLoss',
+      width: 140,
+      render: (value: number | null) => formatValue(value),
+    },
+    {
+      title: '摩阻变化',
+      dataIndex: 'frictionChangePercent',
+      key: 'frictionChangePercent',
+      width: 140,
+      render: (value: number | null) => formatValue(value, '%'),
+    },
+    { title: '流态', dataIndex: 'flowState', key: 'flowState', width: 120 },
+  ];
+
+  const trendTableDataSource = reportViewModel.trendData.map((item, index) => ({
+    key: `${item.changeRateLabel}-${index}`,
+    ...item,
+  }));
+
+  return (
+    <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      <div>
+        <Title level={4} style={{ marginBottom: 8 }}>
+          {reportViewModel.title}
+        </Title>
+        <Paragraph type="secondary" style={{ marginBottom: 0 }}>
+          {reportViewModel.description}
+        </Paragraph>
+      </div>
+
+      <Card size="small" title={SENSITIVITY_REPORT_PAGE_COPY.sectionTitles.basicInfo}>
+        {renderDetailMetricCards(basicInfoCards, {
+          singleLine: true,
+          compact: true,
+          minColumnWidth: 220,
+          minHeight: 88,
+          valueFontSize: 'clamp(14px, 1.8vw, 18px)',
+        })}
+      </Card>
+
+      <Card size="small" title={SENSITIVITY_REPORT_PAGE_COPY.sectionTitles.coreResults}>
+        {renderDetailMetricCards(coreResultCards, {
+          equalWidth: true,
+          singleLine: true,
+          compact: true,
+          minColumnWidth: 190,
+          minHeight: 88,
+          valueFontSize: 'clamp(14px, 1.8vw, 18px)',
+        })}
+      </Card>
+
+      <Card size="small" title={SENSITIVITY_REPORT_PAGE_COPY.sectionTitles.chartAnalysis}>
+        <Row gutter={[16, 16]}>
+          <Col xs={24} xl={8}>
+            <Card size="small" title={reportViewModel.chartMeta.sensitivityRanking.title}>
+              <Chart option={rankingChartOption} height={300} />
+            </Card>
+          </Col>
+          <Col xs={24} xl={16}>
+            <Card size="small" title={reportViewModel.chartMeta.changeTrend.title}>
+              <Chart option={trendChartOption} height={300} />
+            </Card>
+          </Col>
+          <Col xs={24}>
+            <Card size="small" title={reportViewModel.chartMeta.maxImpact.title}>
+              <Chart option={impactChartOption} height={280} />
+            </Card>
+          </Col>
+          <Col xs={24}>
+            <Card size="small" title={SENSITIVITY_REPORT_PAGE_COPY.sectionTitles.trendTable}>
+              <Table
+                columns={trendTableColumns}
+                dataSource={trendTableDataSource}
+                size="small"
+                pagination={false}
+                scroll={{ x: 860 }}
+              />
+            </Card>
+          </Col>
+        </Row>
+      </Card>
+
+      <Card size="small" title={SENSITIVITY_REPORT_PAGE_COPY.sectionTitles.analysis}>
+        <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          <Card size="small" title={SENSITIVITY_REPORT_PAGE_COPY.sectionTitles.resultSummary}>
+            {renderSummaryList(reportViewModel.analysis.resultSummary)}
+          </Card>
+
+          <Card size="small" title={SENSITIVITY_REPORT_PAGE_COPY.sectionTitles.keyChangeAnalysis}>
+            {renderSummaryList(reportViewModel.analysis.keyChangeAnalysis)}
+          </Card>
+
+          <Card size="small" title={SENSITIVITY_REPORT_PAGE_COPY.sectionTitles.riskRecognition}>
+            {report.risks.length ? (
+              <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                {report.risks.map((item, index) => (
+                  <div key={`${item.target}-${index}`}>
+                    <Space wrap>
+                      <Tag color="red">{item.level}</Tag>
+                      <Text strong>{item.target}</Text>
+                      <Text>{item.riskType}</Text>
+                    </Space>
+                    <Paragraph style={{ margin: '8px 0 0' }}>{item.reason}</Paragraph>
+                  </div>
+                ))}
+              </Space>
+            ) : (
+              renderSummaryList(reportViewModel.analysis.riskRecognition)
+            )}
+          </Card>
+
+          <Card size="small" title={SENSITIVITY_REPORT_PAGE_COPY.sectionTitles.optimizationSuggestions}>
+            {report.suggestions.length ? (
+              <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                {report.suggestions.map((item, index) => (
+                  <div key={`${item.target}-${index}`}>
+                    <Space wrap>
+                      <Tag color="blue">{item.priority}</Tag>
+                      <Text strong>{item.target}</Text>
+                    </Space>
+                    <Paragraph style={{ margin: '8px 0 0' }}>
+                      {item.action}。原因：{item.reason}。预期：{item.expected}
+                    </Paragraph>
+                  </div>
+                ))}
+              </Space>
+            ) : (
+              renderSummaryList(reportViewModel.analysis.optimizationSuggestions)
+            )}
+          </Card>
+        </Space>
+      </Card>
+    </Space>
+  );
+}
+
 function renderReportContent(report: DynamicReportResponsePayload) {
   const sensitivitySnapshot = extractSensitivityReportSnapshotFromReport(report);
   if (sensitivitySnapshot) {
-    return renderSensitivityAiReportContent(report, sensitivitySnapshot);
+    return renderSensitivityAiReportContentV2(report, sensitivitySnapshot);
+  }
+
+  const optimizationSnapshot = extractOptimizationSnapshotFromReport(report);
+  if (optimizationSnapshot) {
+    return renderOptimizationAiReportContentV2(report, optimizationSnapshot);
   }
 
   const hydraulicSnapshot = extractHydraulicSnapshotFromReport(report);
@@ -1866,6 +2819,7 @@ export default function ReportPreview() {
   const [selectedHistoryKeys, setSelectedHistoryKeys] = useState<number[]>([]);
   const [deletingHistoryIds, setDeletingHistoryIds] = useState<number[]>([]);
   const latestHydraulicLink = useCalculationLinkStore((state) => state.latestByType.HYDRAULIC);
+  const latestOptimizationLink = useCalculationLinkStore((state) => state.latestByType.OPTIMIZATION);
   const latestSensitivityLink = useCalculationLinkStore((state) => state.latestByType.SENSITIVITY);
 
   const loadData = useCallback(async () => {
@@ -2028,6 +2982,68 @@ export default function ReportPreview() {
     [filteredHistories, projectLookup],
   );
 
+  const reportHistoryRows = useMemo<HistoryTableRow[]>(
+    () => {
+      const normalizedKeyword = searchKeyword.trim().toLowerCase();
+
+      return histories
+        .filter((item) => {
+          if (!item.outputResult || !isAiReportHistory(item)) {
+            return false;
+          }
+
+          const project = projectLookup.get(Number(item.projectId));
+
+          if (normalizedKeyword) {
+            const matched = [
+              item.projectName,
+              project?.number,
+              project?.responsible,
+              item.userName,
+              item.calcTypeName,
+              item.calcType,
+              item.remark,
+              item.errorMessage,
+            ]
+              .filter(Boolean)
+              .some((value) => String(value).toLowerCase().includes(normalizedKeyword));
+
+            if (!matched) {
+              return false;
+            }
+          }
+
+          if (selectedProjectIds.length && !selectedProjectIds.includes(Number(item.projectId))) {
+            return false;
+          }
+
+          if (dateRange) {
+            const createdAt = dayjs(item.createTime);
+            if (createdAt.isValid()) {
+              const [start, end] = dateRange;
+              if (createdAt.isBefore(start.startOf('day')) || createdAt.isAfter(end.endOf('day'))) {
+                return false;
+              }
+            }
+          }
+
+          return true;
+        })
+        .map((item) => {
+          const project = projectLookup.get(Number(item.projectId));
+
+          return {
+            ...item,
+            projectNumber: project?.number || (item.projectId ? String(item.projectId) : '-'),
+            responsible: project?.responsible || item.userName || '-',
+            calcTypeLabel: getCalcTypeLabel(item),
+            updateTimeText: formatTime(item.createTime),
+          };
+        });
+    },
+    [dateRange, histories, projectLookup, searchKeyword, selectedProjectIds],
+  );
+
   const calculationRecords = useMemo(
     () => historyTableRows.filter((item) => !isAiReportHistory(item)).slice(0, 10),
     [historyTableRows],
@@ -2035,8 +3051,7 @@ export default function ReportPreview() {
 
   const aiReportRecords = useMemo<AiReportHistoryRow[]>(
     () =>
-      historyTableRows
-        .filter((item) => isAiReportHistory(item))
+      reportHistoryRows
         .map((item) => {
           const reportPayload = extractDynamicReportFromOutput(item.outputResult);
 
@@ -2046,7 +3061,7 @@ export default function ReportPreview() {
             reportAbstract: reportPayload?.abstract || item.remark || '已归档的智能报告记录',
           };
         }),
-    [historyTableRows],
+    [reportHistoryRows],
   );
 
   const latestRecords = calculationRecords;
@@ -2067,6 +3082,28 @@ export default function ReportPreview() {
       buildHydraulicSnapshotFromHistory(selectedHydraulicRecord) ??
       buildHydraulicSnapshotFromLinkedRecord(latestHydraulicLink),
     [latestHydraulicLink, selectedHydraulicRecord],
+  );
+
+  const selectedOptimizationRecord = useMemo(
+    () =>
+      calculationRecords.find(
+        (record) =>
+          selectedHistoryKeys.includes(record.key) &&
+          (record.calcType === 'OPTIMIZATION' || record.calcTypeLabel.includes('优化')),
+      ) ??
+      (selectedCalcType === 'OPTIMIZATION'
+        ? calculationRecords.find((record) => record.calcType === 'OPTIMIZATION' || record.calcTypeLabel.includes('优化'))
+        : null),
+    [calculationRecords, selectedCalcType, selectedHistoryKeys],
+  );
+
+  const preferredOptimizationSnapshot = useMemo(
+    () =>
+      createOptimizationReportSnapshotFromHistory(selectedOptimizationRecord) ??
+      ((selectedOptimizationRecord || selectedCalcType === 'OPTIMIZATION') && latestOptimizationLink
+        ? createOptimizationReportSnapshotFromLinkedRecord(latestOptimizationLink)
+        : null),
+    [latestOptimizationLink, selectedCalcType, selectedOptimizationRecord],
   );
 
   const selectedSensitivityRecord = useMemo(
@@ -2466,13 +3503,15 @@ export default function ReportPreview() {
         : undefined;
 
       const normalizedHydraulicPrompt = preferredHydraulicSnapshot ? buildHydraulicUserPrompt() : hydraulicPrompt;
+      const normalizedOptimizationPrompt = preferredOptimizationSnapshot ? buildOptimizationUserPrompt() : undefined;
       const normalizedSensitivityPrompt = preferredSensitivitySnapshot ? buildSensitivityUserPrompt() : undefined;
-      const activePrompt = normalizedSensitivityPrompt ?? normalizedHydraulicPrompt;
+      const activePrompt = normalizedSensitivityPrompt ?? normalizedOptimizationPrompt ?? normalizedHydraulicPrompt;
       const activeFocuses = preferredSensitivitySnapshot
         ? ['基准结果', '敏感系数', '最大影响幅度', '排名', '压力变化趋势', '摩阻损失变化趋势', '流态变化']
         : preferredHydraulicSnapshot
           ? ['雷诺数', '流态', '摩阻损失', '水力坡降', '总扬程', '末站进站压头']
           : undefined;
+      void activeFocuses;
       const result = await agentApi.generateDynamicReport({
         selected_project_ids: activeProjectIds,
         project_names: selectedNames,
@@ -2501,6 +3540,14 @@ export default function ReportPreview() {
               sensitivitySnapshot: preferredSensitivitySnapshot,
             },
           }
+        : preferredOptimizationSnapshot
+          ? {
+              ...result,
+              metadata: {
+                ...(result.metadata ?? {}),
+                optimizationSnapshot: preferredOptimizationSnapshot,
+              },
+            }
         : preferredHydraulicSnapshot
           ? {
               ...result,
@@ -2562,7 +3609,16 @@ export default function ReportPreview() {
     } finally {
       setGenerating(false);
     }
-  }, [allProjectIds, dateRange, preferredHydraulicSnapshot, preferredSensitivitySnapshot, projects, reportType, selectedProjectIds]);
+  }, [
+    allProjectIds,
+    dateRange,
+    preferredHydraulicSnapshot,
+    preferredOptimizationSnapshot,
+    preferredSensitivitySnapshot,
+    projects,
+    reportType,
+    selectedProjectIds,
+  ]);
 
   return (
     <AnimatedPage className="min-h-full">
