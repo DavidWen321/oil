@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from src.models.schemas import DynamicReportRequest
@@ -28,6 +29,146 @@ def _pick_external_api(user_prompt: str | None) -> str:
             if len(parts) == 2 and parts[1].strip():
                 return parts[1].strip()
     return "不启用"
+
+
+def _parse_json_record(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if not isinstance(value, str) or not value.strip():
+        return {}
+    try:
+        parsed = json.loads(value)
+    except Exception:  # noqa: BLE001
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _unwrap_result_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    nested = payload.get("data")
+    return nested if isinstance(nested, dict) else payload
+
+
+def _looks_like_hydraulic_record(record: dict[str, Any]) -> bool:
+    calc_type = str(record.get("calcType") or "")
+    calc_type_name = str(record.get("calcTypeName") or "")
+    type_text = f"{calc_type} {calc_type_name}".upper()
+    return "HYDRAULIC" in type_text or "水力" in type_text
+
+
+def _looks_like_sensitivity_record(record: dict[str, Any]) -> bool:
+    calc_type = str(record.get("calcType") or "")
+    calc_type_name = str(record.get("calcTypeName") or "")
+    type_text = f"{calc_type} {calc_type_name}".upper()
+    return "SENSITIVITY" in type_text or "敏感" in type_text
+
+
+def _looks_like_optimization_record(record: dict[str, Any]) -> bool:
+    calc_type = str(record.get("calcType") or "")
+    calc_type_name = str(record.get("calcTypeName") or "")
+    type_text = f"{calc_type} {calc_type_name}".upper()
+    return "OPTIMIZATION" in type_text or "浼樺寲" in type_text
+
+
+def _resolve_sensitivity_snapshot(
+    request: DynamicReportRequest,
+    history_records: list[dict[str, Any]],
+) -> dict[str, Any]:
+    provided_snapshot = request.sensitivity_snapshot if isinstance(request.sensitivity_snapshot, dict) else None
+    if provided_snapshot:
+        input_payload = provided_snapshot.get("input")
+        output_payload = provided_snapshot.get("output")
+        if isinstance(input_payload, dict) and isinstance(output_payload, dict):
+            return {
+                "projectName": provided_snapshot.get("projectName"),
+                "generatedAt": provided_snapshot.get("generatedAt"),
+                "input": input_payload,
+                "output": output_payload,
+            }
+
+    sensitivity_records = [row for row in history_records if _looks_like_sensitivity_record(row)]
+    if not sensitivity_records:
+        return {}
+
+    latest_record = sorted(sensitivity_records, key=lambda item: str(item.get("createTime") or ""), reverse=True)[0]
+    input_payload = _parse_json_record(latest_record.get("inputParams"))
+    output_payload = _unwrap_result_payload(_parse_json_record(latest_record.get("outputResult")))
+    if not input_payload or not output_payload:
+        return {}
+
+    return {
+        "projectName": str(latest_record.get("projectName") or ""),
+        "generatedAt": str(latest_record.get("createTime") or ""),
+        "input": input_payload,
+        "output": output_payload,
+    }
+
+
+def _resolve_optimization_snapshot(
+    request: DynamicReportRequest,
+    history_records: list[dict[str, Any]],
+) -> dict[str, Any]:
+    provided_snapshot = request.optimization_snapshot if isinstance(request.optimization_snapshot, dict) else None
+    if provided_snapshot:
+        input_payload = provided_snapshot.get("input")
+        output_payload = provided_snapshot.get("output")
+        if isinstance(input_payload, dict) and isinstance(output_payload, dict):
+            return {
+                "projectName": provided_snapshot.get("projectName"),
+                "generatedAt": provided_snapshot.get("generatedAt"),
+                "input": input_payload,
+                "output": output_payload,
+            }
+
+    optimization_records = [row for row in history_records if _looks_like_optimization_record(row)]
+    if not optimization_records:
+        return {}
+
+    latest_record = sorted(optimization_records, key=lambda item: str(item.get("createTime") or ""), reverse=True)[0]
+    input_payload = _parse_json_record(latest_record.get("inputParams"))
+    output_payload = _unwrap_result_payload(_parse_json_record(latest_record.get("outputResult")))
+    if not input_payload or not output_payload:
+        return {}
+
+    return {
+        "projectName": str(latest_record.get("projectName") or ""),
+        "generatedAt": str(latest_record.get("createTime") or ""),
+        "input": input_payload,
+        "output": output_payload,
+    }
+
+
+def _resolve_hydraulic_snapshot(
+    request: DynamicReportRequest,
+    history_records: list[dict[str, Any]],
+) -> dict[str, Any]:
+    provided_snapshot = request.hydraulic_snapshot if isinstance(request.hydraulic_snapshot, dict) else None
+    if provided_snapshot:
+        input_payload = provided_snapshot.get("input")
+        output_payload = provided_snapshot.get("output")
+        if isinstance(input_payload, dict) and isinstance(output_payload, dict):
+            return {
+                "projectName": provided_snapshot.get("projectName"),
+                "generatedAt": provided_snapshot.get("generatedAt"),
+                "input": input_payload,
+                "output": output_payload,
+            }
+
+    hydraulic_records = [row for row in history_records if _looks_like_hydraulic_record(row)]
+    if not hydraulic_records:
+        return {}
+
+    latest_record = sorted(hydraulic_records, key=lambda item: str(item.get("createTime") or ""), reverse=True)[0]
+    input_payload = _parse_json_record(latest_record.get("inputParams"))
+    output_payload = _unwrap_result_payload(_parse_json_record(latest_record.get("outputResult")))
+    if not input_payload or not output_payload:
+        return {}
+
+    return {
+        "projectName": str(latest_record.get("projectName") or ""),
+        "generatedAt": str(latest_record.get("createTime") or ""),
+        "input": input_payload,
+        "output": output_payload,
+    }
 
 
 def build_report_context(
@@ -92,8 +233,11 @@ def build_report_context(
             "successRate": metrics.overview_metrics.get("success_rate"),
             "records": data.history_records,
         },
+        "hydraulic_snapshot": _resolve_hydraulic_snapshot(request, data.history_records),
+        "optimization_snapshot": _resolve_optimization_snapshot(request, data.history_records),
         "risk_flags": risk_flags,
         "pump_data": metrics.object_metrics.get("pump_stations", []),
+        "sensitivity_snapshot": _resolve_sensitivity_snapshot(request, data.history_records),
         "report_meta": {
             "project_name": "、".join(project_names) if project_names else "-",
             "report_type": report_type_label(request),

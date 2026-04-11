@@ -237,6 +237,8 @@ class ReportRiskItem(BaseModel):
     level: str
     reason: str
     suggestion: str
+    code: Optional[str] = None
+    message: Optional[str] = None
 
 
 class ReportSuggestionItem(BaseModel):
@@ -247,6 +249,7 @@ class ReportSuggestionItem(BaseModel):
     action: str
     expected: str
     priority: str
+    text: Optional[str] = None
 
 
 class ReportMetricItem(BaseModel):
@@ -289,7 +292,11 @@ class DynamicReportAiAnalysis(BaseModel):
 
     summary: list[str] = Field(default_factory=list)
     metricAnalysis: list[str] = Field(default_factory=list)
+    schemeExplain: list[str] = Field(default_factory=list)
+    comparison: list[str] = Field(default_factory=list)
+    changeAnalysis: list[str] = Field(default_factory=list)
     riskJudgement: list[ReportRiskItem] = Field(default_factory=list)
+    riskIdentify: list[ReportRiskItem] = Field(default_factory=list)
     suggestions: list[ReportSuggestionItem] = Field(default_factory=list)
 
 
@@ -325,6 +332,9 @@ class DynamicReportRequest(BaseModel):
     allow_pump_adjust: bool = True
     remark: Optional[str] = None
     user_prompt: Optional[str] = None
+    hydraulic_snapshot: Optional[dict[str, Any]] = None
+    optimization_snapshot: Optional[dict[str, Any]] = None
+    sensitivity_snapshot: Optional[dict[str, Any]] = None
 
 
 class DynamicReportResponse(BaseModel):

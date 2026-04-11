@@ -145,6 +145,13 @@ type SensitivityReportSnapshot = {
   output: Record<string, unknown>;
 };
 
+type ReportKind = 'hydraulic' | 'sensitivity' | 'optimization' | 'optimization-comparison' | 'generic';
+
+type ReportProjectScope = {
+  projectIds: number[];
+  projectNames: string[];
+};
+
 type DetailPreviewState =
   | {
       mode: 'history';
@@ -157,13 +164,7 @@ type DetailPreviewState =
   | null;
 
 const ALL_CALC_TYPE_OPTION = '__ALL_CALC_TYPE__';
-
-const REPORT_TYPE_OPTIONS: Array<{ label: string; value: ReportType }> = [
-  { label: '智能报告', value: 'AI_REPORT' },
-  { label: '风险复核', value: 'RISK_REVIEW' },
-  { label: '能耗诊断', value: 'ENERGY_DIAGNOSIS' },
-  { label: '运行简报', value: 'OPERATION_BRIEF' },
-];
+const DEFAULT_REPORT_TYPE: ReportType = 'AI_REPORT';
 
 const ARCHIVED_REPORT_TYPES = new Set<ReportType>([
   'AI_REPORT',
@@ -980,12 +981,10 @@ function buildHydraulicPumpParameterDisplay(sources: unknown[]) {
 
 function buildHydraulicUserPrompt() {
   return [
-    '请基于真实水力计算结果生成水力分析智能报告，并严格按以下 5 个模块输出：',
-    '第一块：报告头，包含标题、项目名、生成时间、分析类型。',
-    '第二块：参数表，包含流量、密度、粘度、长度、管径、粗糙度、高程、泵参数。',
-    '第三块：结果卡片，包含雷诺数、流态、摩阻损失、水力坡降、总扬程、末站进站压头。',
-    '第四块：图表，包含压头变化图、扬程构成图。',
-    '第五块：AI分析，包含结果摘要、指标分析、风险判断、运行建议。',
+    '你是一名管道水力分析专家。请基于当前真实水力计算结果、规则诊断结果和图表事实，对这次水力分析报告做专业解读。',
+    '要求：只能基于输入事实分析，不得编造未提供的数据或结论。',
+    '请重点解释雷诺数、流态、摩阻损失、水力坡降、总扬程、末站进站压头之间的关系，并指出当前最值得关注的风险与运行建议。',
+    '输出结构保持固定，仍然服务于报告头、参数表、结果卡片、图表和 AI 分析这套页面，但 AI 分析内容不要写成模板套话，要体现当前这次计算结果的具体特征。',
     `最重要的一句话请围绕这层意思展开：${HYDRAULIC_REPORT_CORE_SENTENCE}`,
   ].join('');
 }
@@ -1056,7 +1055,7 @@ function buildSensitivityUserPrompt() {
     '3. 基本信息，包含项目名称、分析类型、敏感变量类型、基准工况、生成时间。',
     '4. 核心结果卡片，包含基准结果、最敏感变量、敏感系数、最大影响幅度、影响排名第1名、是否存在明显波动风险。',
     '5. 图表分析区，至少包含敏感系数排名图、变化比例结果趋势图、最大影响幅度对比图。',
-    '6. 智能分析正文，固定输出结果摘要、关键变化分析、风险识别、优化建议四块内容。',
+    '6. 智能分析正文，固定输出结果摘要、关键变化分析、风险识别、运行建议四块内容。',
     '只能依据输入数据分析，不允许编造不存在的数据；若数据不足，请明确说明当前数据不足以支持进一步判断。',
     `最核心的一句话请围绕这层意思展开：${SENSITIVITY_REPORT_CORE_SENTENCE}`,
   ].join('');
@@ -1269,6 +1268,204 @@ function getCalcTypeLabel(record: Pick<CalculationHistory, 'calcType' | 'calcTyp
   return record.calcType || '未知类型';
 }
 
+function dedupeProjectNames(names: Array<string | null | undefined>) {
+  return [...new Set(names.map((item) => String(item || '').trim()).filter(Boolean))];
+}
+
+function buildProjectScopeSummary(projectNames: string[], fallback = '未命名项目') {
+  if (!projectNames.length) {
+    return fallback;
+  }
+  if (projectNames.length === 1) {
+    return projectNames[0];
+  }
+  if (projectNames.length <= 3) {
+    return projectNames.join('、');
+  }
+  return `${projectNames[0]}等${projectNames.length}个项目`;
+}
+
+function buildProjectScopeBadge(projectNames: string[], fallback = '未命名项目') {
+  if (!projectNames.length) {
+    return fallback;
+  }
+  if (projectNames.length === 1) {
+    return projectNames[0];
+  }
+  if (projectNames.length <= 3) {
+    return projectNames.join('、');
+  }
+  return `${projectNames[0]} 等${projectNames.length}个项目`;
+}
+
+function getReportKindFromPayload(report?: DynamicReportResponsePayload | null): ReportKind {
+  if (!report) {
+    return 'generic';
+  }
+  if (extractOptimizationComparisonSnapshotFromReport(report)) {
+    return 'optimization-comparison';
+  }
+  if (extractSensitivityReportSnapshotFromReport(report)) {
+    return 'sensitivity';
+  }
+  if (extractOptimizationSnapshotFromReport(report)) {
+    return 'optimization';
+  }
+  if (extractHydraulicSnapshotFromReport(report)) {
+    return 'hydraulic';
+  }
+
+  const prompt = String(getValueByPath(report.metadata, 'request.user_prompt') || '');
+  const focuses = Array.isArray(getValueByPath(report.metadata, 'request.focuses'))
+    ? (getValueByPath(report.metadata, 'request.focuses') as unknown[])
+    : [];
+  const focusText = focuses.map((item) => String(item)).join(' ');
+  const typeText = `${prompt} ${focusText}`;
+  if (typeText.includes('敏感')) {
+    return 'sensitivity';
+  }
+  if (typeText.includes('优化')) {
+    return 'optimization';
+  }
+  if (typeText.includes('水力')) {
+    return 'hydraulic';
+  }
+  return 'generic';
+}
+
+function buildScopedReportTitle(params: {
+  projectNames: string[];
+  reportKind: ReportKind;
+  comparisonCount?: number;
+  fallbackTitle?: string;
+}) {
+  const { projectNames, reportKind, comparisonCount = 1, fallbackTitle } = params;
+  const projectLabel = buildProjectScopeSummary(projectNames, '');
+  const isComparison = reportKind === 'optimization-comparison' || comparisonCount > 1;
+  const reportLabel =
+    reportKind === 'hydraulic'
+      ? isComparison
+        ? '水力分析对比报告'
+        : '水力分析报告'
+      : reportKind === 'sensitivity'
+        ? isComparison
+          ? '敏感性分析对比报告'
+          : '敏感性分析报告'
+        : reportKind === 'optimization'
+          ? isComparison
+            ? '泵站优化对比报告'
+            : '泵站优化报告'
+          : reportKind === 'optimization-comparison'
+            ? '泵站优化对比报告'
+            : isComparison
+              ? '智能分析对比报告'
+              : '智能分析报告';
+
+  const normalizedTitle = [projectLabel, reportLabel].filter(Boolean).join(' ');
+  return normalizedTitle || fallbackTitle || '智能分析报告';
+}
+
+function getReportComparisonCount(report?: DynamicReportResponsePayload | null) {
+  const metadataCount = Number(getValueByPath(report?.metadata, 'selected_report_count'));
+  if (Number.isFinite(metadataCount) && metadataCount > 0) {
+    return metadataCount;
+  }
+  const optimizationComparisonSnapshot = report ? extractOptimizationComparisonSnapshotFromReport(report) : null;
+  if (optimizationComparisonSnapshot) {
+    return optimizationComparisonSnapshot.projects.length;
+  }
+  return 1;
+}
+
+function normalizeReportAbstract(
+  abstract?: string | null,
+  comparisonCount = 1,
+) {
+  const text = String(abstract || '')
+    .replace(/^报告按(?:简明版|专业版|管理版)生成，?/, '')
+    .trim();
+
+  if (text) {
+    return text;
+  }
+
+  return comparisonCount > 1
+    ? '基于已选计算结果生成，用于对比关键指标、风险与建议。'
+    : '基于主数据、计算结果与规则诊断输出推荐与建议。';
+}
+
+function buildProjectScopeFromHistoryRows(
+  rows: Array<Pick<HistoryTableRow, 'projectId' | 'projectName'>>,
+): ReportProjectScope {
+  return {
+    projectIds: [...new Set(rows.map((row) => Number(row.projectId)).filter((id) => Number.isFinite(id) && id > 0))],
+    projectNames: dedupeProjectNames(rows.map((row) => row.projectName)),
+  };
+}
+
+function buildProjectScopeFromOptimizationComparisonSnapshot(
+  snapshot: OptimizationComparisonReportSnapshot,
+): ReportProjectScope {
+  return {
+    projectIds: [
+      ...new Set(
+        snapshot.projects
+          .map((project) => Number(project.projectId))
+          .filter((id) => Number.isFinite(id) && id > 0),
+      ),
+    ],
+    projectNames: dedupeProjectNames(snapshot.projects.map((project) => project.projectName)),
+  };
+}
+
+function resolveReportProjectScope(
+  report?: DynamicReportResponsePayload | null,
+  fallbackProjectName?: string,
+): ReportProjectScope {
+  if (!report) {
+    return {
+      projectIds: [],
+      projectNames: dedupeProjectNames([fallbackProjectName]),
+    };
+  }
+
+  const requestProjectNames = Array.isArray(getValueByPath(report.metadata, 'request.project_names'))
+    ? dedupeProjectNames(getValueByPath(report.metadata, 'request.project_names') as Array<string | null | undefined>)
+    : [];
+  const requestProjectIds = Array.isArray(getValueByPath(report.metadata, 'request.selected_project_ids'))
+    ? [
+        ...new Set(
+          (getValueByPath(report.metadata, 'request.selected_project_ids') as unknown[])
+            .map((item) => Number(item))
+            .filter((id) => Number.isFinite(id) && id > 0),
+        ),
+      ]
+    : [];
+
+  if (requestProjectNames.length || requestProjectIds.length) {
+    return {
+      projectIds: requestProjectIds,
+      projectNames: requestProjectNames,
+    };
+  }
+
+  const optimizationComparisonSnapshot = extractOptimizationComparisonSnapshotFromReport(report);
+  if (optimizationComparisonSnapshot) {
+    return buildProjectScopeFromOptimizationComparisonSnapshot(optimizationComparisonSnapshot);
+  }
+
+  const snapshotProjectName =
+    extractSensitivityReportSnapshotFromReport(report)?.projectName ||
+    extractOptimizationSnapshotFromReport(report)?.projectName ||
+    extractHydraulicSnapshotFromReport(report)?.projectName ||
+    fallbackProjectName;
+
+  return {
+    projectIds: [],
+    projectNames: dedupeProjectNames([snapshotProjectName]),
+  };
+}
+
 function isAiReportHistory(record: Pick<CalculationHistory, 'calcType' | 'calcTypeName'>) {
   if (record.calcType && ARCHIVED_REPORT_TYPES.has(record.calcType as ReportType)) {
     return true;
@@ -1351,6 +1548,71 @@ function getHydraulicRiskItems(report: DynamicReportResponsePayload) {
 }
 
 function getHydraulicSuggestionItems(report: DynamicReportResponsePayload) {
+  const skillItems = report.aiAnalysis?.suggestions ?? [];
+  return skillItems.length ? skillItems : report.suggestions;
+}
+
+function getSensitivitySummaryItems(report: DynamicReportResponsePayload, fallback: string[] = []) {
+  const skillItems = report.aiAnalysis?.summary ?? [];
+  if (skillItems.length) {
+    return skillItems;
+  }
+  return report.summary.length ? report.summary : fallback;
+}
+
+function getSensitivityChangeAnalysisItems(report: DynamicReportResponsePayload, fallback: string[] = []) {
+  const skillItems = report.aiAnalysis?.changeAnalysis ?? [];
+  if (skillItems.length) {
+    return skillItems;
+  }
+  const legacySkillItems = report.aiAnalysis?.metricAnalysis ?? [];
+  if (legacySkillItems.length) {
+    return legacySkillItems;
+  }
+  return report.highlights.length ? report.highlights : fallback;
+}
+
+function getSensitivityRiskItems(report: DynamicReportResponsePayload) {
+  const skillItems = report.aiAnalysis?.riskIdentify ?? [];
+  if (skillItems.length) {
+    return skillItems;
+  }
+  const legacySkillItems = report.aiAnalysis?.riskJudgement ?? [];
+  return legacySkillItems.length ? legacySkillItems : report.risks;
+}
+
+function getSensitivitySuggestionItems(report: DynamicReportResponsePayload) {
+  const skillItems = report.aiAnalysis?.suggestions ?? [];
+  return skillItems.length ? skillItems : report.suggestions;
+}
+
+function getOptimizationSummaryItems(report: DynamicReportResponsePayload, fallback: string[] = []) {
+  const skillItems = report.aiAnalysis?.summary ?? [];
+  if (skillItems.length) {
+    return skillItems;
+  }
+  return report.summary.length ? report.summary : fallback;
+}
+
+function getOptimizationSchemeExplainItems(report: DynamicReportResponsePayload, fallback: string[] = []) {
+  const skillItems = report.aiAnalysis?.schemeExplain ?? [];
+  if (skillItems.length) {
+    return skillItems;
+  }
+  return report.highlights.length ? report.highlights : fallback;
+}
+
+function getOptimizationComparisonItems(report: DynamicReportResponsePayload, fallback: string[] = []) {
+  const skillItems = report.aiAnalysis?.comparison ?? [];
+  return skillItems.length ? skillItems : fallback;
+}
+
+function getOptimizationRiskItems(report: DynamicReportResponsePayload) {
+  const skillItems = report.aiAnalysis?.riskJudgement ?? [];
+  return skillItems.length ? skillItems : report.risks;
+}
+
+function getOptimizationSuggestionItems(report: DynamicReportResponsePayload) {
   const skillItems = report.aiAnalysis?.suggestions ?? [];
   return skillItems.length ? skillItems : report.suggestions;
 }
@@ -2194,22 +2456,31 @@ function renderOptimizationAiReportContentV2(
     report.abstract ||
     '本报告基于当前项目泵站优化计算结果自动生成，主要针对推荐泵组合方案的扬程匹配情况、末站压头保障能力、能耗水平、运行成本及整体可行性进行分析，为泵站运行调度和方案选择提供参考。';
 
-  const summaryItems = report.summary.length
-    ? report.summary
-    : [
-        `本次泵站优化分析基于当前工况参数，对系统运行所需扬程、压降、末站压力以及能耗成本进行了综合评估。`,
-        `结果显示，系统推荐泵组合为 ${recommendedCombination}，对应总扬程为 ${formatValue(totalHead, 'm')}，总压降为 ${formatValue(totalPressureDrop, 'm')}，末站进站压头为 ${formatValue(endStationInPressure, 'm')}，方案可行性判定为 ${feasibilityText}。`,
-        `同时，该方案年能耗为 ${formatValue(totalEnergyConsumption, 'kWh')}，总成本为 ${formatValue(totalCost, '元')}。整体来看，当前推荐方案能够在满足运行要求的基础上兼顾一定的经济性与实施可行性。`,
-      ];
+  const summaryFallbackItems = [
+    `本次泵站优化分析基于当前工况参数，对系统运行所需扬程、压降、末站压力以及能耗成本进行了综合评估。`,
+    `结果显示，系统推荐泵组合为 ${recommendedCombination}，对应总扬程为 ${formatValue(totalHead, 'm')}，总压降为 ${formatValue(totalPressureDrop, 'm')}，末站进站压头为 ${formatValue(endStationInPressure, 'm')}，方案可行性判定为 ${feasibilityText}。`,
+    `同时，该方案年能耗为 ${formatValue(totalEnergyConsumption, 'kWh')}，总成本为 ${formatValue(totalCost, '元')}。整体来看，当前推荐方案能够在满足运行要求的基础上兼顾一定的经济性与实施可行性。`,
+  ];
+  const summaryItems = getOptimizationSummaryItems(report, summaryFallbackItems);
 
-  const keyFindingItems = report.highlights.length
-    ? report.highlights
-    : [
-        `推荐泵组合为 ${recommendedCombination}，反映了系统在当前工况下所需的设备配置水平。`,
-        `总扬程 ${formatValue(totalHead, 'm')} 与总压降 ${formatValue(totalPressureDrop, 'm')} 共同决定了推荐方案需要覆盖的能量需求与损失水平。`,
-        `末站进站压头为 ${formatValue(endStationInPressure, 'm')}，该指标用于衡量推荐方案对末端压力的保障能力。`,
-        `推荐说明为：${recommendationText}。该说明直接反映了当前方案被选中的主要依据。`,
-      ];
+  const schemeExplainFallbackItems = [
+    `当前推荐方案为 ${recommendedCombination}，说明该组合更符合当前工况下的泵站运行需求。`,
+    `总扬程 ${formatValue(totalHead, 'm')} 与总压降 ${formatValue(totalPressureDrop, 'm')} 共同反映了该方案需要承担的能量供给与输送损失水平。`,
+    `末站进站压头为 ${formatValue(endStationInPressure, 'm')}，该指标直接关系到当前推荐方案对末端压力的保障能力。`,
+    `推荐说明为：${recommendationText}。这也是当前方案被优先采用的重要依据。`,
+  ];
+  const schemeExplainItems = getOptimizationSchemeExplainItems(report, schemeExplainFallbackItems);
+
+  const comparisonFallbackItems = [
+    `当前推荐方案为 ${recommendedCombination}，优先原因在于其在可行性、压头保障与运行经济性之间取得了较为均衡的结果。`,
+    isFeasible === false
+      ? '现有返回结果显示当前推荐方案仍存在可行性不足，说明部分候选组合受约束条件限制较大。'
+      : '从当前结果看，推荐方案已满足基本运行要求，可作为当前工况下的优先候选组合。',
+    recommendationText !== '当前数据不足以支持进一步判断'
+      ? `结合系统返回的推荐说明，当前方案与其他候选组合相比更贴近本次优化目标：${recommendationText}。`
+      : '当前输出未返回完整候选方案明细，暂时无法展开逐项排序对比。',
+  ].filter((item): item is string => Boolean(item));
+  const comparisonItems = getOptimizationComparisonItems(report, comparisonFallbackItems);
 
   const riskFallbackItems = [
     isFeasible === false ? '当前方案可行性不足，说明推荐泵组合无法完全满足系统在当前工况下的运行需求。' : null,
@@ -2232,6 +2503,7 @@ function renderOptimizationAiReportContentV2(
       ? '综合当前优化结果，推荐方案在扬程匹配、末站压力保障及运行经济性方面整体表现较为稳定，暂未发现明显异常风险。'
       : null,
   ].filter((item): item is string => Boolean(item));
+  const riskItems = getOptimizationRiskItems(report);
 
   const suggestionFallbackItems = [
     endStationInPressure !== null && endStationInPressure < 10
@@ -2251,6 +2523,7 @@ function renderOptimizationAiReportContentV2(
       : null,
     '建议将泵站优化结果与水力分析和敏感性分析结果结合使用，在技术满足性、经济合理性和运行稳定性之间进行综合平衡。',
   ].filter((item): item is string => Boolean(item));
+  const suggestionItems = getOptimizationSuggestionItems(report);
 
   const basicInfoCards = filterMetricCards([
     { label: '项目名称', value: projectName, tone: 'blue', span: 6 },
@@ -2428,14 +2701,18 @@ function renderOptimizationAiReportContentV2(
             {renderSummaryList(summaryItems)}
           </Card>
 
-          <Card size="small" title="关键指标分析">
-            {renderSummaryList(keyFindingItems)}
+          <Card size="small" title="推荐方案解读">
+            {renderSummaryList(schemeExplainItems)}
+          </Card>
+
+          <Card size="small" title="方案对比分析">
+            {renderSummaryList(comparisonItems)}
           </Card>
 
           <Card size="small" title="风险识别">
-            {report.risks.length ? (
+            {riskItems.length ? (
               <Space direction="vertical" size={12} style={{ width: '100%' }}>
-                {report.risks.map((item, index) => (
+                {riskItems.map((item, index) => (
                   <div key={`${item.target}-${index}`}>
                     <Space wrap>
                       <Tag color="red">{item.level}</Tag>
@@ -2452,9 +2729,9 @@ function renderOptimizationAiReportContentV2(
           </Card>
 
           <Card size="small" title="优化建议">
-            {report.suggestions.length ? (
+            {suggestionItems.length ? (
               <Space direction="vertical" size={12} style={{ width: '100%' }}>
-                {report.suggestions.map((item, index) => (
+                {suggestionItems.map((item, index) => (
                   <div key={`${item.target}-${index}`}>
                     <Space wrap>
                       <Tag color="blue">{item.priority}</Tag>
@@ -2945,16 +3222,12 @@ function renderSensitivityAiReportContentV2(
         : '当前数据不足以支持进一步判断'
       : '当前数据不足以支持进一步判断';
 
-  const summaryItems = report.summary.length
-    ? report.summary
-    : [
+  const summaryFallbackItems = [
         `本次敏感性分析以 ${topVariableName} 作为敏感变量，基准工况下系统结果为 ${baseResultStatus}。`,
         `当前变量的敏感系数为 ${formatValue(sensitivityCoefficient)}，最大影响幅度为 ${formatValue(maxImpactPercent, '%')}，在影响程度排序中位列第 ${topRankNumber} 位。`,
         `整体来看，该变量对系统运行结果具有 ${sensitivityImpactLevel} 影响，是评估系统稳定性的重要因素之一。`,
       ];
-  const keyFindingItems = report.highlights.length
-    ? report.highlights
-    : [
+  const keyFindingFallbackItems = [
         `基准工况为 ${baseCondition}，可作为比较不同变化比例结果的参考基础。`,
         `${topVariableName} 的敏感系数为 ${formatValue(sensitivityCoefficient)}，属于${sensitivityImpactLevel}影响，应作为后续运行控制重点关注的参数。`,
         `随着 ${topVariableName} 变化，末站进站压力${pressureTrendText}，摩阻损失${frictionTrendText}。`,
@@ -2984,6 +3257,10 @@ function renderSensitivityAiReportContentV2(
       : null,
     flowRegimeChanged ? '建议在后续分析中增加流态临界区间校核，避免系统在运行波动中进入不稳定状态。' : null,
   ].filter((item): item is string => Boolean(item));
+  const summaryItems = getSensitivitySummaryItems(report, summaryFallbackItems);
+  const keyFindingItems = getSensitivityChangeAnalysisItems(report, keyFindingFallbackItems);
+  const riskItems = getSensitivityRiskItems(report);
+  const suggestionItems = getSensitivitySuggestionItems(report);
 
   const reportViewModel: SensitivitySmartReportPayload = {
     title: displayTitle,
@@ -3309,16 +3586,26 @@ function renderSensitivityAiReportContentV2(
           </Card>
 
           <Card size="small" title={SENSITIVITY_REPORT_PAGE_COPY.sectionTitles.riskRecognition}>
-            {report.risks.length ? (
+            {riskItems.length ? (
               <Space direction="vertical" size={12} style={{ width: '100%' }}>
-                {report.risks.map((item, index) => (
+                {riskItems.map((item, index) => (
                   <div key={`${item.target}-${index}`}>
                     <Space wrap>
-                      <Tag color="red">{item.level}</Tag>
+                      <Tag
+                        color={
+                          item.level === '高' || String(item.level).toLowerCase() === 'high'
+                            ? 'red'
+                            : item.level === '低' || String(item.level).toLowerCase() === 'low'
+                              ? 'blue'
+                              : 'orange'
+                        }
+                      >
+                        {item.level}
+                      </Tag>
                       <Text strong>{item.target}</Text>
-                      <Text>{item.riskType}</Text>
+                      <Text>{item.code || item.riskType}</Text>
                     </Space>
-                    <Paragraph style={{ margin: '8px 0 0' }}>{item.reason}</Paragraph>
+                    <Paragraph style={{ margin: '8px 0 0' }}>{item.message || item.reason}</Paragraph>
                   </div>
                 ))}
               </Space>
@@ -3328,16 +3615,26 @@ function renderSensitivityAiReportContentV2(
           </Card>
 
           <Card size="small" title={SENSITIVITY_REPORT_PAGE_COPY.sectionTitles.optimizationSuggestions}>
-            {report.suggestions.length ? (
+            {suggestionItems.length ? (
               <Space direction="vertical" size={12} style={{ width: '100%' }}>
-                {report.suggestions.map((item, index) => (
+                {suggestionItems.map((item, index) => (
                   <div key={`${item.target}-${index}`}>
                     <Space wrap>
-                      <Tag color="blue">{item.priority}</Tag>
+                      <Tag
+                        color={
+                          item.priority === 'high'
+                            ? 'red'
+                            : item.priority === 'low'
+                              ? 'blue'
+                              : 'gold'
+                        }
+                      >
+                        {item.priority}
+                      </Tag>
                       <Text strong>{item.target}</Text>
                     </Space>
                     <Paragraph style={{ margin: '8px 0 0' }}>
-                      {item.action}。原因：{item.reason}。预期：{item.expected}
+                      {item.text || item.action}。原因：{item.reason}。预期：{item.expected}
                     </Paragraph>
                   </div>
                 ))}
@@ -3540,13 +3837,13 @@ export default function ReportPreview() {
   const [searchKeyword, setSearchKeyword] = useState('');
   const [selectedProjectIds, setSelectedProjectIds] = useState<number[]>([]);
   const [selectedCalcType, setSelectedCalcType] = useState<string>(ALL_CALC_TYPE_OPTION);
-  const [reportType, setReportType] = useState<ReportType>('AI_REPORT');
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs] | null>(null);
   const [report, setReport] = useState<DynamicReportResponsePayload | null>(null);
   const [reportError, setReportError] = useState('');
   const [detailPreview, setDetailPreview] = useState<DetailPreviewState>(null);
   const [selectedHistoryKeys, setSelectedHistoryKeys] = useState<number[]>([]);
   const [deletingHistoryIds, setDeletingHistoryIds] = useState<number[]>([]);
+  const reportType = DEFAULT_REPORT_TYPE;
   const latestHydraulicLink = useCalculationLinkStore((state) => state.latestByType.HYDRAULIC);
   const latestOptimizationLink = useCalculationLinkStore((state) => state.latestByType.OPTIMIZATION);
   const latestSensitivityLink = useCalculationLinkStore((state) => state.latestByType.SENSITIVITY);
@@ -3594,6 +3891,7 @@ export default function ReportPreview() {
       ...Array.from(
         new Map(
           histories
+            .filter((item) => !isAiReportHistory(item))
             .map((item) => {
               const value = item.calcType || item.calcTypeName;
               const label = item.calcTypeName || item.calcType || '未知类型';
@@ -3788,11 +4086,20 @@ export default function ReportPreview() {
       reportHistoryRows
         .map((item) => {
           const reportPayload = extractDynamicReportFromOutput(item.outputResult);
+          const projectScope = resolveReportProjectScope(reportPayload, item.projectName);
+          const comparisonCount = getReportComparisonCount(reportPayload);
+          const reportTitle = buildScopedReportTitle({
+            projectNames: projectScope.projectNames,
+            reportKind: getReportKindFromPayload(reportPayload),
+            comparisonCount,
+            fallbackTitle: reportPayload?.title || `${item.projectName || '未命名项目'}智能报告`,
+          });
 
           return {
             ...item,
-            reportTitle: reportPayload?.title || `${item.projectName || '未命名项目'}智能报告`,
-            reportAbstract: reportPayload?.abstract || item.remark || '已归档的智能报告记录',
+            projectName: buildProjectScopeBadge(projectScope.projectNames, item.projectName || '未命名项目'),
+            reportTitle,
+            reportAbstract: normalizeReportAbstract(reportPayload?.abstract || item.remark, comparisonCount),
           };
         }),
     [reportHistoryRows],
@@ -4255,7 +4562,7 @@ export default function ReportPreview() {
   );
 
   const handleGenerate = useCallback(async () => {
-    const activeProjectIds = selectedProjectIds.length ? selectedProjectIds : allProjectIds;
+    let activeProjectIds = selectedProjectIds.length ? selectedProjectIds : allProjectIds;
 
     if (!activeProjectIds.length) {
       message.warning('暂无可用项目。');
@@ -4267,9 +4574,19 @@ export default function ReportPreview() {
     setReportError('');
 
     try {
-      const selectedNames = projects
+      let selectedNames = projects
         .filter((project) => activeProjectIds.includes(project.proId))
         .map((project) => project.name);
+      let reportKind: ReportKind = 'generic';
+      const selectedSensitivityRows = selectedGenerationRecords.filter(
+        (record) => record.calcType === 'SENSITIVITY' || record.calcTypeLabel.includes('敏感'),
+      );
+      const selectedOptimizationRows = selectedGenerationRecords.filter(
+        (record) => record.calcType === 'OPTIMIZATION' || record.calcTypeLabel.includes('优化'),
+      );
+      const selectedHydraulicRows = selectedGenerationRecords.filter(
+        (record) => record.calcType === 'HYDRAULIC' || record.calcTypeLabel.includes('姘村姏'),
+      );
 
       const hydraulicPrompt = preferredHydraulicSnapshot
         ? '请基于真实水力计算结果生成水力分析智能报告，按以下结构组织：第一块报告头（标题、项目名、生成时间、分析类型）；第二块参数表（流量、密度、粘度、长度、管径、粗糙度、高程、泵参数）；第三块结果卡片（雷诺数、流态、摩阻损失、水力坡降、总扬程、末站进站压头）；第四块图表（压头变化图、扬程构成图）；第五块 AI 分析（结果摘要、指标分析、风险判断、运行建议）。'
@@ -4283,6 +4600,64 @@ export default function ReportPreview() {
           : undefined;
       const normalizedSensitivityPrompt = preferredSensitivitySnapshot ? buildSensitivityUserPrompt() : undefined;
       const activePrompt = normalizedSensitivityPrompt ?? normalizedOptimizationPrompt ?? normalizedHydraulicPrompt;
+
+      if (preferredOptimizationComparisonSnapshot) {
+        const projectScope = buildProjectScopeFromOptimizationComparisonSnapshot(preferredOptimizationComparisonSnapshot);
+        if (projectScope.projectIds.length) {
+          activeProjectIds = projectScope.projectIds;
+        }
+        if (projectScope.projectNames.length) {
+          selectedNames = projectScope.projectNames;
+        }
+        reportKind = 'optimization-comparison';
+      } else if (preferredSensitivitySnapshot) {
+        const projectScope = buildProjectScopeFromHistoryRows(
+          selectedSensitivityRows.length > 1
+            ? selectedSensitivityRows
+            : selectedSensitivityRecord
+              ? [selectedSensitivityRecord]
+              : [],
+        );
+        if (projectScope.projectIds.length) {
+          activeProjectIds = projectScope.projectIds;
+        }
+        if (projectScope.projectNames.length) {
+          selectedNames = projectScope.projectNames;
+        }
+        reportKind = 'sensitivity';
+      } else if (preferredOptimizationSnapshot) {
+        const projectScope = buildProjectScopeFromHistoryRows(
+          selectedOptimizationRows.length > 1
+            ? selectedOptimizationRows
+            : selectedOptimizationRecord
+              ? [selectedOptimizationRecord]
+              : [],
+        );
+        if (projectScope.projectIds.length) {
+          activeProjectIds = projectScope.projectIds;
+        }
+        if (projectScope.projectNames.length) {
+          selectedNames = projectScope.projectNames;
+        }
+        reportKind = 'optimization';
+      } else if (preferredHydraulicSnapshot) {
+        const projectScope = buildProjectScopeFromHistoryRows(
+          selectedHydraulicRows.length > 1
+            ? selectedHydraulicRows
+            : selectedHydraulicRecord
+              ? [selectedHydraulicRecord]
+              : [],
+        );
+        if (projectScope.projectIds.length) {
+          activeProjectIds = projectScope.projectIds;
+        }
+        if (projectScope.projectNames.length) {
+          selectedNames = projectScope.projectNames;
+        }
+        reportKind = 'hydraulic';
+      }
+
+      selectedNames = dedupeProjectNames(selectedNames);
       const activeFocuses = preferredSensitivitySnapshot
         ? ['基准结果', '敏感系数', '最大影响幅度', '排名', '压力变化趋势', '摩阻损失变化趋势', '流态变化']
         : preferredOptimizationComparisonSnapshot
@@ -4294,7 +4669,7 @@ export default function ReportPreview() {
               : undefined;
       const reportTypeLabel = preferredOptimizationComparisonSnapshot
         ? '多项目泵站优化对比报告'
-        : REPORT_TYPE_OPTIONS.find((item) => item.value === reportType)?.label;
+        : '智能报告';
       const result = await agentApi.generateDynamicReport({
         selected_project_ids: activeProjectIds,
         project_names: selectedNames,
@@ -4311,23 +4686,39 @@ export default function ReportPreview() {
         custom_end: dateRange ? dateRange[1].format('YYYY-MM-DD') : undefined,
         focuses: activeFocuses,
         user_prompt: activePrompt,
+        hydraulic_snapshot: preferredHydraulicSnapshot ?? undefined,
+        optimization_snapshot:
+          preferredOptimizationComparisonSnapshot ? undefined : preferredOptimizationSnapshot ?? undefined,
       });
 
-      const enrichedReport: DynamicReportResponsePayload = preferredSensitivitySnapshot
+      const selectedReportCount = Math.max(selectedGenerationRecords.length, 1);
+      const optimizationComparisonPresentation = preferredOptimizationComparisonSnapshot
+        ? createOptimizationComparisonReportPresentation(result, preferredOptimizationComparisonSnapshot)
+        : null;
+
+      const reportWithSnapshots: DynamicReportResponsePayload = preferredSensitivitySnapshot
         ? {
             ...result,
             metadata: {
               ...(result.metadata ?? {}),
+              selected_report_count: selectedReportCount,
               sensitivitySnapshot: preferredSensitivitySnapshot,
             },
           }
         : preferredOptimizationComparisonSnapshot
-          ? createOptimizationComparisonReportPresentation(result, preferredOptimizationComparisonSnapshot)
+          ? {
+              ...(optimizationComparisonPresentation ?? result),
+              metadata: {
+                ...(optimizationComparisonPresentation?.metadata ?? {}),
+                selected_report_count: selectedReportCount,
+              },
+            }
         : preferredOptimizationSnapshot
           ? {
               ...result,
               metadata: {
                 ...(result.metadata ?? {}),
+                selected_report_count: selectedReportCount,
                 optimizationSnapshot: preferredOptimizationSnapshot,
               },
             }
@@ -4336,10 +4727,28 @@ export default function ReportPreview() {
               ...result,
               metadata: {
                 ...(result.metadata ?? {}),
+                selected_report_count: selectedReportCount,
                 hydraulicSnapshot: preferredHydraulicSnapshot,
               },
             }
-          : result;
+          : {
+              ...result,
+              metadata: {
+                ...(result.metadata ?? {}),
+                selected_report_count: selectedReportCount,
+              },
+            };
+
+      const enrichedReport: DynamicReportResponsePayload = {
+        ...reportWithSnapshots,
+        title: buildScopedReportTitle({
+          projectNames: selectedNames,
+          reportKind,
+          comparisonCount: selectedReportCount,
+          fallbackTitle: reportWithSnapshots.title,
+        }),
+        abstract: normalizeReportAbstract(reportWithSnapshots.abstract, selectedReportCount),
+      };
 
       setReport(enrichedReport);
       setDetailPreview({ mode: 'generated', report: enrichedReport });
@@ -4400,8 +4809,11 @@ export default function ReportPreview() {
     preferredOptimizationSnapshot,
     preferredSensitivitySnapshot,
     projects,
-    reportType,
+    selectedGenerationRecords,
+    selectedHydraulicRecord,
+    selectedOptimizationRecord,
     selectedProjectIds,
+    selectedSensitivityRecord,
   ]);
 
   return (
@@ -4514,14 +4926,6 @@ export default function ReportPreview() {
                   options={calcTypeOptions}
                 />
               </Col>
-              <Col xs={24} md={12} xl={4}>
-                <Select
-                  style={{ width: '100%' }}
-                  value={reportType}
-                  onChange={(value) => setReportType(value)}
-                  options={REPORT_TYPE_OPTIONS}
-                />
-              </Col>
               <Col xs={24} md={24} xl={6}>
                 <RangePicker
                   style={{ width: '100%' }}
@@ -4547,7 +4951,6 @@ export default function ReportPreview() {
                     setSearchKeyword('');
                     setSelectedProjectIds([]);
                     setSelectedCalcType(ALL_CALC_TYPE_OPTION);
-                    setReportType('AI_REPORT');
                     setDateRange(null);
                     setReport(null);
                     setReportError('');

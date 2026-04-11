@@ -18,7 +18,7 @@ from .section_generator import (
     build_suggestion_items,
     build_summary,
 )
-from .skills import build_report_ai_sections
+from .skills import build_optimization_report_ai_sections, build_report_ai_sections, build_sensitivity_report_ai_sections
 
 
 def _title_prefix(projects: list[dict]) -> str:
@@ -35,6 +35,19 @@ def _is_hydraulic_report(request: DynamicReportRequest) -> bool:
     focuses = {str(item).strip() for item in request.focuses}
     hydraulic_focuses = {"雷诺数", "流态", "摩阻损失", "水力坡降", "总扬程", "末站进站压头"}
     return "水力" in prompt or bool(hydraulic_focuses & focuses)
+
+
+def _is_sensitivity_report(request: DynamicReportRequest) -> bool:
+    if request.sensitivity_snapshot:
+        return True
+    prompt = str(request.user_prompt or "")
+    focuses = {str(item).strip() for item in request.focuses}
+    sensitivity_focuses = {"基准结果", "敏感系数", "最大影响幅度", "排名", "压力变化趋势", "摩阻损失变化趋势", "流态变化"}
+    return "敏感性" in prompt or bool(sensitivity_focuses & focuses)
+
+
+def _is_optimization_report(request: DynamicReportRequest) -> bool:
+    return bool(request.optimization_snapshot)
 
 
 def generate_report(request: DynamicReportRequest) -> DynamicReportResponse:
@@ -98,16 +111,27 @@ def generate_report(request: DynamicReportRequest) -> DynamicReportResponse:
     final_highlights = [str(item).strip() for item in polished.get("highlights") or highlights if str(item).strip()]
     final_conclusion = str(polished.get("conclusion") or conclusion).strip()
 
-    ai_analysis = build_report_ai_sections(report_context) if _is_hydraulic_report(request) else DynamicReportAiAnalysis()
+    if _is_sensitivity_report(request):
+        ai_analysis = build_sensitivity_report_ai_sections(report_context)
+    elif _is_optimization_report(request):
+        ai_analysis = build_optimization_report_ai_sections(report_context)
+    elif _is_hydraulic_report(request):
+        ai_analysis = build_report_ai_sections(report_context)
+    else:
+        ai_analysis = DynamicReportAiAnalysis()
+
+    ai_summary = ai_analysis.summary
+    ai_highlights = ai_analysis.schemeExplain or ai_analysis.comparison or ai_analysis.metricAnalysis or ai_analysis.changeAnalysis
+    ai_risks = ai_analysis.riskJudgement or ai_analysis.riskIdentify
 
     return DynamicReportResponse(
         title=final_title,
         abstract=final_abstract,
         source="hybrid" if polished else "rules",
         aiAnalysis=ai_analysis,
-        summary=ai_analysis.summary if ai_analysis.summary else final_summary,
-        highlights=ai_analysis.metricAnalysis if ai_analysis.metricAnalysis else final_highlights,
-        risks=ai_analysis.riskJudgement if ai_analysis.riskJudgement else risks,
+        summary=ai_summary if ai_summary else final_summary,
+        highlights=ai_highlights if ai_highlights else final_highlights,
+        risks=ai_risks if ai_risks else risks,
         suggestions=ai_analysis.suggestions if ai_analysis.suggestions else suggestions,
         conclusion=final_conclusion,
         sections=sections,
