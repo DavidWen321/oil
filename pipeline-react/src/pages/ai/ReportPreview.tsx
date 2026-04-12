@@ -984,7 +984,7 @@ function buildHydraulicUserPrompt() {
     '你是一名管道水力分析专家。请基于当前真实水力计算结果、规则诊断结果和图表事实，对这次水力分析报告做专业解读。',
     '要求：只能基于输入事实分析，不得编造未提供的数据或结论。',
     '请重点解释雷诺数、流态、摩阻损失、水力坡降、总扬程、末站进站压头之间的关系，并指出当前最值得关注的风险与运行建议。',
-    '输出结构保持固定，仍然服务于报告头、参数表、结果卡片、图表和 AI 分析这套页面，但 AI 分析内容不要写成模板套话，要体现当前这次计算结果的具体特征。',
+    '输出结构保持固定，仍然服务于基本信息、参数表、结果卡片、图表和 AI 分析这套页面，但 AI 分析内容不要写成模板套话，要体现当前这次计算结果的具体特征。',
     `最重要的一句话请围绕这层意思展开：${HYDRAULIC_REPORT_CORE_SENTENCE}`,
   ].join('');
 }
@@ -1628,13 +1628,6 @@ function renderHydraulicAiReportContent(report: DynamicReportResponsePayload, sn
   const riskItems = getHydraulicRiskItems(report);
   const suggestionItems = getHydraulicSuggestionItems(report);
 
-  const headerCards = filterMetricCards([
-    { label: '标题', value: report.title || '-', tone: 'blue', span: 6 },
-    { label: '项目名', value: snapshot.projectName || '-', tone: 'cyan', span: 6 },
-    { label: '生成时间', value: formatTime(snapshot.generatedAt ?? undefined), tone: 'green', span: 6 },
-    { label: '分析类型', value: '水力分析', tone: 'purple', span: 6 },
-  ]);
-
   const parameterCards = filterMetricCards([
     { label: '流量', value: formatValue(pickFirstValue(inputSources, ['flowRate']), 'm³/h'), tone: 'blue' },
     { label: '密度', value: formatValue(pickFirstValue(inputSources, ['density']), 'kg/m³'), tone: 'cyan' },
@@ -1714,17 +1707,6 @@ function renderHydraulicAiReportContent(report: DynamicReportResponsePayload, sn
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <Card size="small" title="报告头">
-        {renderDetailMetricCards(headerCards, {
-          equalWidth: true,
-          singleLine: true,
-          compact: true,
-          minColumnWidth: 180,
-          minHeight: 88,
-          valueFontSize: 'clamp(14px, 1.8vw, 18px)',
-        })}
-      </Card>
-
       <Card size="small" title="参数表">
         {renderDetailMetricCards(parameterCards, {
           singleLine: true,
@@ -1837,13 +1819,6 @@ function renderHydraulicAiReportContentV2(report: DynamicReportResponsePayload, 
   const riskItems = getHydraulicRiskItems(report);
   const suggestionItems = getHydraulicSuggestionItems(report);
 
-  const headerCards = filterMetricCards([
-    { label: '标题', value: report.title || '-', tone: 'blue', span: 6 },
-    { label: '项目名', value: snapshot.projectName || '-', tone: 'cyan', span: 6 },
-    { label: '生成时间', value: formatTime(snapshot.generatedAt ?? undefined), tone: 'green', span: 6 },
-    { label: '分析类型', value: '水力分析', tone: 'purple', span: 6 },
-  ]);
-
   const parameterCards = filterMetricCards([
     { label: '流量', value: formatValue(pickFirstValue(inputSources, ['flowRate']), 'm³/h'), tone: 'blue' },
     { label: '密度', value: formatValue(pickFirstValue(inputSources, ['density']), 'kg/m³'), tone: 'cyan' },
@@ -1935,17 +1910,6 @@ function renderHydraulicAiReportContentV2(report: DynamicReportResponsePayload, 
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <Card size="small" title="报告头">
-        {renderDetailMetricCards(headerCards, {
-          equalWidth: true,
-          singleLine: true,
-          compact: true,
-          minColumnWidth: 180,
-          minHeight: 88,
-          valueFontSize: 'clamp(14px, 1.8vw, 18px)',
-        })}
-      </Card>
-
       <Card size="small" title="参数表">
         {renderDetailMetricCards(parameterCards, {
           singleLine: true,
@@ -2103,13 +2067,6 @@ function renderOptimizationComparisonAiReportContent(
   const latestProject = [...snapshot.projects]
     .filter((item) => item.generatedAt)
     .sort((a, b) => dayjs(b.generatedAt ?? 0).valueOf() - dayjs(a.generatedAt ?? 0).valueOf())[0];
-
-  const headerCards = filterMetricCards([
-    { label: '报告标题', value: report.title || '多项目泵站优化对比报告', tone: 'blue', span: 12 },
-    { label: '对比项目数', value: `${metrics.length} 个`, tone: 'cyan', span: 4 },
-    { label: '综合最优', value: bestProject?.projectName || '-', tone: 'green', span: 4 },
-    { label: '最高风险', value: riskLeader ? `${riskLeader.projectName}（${riskLeader.riskLevel}）` : '-', tone: 'amber', span: 4 },
-  ]);
 
   const resultCards = filterMetricCards([
     {
@@ -2337,17 +2294,6 @@ function renderOptimizationComparisonAiReportContent(
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <Card size="small" title="报告头">
-        {renderDetailMetricCards(headerCards, {
-          equalWidth: true,
-          singleLine: true,
-          compact: true,
-          minColumnWidth: 180,
-          minHeight: 88,
-          valueFontSize: 'clamp(14px, 1.8vw, 18px)',
-        })}
-      </Card>
-
       <Card size="small" title="综合结果卡片">
         {renderDetailMetricCards(resultCards, {
           singleLine: true,
@@ -4589,7 +4535,7 @@ export default function ReportPreview() {
       );
 
       const hydraulicPrompt = preferredHydraulicSnapshot
-        ? '请基于真实水力计算结果生成水力分析智能报告，按以下结构组织：第一块报告头（标题、项目名、生成时间、分析类型）；第二块参数表（流量、密度、粘度、长度、管径、粗糙度、高程、泵参数）；第三块结果卡片（雷诺数、流态、摩阻损失、水力坡降、总扬程、末站进站压头）；第四块图表（压头变化图、扬程构成图）；第五块 AI 分析（结果摘要、指标分析、风险判断、运行建议）。'
+        ? '请基于真实水力计算结果生成水力分析智能报告，按以下结构组织：第一块参数表（流量、密度、粘度、长度、管径、粗糙度、高程、泵参数）；第二块结果卡片（雷诺数、流态、摩阻损失、水力坡降、总扬程、末站进站压头）；第三块图表（压头变化图、扬程构成图）；第四块 AI 分析（结果摘要、指标分析、风险判断、运行建议）。'
         : undefined;
 
       const normalizedHydraulicPrompt = preferredHydraulicSnapshot ? buildHydraulicUserPrompt() : hydraulicPrompt;

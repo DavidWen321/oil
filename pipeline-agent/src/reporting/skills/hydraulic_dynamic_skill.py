@@ -93,6 +93,67 @@ def _extract_json_object(text: str) -> dict[str, Any]:
     return parsed if isinstance(parsed, dict) else {}
 
 
+def _clean_headline(value: Any) -> str:
+    text = str(value or "").strip()
+    return text
+
+
+def _merge_summary(headline: str, summary: list[str], fallback: list[str], limit: int = 4) -> list[str]:
+    items: list[str] = []
+    if headline:
+        items.append(headline)
+    for line in summary:
+        text = str(line or "").strip()
+        if text and text not in items:
+            items.append(text)
+        if len(items) >= limit:
+            break
+    if items:
+        return items[:limit]
+    return fallback
+
+
+def _build_chart_facts(
+    inlet_pressure: float | None,
+    first_station_out_pressure: float | None,
+    end_station_pressure: float | None,
+    friction_head_loss: float | None,
+    total_head: float | None,
+    elevation_diff: float | None,
+    friction_share: float | None,
+    head_drop: float | None,
+) -> list[str]:
+    facts: list[str] = []
+
+    if first_station_out_pressure is not None and end_station_pressure is not None:
+        if head_drop is not None and head_drop > 0:
+            if end_station_pressure > 0:
+                if first_station_out_pressure and end_station_pressure / first_station_out_pressure <= 0.6:
+                    facts.append("压头变化图显示：首站出站压头达到峰值后，末站进站压头虽保持为正，但沿程衰减较明显。")
+                else:
+                    facts.append("压头变化图显示：首站出站压头高于末站进站压头，沿程压头损失客观存在。")
+            else:
+                facts.append("压头变化图显示：末站进站压头偏低甚至接近零，末端压力保障能力需要重点复核。")
+        elif inlet_pressure is not None and end_station_pressure >= inlet_pressure:
+            facts.append("压头变化图显示：泵站扬程补偿后末站进站压头仍保持在较稳定区间。")
+
+    if total_head is not None and friction_head_loss is not None and friction_share is not None:
+        if friction_share >= 0.45:
+            facts.append("扬程构成图显示：摩阻损失占总扬程比重偏高，输送阻力已成为当前工况的重要影响因素。")
+        elif friction_share >= 0.25:
+            facts.append("扬程构成图显示：总扬程中已有较明显比例用于覆盖沿程摩阻损失。")
+        else:
+            facts.append("扬程构成图显示：总扬程主要用于满足高程差与末端压力要求，摩阻损失占比相对可控。")
+
+    if elevation_diff is not None and total_head is not None:
+        if elevation_diff > 0 and total_head > elevation_diff:
+            facts.append("从扬程构成看，系统除克服高程抬升外，还需承担额外摩阻与末端压力保障需求。")
+        elif elevation_diff <= 0:
+            facts.append("从高程条件看，沿线地形抬升不是主导矛盾，当前更应关注阻力损失与压力分配。")
+
+    return facts[:4]
+
+
 def _build_fallback(ctx: dict[str, Any]) -> DynamicReportAiAnalysis:
     return DynamicReportAiAnalysis(
         summary=summary_skill(ctx),
@@ -133,6 +194,17 @@ def _build_fact_pack(ctx: dict[str, Any]) -> dict[str, Any]:
     head_drop = None
     if first_station_out_pressure is not None and end_station_pressure is not None:
         head_drop = first_station_out_pressure - end_station_pressure
+
+    chart_facts = _build_chart_facts(
+        inlet_pressure=inlet_pressure,
+        first_station_out_pressure=first_station_out_pressure,
+        end_station_pressure=end_station_pressure,
+        friction_head_loss=friction_head_loss,
+        total_head=total_head,
+        elevation_diff=elevation_diff,
+        friction_share=friction_share,
+        head_drop=head_drop,
+    )
 
     return {
         "reportType": "hydraulic",
@@ -185,6 +257,7 @@ def _build_fact_pack(ctx: dict[str, Any]) -> dict[str, Any]:
         "constraintChecks": [row for row in _as_list(diagnosis.get("constraints")) if isinstance(row, dict)][:4],
         "recommendationHints": [row for row in _as_list(diagnosis.get("recommendations")) if isinstance(row, dict)][:4],
         "decisionSummary": str(decision.get("summary") or "").strip(),
+        "chartFacts": chart_facts,
     }
 
 
@@ -198,7 +271,7 @@ def _coerce_risks(value: Any, fallback: list[ReportRiskItem]) -> list[ReportRisk
             continue
         target = str(row.get("target") or row.get("name") or "-").strip() or "-"
         risk_type = str(row.get("riskType") or row.get("code") or row.get("type") or "hydraulic_risk").strip()
-        reason = str(row.get("reason") or row.get("message") or "").strip()
+        reason = str(row.get("reason") or row.get("judgement") or row.get("message") or "").strip()
         suggestion = str(
             row.get("suggestion")
             or row.get("action")
@@ -210,11 +283,11 @@ def _coerce_risks(value: Any, fallback: list[ReportRiskItem]) -> list[ReportRisk
             ReportRiskItem(
                 target=target,
                 riskType=risk_type or "hydraulic_risk",
-                level=_normalize_level(row.get("level")),
+                level=_normalize_level(row.get("level") or row.get("priority")),
                 reason=reason,
                 suggestion=suggestion or "\u5efa\u8bae\u7ed3\u5408\u5f53\u524d\u5de5\u51b5\u590d\u6838\u3002",
                 code=str(row.get("code") or risk_type or "").strip() or None,
-                message=str(row.get("message") or reason).strip() or None,
+                message=str(row.get("judgement") or row.get("message") or reason).strip() or None,
             )
         )
 
@@ -231,7 +304,7 @@ def _coerce_suggestions(value: Any, fallback: list[ReportSuggestionItem]) -> lis
             continue
         target = str(row.get("target") or row.get("name") or "-").strip() or "-"
         reason = str(row.get("reason") or "").strip()
-        action = str(row.get("action") or row.get("text") or "").strip()
+        action = str(row.get("action") or row.get("advice") or row.get("text") or "").strip()
         expected = str(row.get("expected") or "").strip()
         if not action:
             continue
@@ -242,7 +315,7 @@ def _coerce_suggestions(value: Any, fallback: list[ReportSuggestionItem]) -> lis
                 action=action,
                 expected=expected or "\u7528\u4e8e\u964d\u4f4e\u5f53\u524d\u5de5\u51b5\u4e0b\u7684\u8fd0\u884c\u4e0d\u786e\u5b9a\u6027\u3002",
                 priority=_normalize_priority(row.get("priority")),
-                text=str(row.get("text") or action).strip() or None,
+                text=str(row.get("text") or row.get("advice") or action).strip() or None,
             )
         )
 
@@ -266,20 +339,26 @@ def build_hydraulic_report_ai_sections(ctx: dict[str, Any]) -> DynamicReportAiAn
         )
         prompt = "\n".join(
             [
-                "You are a senior pipeline hydraulic analyst.",
-                "Write all narrative text in Simplified Chinese.",
-                "Generate only the AI analysis blocks for a hydraulic report page.",
-                "Use only the supplied facts. Do not invent missing projects, metrics, risks, causes or recommendations.",
-                "Keep the structure fixed but make the content specific to the current hydraulic calculation.",
-                "If evidence is insufficient, say the data is insufficient instead of guessing.",
-                "Return JSON only with this schema:",
-                '{"summary":["..."],"metricAnalysis":["..."],"riskJudgement":[{"target":"...","riskType":"...","level":"high|medium|low","reason":"...","suggestion":"..."}],"suggestions":[{"target":"...","reason":"...","action":"...","expected":"...","priority":"high|medium|low"}]}',
-                "Rules:",
-                "- summary: 2 to 4 concise bullets about the current result and operating context.",
-                "- metricAnalysis: 2 to 4 bullets explaining the hydraulic meaning of the current Reynolds number, flow regime, friction head loss, hydraulic slope, total head or end-station inlet pressure when evidence exists.",
-                "- riskJudgement: prioritize supplied rule risks and hard constraints; do not create more than 4 items.",
-                "- suggestions: give concrete operating checks or adjustments that follow from the supplied risks and metric behavior; do not create more than 4 items.",
-                "- If there is no clear risk, return empty arrays for riskJudgement and suggestions.",
+                "你是一名管道输送与泵站运行分析专家，擅长基于真实计算结果、图表事实和规则识别结果，生成专业、可信、面向工程决策的水力分析报告。",
+                "你的任务不是简单复述数据，而是基于输入事实做出有依据的分析判断。",
+                "请严格遵守以下规则：",
+                "1. 只能依据输入中提供的真实结果、图表事实、规则识别结果和方案信息进行分析，不得编造未提供的数据、结论或背景。",
+                "2. 不要把报告写成固定模板填空，也不要机械重复无分析价值的统计句式。",
+                "3. 优先提炼本次最值得关注的核心问题，再围绕该问题展开解释。",
+                "4. 必须体现图表洞察，说明压头变化图、扬程构成图等图表反映出的运行状态。",
+                "5. 必须对风险进行主次判断，而不是仅仅罗列风险项。",
+                "6. 建议部分必须包含建议做什么、为什么这样做、预期会带来什么改善。",
+                "7. 语言要专业、清晰、自然，风格接近工程分析报告。",
+                "8. 若输入事实不足以支持某个判断，应明确说明“基于现有结果可初步判断”，不得强行下结论。",
+                "9. 输出必须是合法 JSON，不要输出 markdown，不要加解释，不要出现多余前后缀。",
+                "输出目标：",
+                '{"headlineConclusion":"一句话核心结论","summary":["..."],"chartInsights":["..."],"riskPriorities":[{"target":"...","judgement":"...","reason":"...","level":"high|medium|low"}],"suggestions":[{"target":"...","advice":"...","reason":"...","expected":"...","priority":"high|medium|low"}]}',
+                "补充要求：",
+                "- headlineConclusion 只写 1 句话，直接指出当前最值得关注的核心问题或核心判断。",
+                "- summary 写 2 到 4 条结果摘要，围绕当前工况、关键指标和结论展开。",
+                "- chartInsights 写 2 到 4 条图表洞察，重点解释压头变化和扬程构成反映出的运行状态。",
+                "- riskPriorities 最多 4 项，按优先级给出风险判断；若风险不明显，可返回空数组。",
+                "- suggestions 最多 4 项，每项都要包含 advice、reason、expected；若依据不足，可返回空数组。",
                 json.dumps({"facts": fact_pack}, ensure_ascii=False),
             ]
         )
@@ -289,9 +368,12 @@ def build_hydraulic_report_ai_sections(ctx: dict[str, Any]) -> DynamicReportAiAn
         logger.warning("Hydraulic dynamic AI analysis fell back to template output: %s", exc)
         return fallback
 
-    summary = _clean_lines(parsed.get("summary"), 4) or fallback.summary
-    metric_analysis = _clean_lines(parsed.get("metricAnalysis"), 4) or fallback.metricAnalysis
-    risk_judgement = _coerce_risks(parsed.get("riskJudgement"), fallback.riskJudgement)
+    headline = _clean_headline(parsed.get("headlineConclusion"))
+    summary_lines = _clean_lines(parsed.get("summary"), 4)
+    chart_insights = _clean_lines(parsed.get("chartInsights"), 4) or _clean_lines(parsed.get("metricAnalysis"), 4)
+    summary = _merge_summary(headline, summary_lines, fallback.summary)
+    metric_analysis = chart_insights or fallback.metricAnalysis
+    risk_judgement = _coerce_risks(parsed.get("riskPriorities") or parsed.get("riskJudgement"), fallback.riskJudgement)
     suggestions = _coerce_suggestions(parsed.get("suggestions"), fallback.suggestions)
 
     return DynamicReportAiAnalysis(
