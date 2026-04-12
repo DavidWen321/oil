@@ -4112,7 +4112,7 @@ export function ReportHistoryDetailPage() {
     if (!Number.isFinite(targetId)) {
       setRow(null);
       setLoading(false);
-      setError('报告编号无效。');
+      setError('记录编号无效。');
       return;
     }
 
@@ -4129,7 +4129,7 @@ export function ReportHistoryDetailPage() {
         const history = historyResponse.data;
         if (!history) {
           setRow(null);
-          setError('未找到对应的智能报告记录。');
+          setError('未找到对应的计算记录。');
           return;
         }
 
@@ -4143,7 +4143,7 @@ export function ReportHistoryDetailPage() {
 
         if (!initialRow) {
           setRow(null);
-          setError('读取报告详情失败，请稍后重试。');
+          setError('读取详情失败，请稍后重试。');
         }
       })
       .finally(() => {
@@ -4166,14 +4166,14 @@ export function ReportHistoryDetailPage() {
 
   const reportTitle = useMemo(() => {
     if (!row) {
-      return '智能报告详情';
+      return '计算详情';
     }
 
     return buildScopedReportTitle({
       projectNames: projectScope.projectNames,
       reportKind: getReportKindFromPayload(detailReport),
       comparisonCount,
-      fallbackTitle: detailReport?.title || `${row.projectName || '未命名项目'}智能报告`,
+      fallbackTitle: detailReport?.title || `${row.projectName || '未命名项目'} ${row.calcTypeLabel || '计算详情'}`,
     });
   }, [comparisonCount, detailReport, projectScope.projectNames, row]);
 
@@ -4192,11 +4192,11 @@ export function ReportHistoryDetailPage() {
           <Card style={cardStyle} bodyStyle={{ padding: 24 }}>
             <Space direction="vertical" size={16} style={{ width: '100%' }}>
               <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/ai/report')} style={{ width: 'fit-content' }}>
-                返回智能报告列表
+                返回记录列表
               </Button>
 
               <Space wrap size={[8, 8]}>
-                <Tag color="geekblue">{row?.calcTypeLabel || '智能报告'}</Tag>
+                <Tag color="geekblue">{row?.calcTypeLabel || '计算记录'}</Tag>
                 {projectScope.projectNames.length ? (
                   <Tag color="blue">{buildProjectScopeBadge(projectScope.projectNames, row?.projectName || '未命名项目')}</Tag>
                 ) : null}
@@ -4208,7 +4208,7 @@ export function ReportHistoryDetailPage() {
                   {reportTitle}
                 </Title>
                 <Paragraph type="secondary" style={{ margin: '12px 0 0' }}>
-                  {reportAbstract || '查看该智能报告的完整分析结果、图表和报告内容。'}
+                  {reportAbstract || '查看该记录的完整分析结果、图表和明细内容。'}
                 </Paragraph>
               </div>
             </Space>
@@ -4231,13 +4231,13 @@ export function ReportHistoryDetailPage() {
             </Card>
           ) : row ? (
             <ReportHistoryDetailContent row={row} />
-          ) : (
-            <Card style={cardStyle}>
-              <div style={{ padding: 40 }}>
-                <Empty description="暂无可展示的智能报告详情" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-              </div>
-            </Card>
-          )}
+            ) : (
+              <Card style={cardStyle}>
+                <div style={{ padding: 40 }}>
+                  <Empty description="暂无可展示的记录详情" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                </div>
+              </Card>
+            )}
         </Space>
       </div>
     </AnimatedPage>
@@ -4953,7 +4953,11 @@ export default function ReportPreview() {
             <Button
               type="text"
               icon={<EyeOutlined style={{ color: '#22c1ff', fontSize: 18 }} />}
-              onClick={() => setDetailPreview({ mode: 'history', row: record })}
+              onClick={() =>
+                navigate(`/ai/report/detail/${record.id}`, {
+                  state: { row: record } satisfies ReportHistoryDetailLocationState,
+                })
+              }
               disabled={deletingHistoryIds.includes(Number(record.id))}
             />
             <Popconfirm
@@ -4974,7 +4978,7 @@ export default function ReportPreview() {
         ),
       },
     ],
-    [deletingHistoryIds, handleDeleteHistory],
+    [deletingHistoryIds, handleDeleteHistory, navigate],
   );
 
   const handleGenerate = useCallback(async () => {
