@@ -10,20 +10,17 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
 from src.config import settings
+from src.skills import get_skill_runtime
 from src.utils import logger
-
-from .prompts import (
-    PLANNER_SYSTEM_PROMPT,
-    PLANNER_TASK_PROMPT,
-    PLANNER_REPLAN_PROMPT,
-)
 
 
 class PlannerAgent:
     """Plan-and-Execute planner."""
+    SKILL_NAME = "planner"
 
     def __init__(self) -> None:
         self._llm: Optional[ChatOpenAI] = None
+        self._skill_runtime = get_skill_runtime()
 
     @property
     def llm(self) -> ChatOpenAI:
@@ -50,19 +47,22 @@ class PlannerAgent:
 
         prompt = ChatPromptTemplate.from_messages(
             [
-                ("system", PLANNER_SYSTEM_PROMPT),
-                ("human", PLANNER_TASK_PROMPT),
+                ("system", self._skill_runtime.get_prompt(self.SKILL_NAME, "system")),
+                ("human", "{input}"),
             ]
         )
         chain = prompt | self.llm | StrOutputParser()
 
         try:
-            response = chain.invoke(
+            task_input = self._skill_runtime.render_prompt(
+                self.SKILL_NAME,
+                "task",
                 {
                     "user_input": user_input,
                     "available_context": json.dumps(context or {}, ensure_ascii=False),
-                }
+                },
             )
+            response = chain.invoke({"input": task_input})
             return self._parse_plan(response)
         except Exception as exc:
             logger.warning(f"Planner create_plan failed, fallback is used: {exc}")
@@ -79,21 +79,24 @@ class PlannerAgent:
 
         prompt = ChatPromptTemplate.from_messages(
             [
-                ("system", PLANNER_SYSTEM_PROMPT),
-                ("human", PLANNER_REPLAN_PROMPT),
+                ("system", self._skill_runtime.get_prompt(self.SKILL_NAME, "system")),
+                ("human", "{input}"),
             ]
         )
         chain = prompt | self.llm | StrOutputParser()
 
         try:
-            response = chain.invoke(
+            task_input = self._skill_runtime.render_prompt(
+                self.SKILL_NAME,
+                "replan",
                 {
                     "user_input": user_input,
                     "completed_steps": json.dumps(completed_steps, ensure_ascii=False),
                     "failed_step": json.dumps(failed_step, ensure_ascii=False),
                     "reflexion": reflexion,
-                }
+                },
             )
+            response = chain.invoke({"input": task_input})
             parsed = self._parse_plan(response)
             parsed["reasoning"] = f"replan: {parsed.get('reasoning', '')}"
             return parsed

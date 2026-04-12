@@ -392,7 +392,8 @@ class HybridRetriever:
         corpus = []
         for i, chunk in enumerate(chunks):
             chunk_id = chunk.get("chunk_id")
-            content = chunk.get("full_text") or chunk.get("content", "")
+            # Sparse retrieval should rank fine-grained child text, not parent context payloads.
+            content = chunk.get("content") or chunk.get("full_text") or ""
 
             self._chunk_id_to_index[chunk_id] = i
             self._index_to_chunk[i] = chunk
@@ -403,6 +404,59 @@ class HybridRetriever:
         self._sparse_corpus_built = True
 
         logger.info(f"已构建BM25索引，文档数: {len(corpus)}")
+
+    def upsert_sparse_chunks(self, chunks: List[Dict[str, Any]]) -> int:
+        """Merge chunks into the in-memory sparse corpus and rebuild BM25 once."""
+
+        if not chunks:
+            return len(self._index_to_chunk)
+
+        chunk_map: Dict[str, Dict[str, Any]] = {}
+        for chunk in self._index_to_chunk.values():
+            chunk_id = chunk.get("chunk_id")
+            if chunk_id:
+                chunk_map[str(chunk_id)] = chunk
+
+        for chunk in chunks:
+            chunk_id = chunk.get("chunk_id")
+            if not chunk_id:
+                continue
+            chunk_map[str(chunk_id)] = chunk
+
+        self._rebuild_sparse_index_from_chunk_map(chunk_map)
+        return len(self._index_to_chunk)
+
+    def remove_document_from_sparse_index(self, doc_id: str) -> int:
+        """Remove all chunks for one document from the in-memory sparse corpus."""
+
+        if not doc_id:
+            return len(self._index_to_chunk)
+
+        chunk_map = {
+            str(chunk.get("chunk_id")): chunk
+            for chunk in self._index_to_chunk.values()
+            if chunk.get("chunk_id") and str(chunk.get("doc_id")) != str(doc_id)
+        }
+
+        self._rebuild_sparse_index_from_chunk_map(chunk_map)
+        return len(self._index_to_chunk)
+
+    def _rebuild_sparse_index_from_chunk_map(self, chunk_map: Dict[str, Dict[str, Any]]) -> None:
+        """Rebuild BM25 state from an in-memory chunk map."""
+
+        if not chunk_map:
+            self.clear_sparse_index()
+            return
+
+        ordered_chunks = sorted(
+            chunk_map.values(),
+            key=lambda item: (
+                str(item.get("doc_id", "")),
+                int(item.get("chunk_index", 0) or 0),
+                str(item.get("chunk_id", "")),
+            ),
+        )
+        self.build_sparse_index(ordered_chunks)
 
     def clear_sparse_index(self):
         """清空BM25检索索引及映射。"""

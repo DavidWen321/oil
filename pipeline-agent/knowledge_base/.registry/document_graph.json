@@ -1,0 +1,309 @@
+{
+  "documents": {
+    "caa431f130ec": {
+      "doc_id": "caa431f130ec",
+      "title": "知识库录入功能测试",
+      "nodes": [
+        {
+          "id": "doc::caa431f130ec",
+          "type": "document",
+          "name": "知识库录入功能测试",
+          "description": "",
+          "properties": {
+            "namespace": "document",
+            "source_doc_id": "caa431f130ec",
+            "source": "手动录入",
+            "category": "faq",
+            "tags": [
+              "知识库"
+            ],
+            "language": "zh-CN"
+          }
+        },
+        {
+          "id": "sec::p37f4ca4a68a9bc14",
+          "type": "section",
+          "name": "知识库录入功能测试",
+          "description": "辽宁石油化工大学有一名学生叫江玉龙。",
+          "properties": {
+            "namespace": "document",
+            "source_doc_id": "caa431f130ec",
+            "source_chunk_id": "p37f4ca4a68a9bc14",
+            "heading_path": "知识库录入功能测试",
+            "parent_chunk_index": 0
+          }
+        },
+        {
+          "id": "ent::8d52183646d2587e8865",
+          "type": "concept",
+          "name": "知识库录入功能测试",
+          "description": "",
+          "properties": {
+            "namespace": "document",
+            "normalized_name": "知识库录入功能测试"
+          }
+        },
+        {
+          "id": "ent::08eaaffa5b59e6ef628d",
+          "type": "concept",
+          "name": "辽宁石油化工大学有一名学",
+          "description": "",
+          "properties": {
+            "namespace": "document",
+            "normalized_name": "辽宁石油化工大学有一名学"
+          }
+        },
+        {
+          "id": "ent::52c1d4d1549a2b5f51b7",
+          "type": "concept",
+          "name": "生叫江玉龙",
+          "description": "",
+          "properties": {
+            "namespace": "document",
+            "normalized_name": "生叫江玉龙"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "source_id": "doc::caa431f130ec",
+          "target_id": "sec::p37f4ca4a68a9bc14",
+          "type": "contains",
+          "weight": 1.0,
+          "properties": {
+            "namespace": "document",
+            "source_doc_id": "caa431f130ec",
+            "source_chunk_id": "p37f4ca4a68a9bc14",
+            "heading_path": "知识库录入功能测试"
+          }
+        },
+        {
+          "source_id": "sec::p37f4ca4a68a9bc14",
+          "target_id": "ent::8d52183646d2587e8865",
+          "type": "references",
+          "weight": 1.0,
+          "properties": {
+            "namespace": "document",
+            "source_doc_id": "caa431f130ec",
+            "source_chunk_id": "p37f4ca4a68a9bc14-c0000",
+            "heading_path": "知识库录入功能测试"
+          }
+        },
+        {
+          "source_id": "sec::p37f4ca4a68a9bc14",
+          "target_id": "ent::08eaaffa5b59e6ef628d",
+          "type": "references",
+          "weight": 1.0,
+          "properties": {
+            "namespace": "document",
+            "source_doc_id": "caa431f130ec",
+            "source_chunk_id": "p37f4ca4a68a9bc14-c0000",
+            "heading_path": "知识库录入功能测试"
+          }
+        },
+        {
+          "source_id": "sec::p37f4ca4a68a9bc14",
+          "target_id": "ent::52c1d4d1549a2b5f51b7",
+          "type": "references",
+          "weight": 1.0,
+          "properties": {
+            "namespace": "document",
+            "source_doc_id": "caa431f130ec",
+            "source_chunk_id": "p37f4ca4a68a9bc14-c0000",
+            "heading_path": "知识库录入功能测试"
+          }
+        },
+        {
+          "source_id": "ent::8d52183646d2587e8865",
+          "target_id": "ent::08eaaffa5b59e6ef628d",
+          "type": "references",
+          "weight": 0.6,
+          "properties": {
+            "namespace": "document",
+            "source_doc_id": "caa431f130ec",
+            "source_chunk_id": "p37f4ca4a68a9bc14-c0000",
+            "relation": "cooccurs"
+          }
+        },
+        {
+          "source_id": "ent::8d52183646d2587e8865",
+          "target_id": "ent::52c1d4d1549a2b5f51b7",
+          "type": "references",
+          "weight": 0.6,
+          "properties": {
+            "namespace": "document",
+            "source_doc_id": "caa431f130ec",
+            "source_chunk_id": "p37f4ca4a68a9bc14-c0000",
+            "relation": "cooccurs"
+          }
+        },
+        {
+          "source_id": "ent::08eaaffa5b59e6ef628d",
+          "target_id": "ent::52c1d4d1549a2b5f51b7",
+          "type": "references",
+          "weight": 0.6,
+          "properties": {
+            "namespace": "document",
+            "source_doc_id": "caa431f130ec",
+            "source_chunk_id": "p37f4ca4a68a9bc14-c0000",
+            "relation": "cooccurs"
+          }
+        }
+      ],
+      "updated_at": "2026-04-08T10:49:17.943106"
+    },
+    "68f9d8f1206c": {
+      "doc_id": "68f9d8f1206c",
+      "title": "知识库录入功能测试",
+      "nodes": [
+        {
+          "id": "doc::68f9d8f1206c",
+          "type": "document",
+          "name": "知识库录入功能测试",
+          "description": "",
+          "properties": {
+            "namespace": "document",
+            "source_doc_id": "68f9d8f1206c",
+            "source": "手动录入",
+            "category": "faq",
+            "tags": [
+              "知识库"
+            ],
+            "language": "zh-CN"
+          }
+        },
+        {
+          "id": "sec::p423ee67247bcf486",
+          "type": "section",
+          "name": "知识库录入功能测试",
+          "description": "辽宁石油化工大学有一名学生叫江玉龙。",
+          "properties": {
+            "namespace": "document",
+            "source_doc_id": "68f9d8f1206c",
+            "source_chunk_id": "p423ee67247bcf486",
+            "heading_path": "知识库录入功能测试",
+            "parent_chunk_index": 0
+          }
+        },
+        {
+          "id": "ent::8d52183646d2587e8865",
+          "type": "concept",
+          "name": "知识库录入功能测试",
+          "description": "",
+          "properties": {
+            "namespace": "document",
+            "normalized_name": "知识库录入功能测试"
+          }
+        },
+        {
+          "id": "ent::08eaaffa5b59e6ef628d",
+          "type": "concept",
+          "name": "辽宁石油化工大学有一名学",
+          "description": "",
+          "properties": {
+            "namespace": "document",
+            "normalized_name": "辽宁石油化工大学有一名学"
+          }
+        },
+        {
+          "id": "ent::52c1d4d1549a2b5f51b7",
+          "type": "concept",
+          "name": "生叫江玉龙",
+          "description": "",
+          "properties": {
+            "namespace": "document",
+            "normalized_name": "生叫江玉龙"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "source_id": "doc::68f9d8f1206c",
+          "target_id": "sec::p423ee67247bcf486",
+          "type": "contains",
+          "weight": 1.0,
+          "properties": {
+            "namespace": "document",
+            "source_doc_id": "68f9d8f1206c",
+            "source_chunk_id": "p423ee67247bcf486",
+            "heading_path": "知识库录入功能测试"
+          }
+        },
+        {
+          "source_id": "sec::p423ee67247bcf486",
+          "target_id": "ent::8d52183646d2587e8865",
+          "type": "references",
+          "weight": 1.0,
+          "properties": {
+            "namespace": "document",
+            "source_doc_id": "68f9d8f1206c",
+            "source_chunk_id": "p423ee67247bcf486-c0000",
+            "heading_path": "知识库录入功能测试"
+          }
+        },
+        {
+          "source_id": "sec::p423ee67247bcf486",
+          "target_id": "ent::08eaaffa5b59e6ef628d",
+          "type": "references",
+          "weight": 1.0,
+          "properties": {
+            "namespace": "document",
+            "source_doc_id": "68f9d8f1206c",
+            "source_chunk_id": "p423ee67247bcf486-c0000",
+            "heading_path": "知识库录入功能测试"
+          }
+        },
+        {
+          "source_id": "sec::p423ee67247bcf486",
+          "target_id": "ent::52c1d4d1549a2b5f51b7",
+          "type": "references",
+          "weight": 1.0,
+          "properties": {
+            "namespace": "document",
+            "source_doc_id": "68f9d8f1206c",
+            "source_chunk_id": "p423ee67247bcf486-c0000",
+            "heading_path": "知识库录入功能测试"
+          }
+        },
+        {
+          "source_id": "ent::8d52183646d2587e8865",
+          "target_id": "ent::08eaaffa5b59e6ef628d",
+          "type": "references",
+          "weight": 0.6,
+          "properties": {
+            "namespace": "document",
+            "source_doc_id": "68f9d8f1206c",
+            "source_chunk_id": "p423ee67247bcf486-c0000",
+            "relation": "cooccurs"
+          }
+        },
+        {
+          "source_id": "ent::8d52183646d2587e8865",
+          "target_id": "ent::52c1d4d1549a2b5f51b7",
+          "type": "references",
+          "weight": 0.6,
+          "properties": {
+            "namespace": "document",
+            "source_doc_id": "68f9d8f1206c",
+            "source_chunk_id": "p423ee67247bcf486-c0000",
+            "relation": "cooccurs"
+          }
+        },
+        {
+          "source_id": "ent::08eaaffa5b59e6ef628d",
+          "target_id": "ent::52c1d4d1549a2b5f51b7",
+          "type": "references",
+          "weight": 0.6,
+          "properties": {
+            "namespace": "document",
+            "source_doc_id": "68f9d8f1206c",
+            "source_chunk_id": "p423ee67247bcf486-c0000",
+            "relation": "cooccurs"
+          }
+        }
+      ],
+      "updated_at": "2026-04-08T10:59:50.240416"
+    }
+  },
+  "updated_at": "2026-04-08T10:59:50.240921"
+}

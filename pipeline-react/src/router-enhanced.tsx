@@ -1,7 +1,11 @@
+/**
+ * Enhanced Router with Prefetch
+ */
+
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import { Spin } from 'antd';
-import MainLayout from './components/layout/MainLayout';
+import MainLayout from './components/layout/MainLayoutFixed';
 import { useUserStore } from './stores/userStore';
 
 const Login = lazy(() => import('./pages/auth/Login'));
@@ -11,12 +15,13 @@ const ProjectList = lazy(() => import('./pages/data/ProjectList'));
 const PipelineList = lazy(() => import('./pages/data/PipelineList'));
 const PumpStationList = lazy(() => import('./pages/data/PumpStationList'));
 const OilPropertyList = lazy(() => import('./pages/data/OilPropertyList'));
-const KnowledgeBase = lazy(() => import('./pages/data/KnowledgeBase'));
+const KnowledgeEntry = lazy(() => import('./pages/ai/KnowledgeEntry'));
 
 const HydraulicAnalysis = lazy(() => import('./pages/calculation/HydraulicAnalysis'));
 const Optimization = lazy(() => import('./pages/calculation/Optimization'));
 const SensitivityAnalysis = lazy(() => import('./pages/calculation/SensitivityAnalysis'));
 
+const Report = lazy(() => import('./pages/report/Report'));
 const AIChat = lazy(() => import('./pages/ai/AIChat'));
 const ReportPreview = lazy(() => import('./pages/ai/ReportPreview'));
 
@@ -48,8 +53,7 @@ export function prefetchRoute(path: string) {
     '/data/project': () => import('./pages/data/ProjectList'),
     '/calculation/hydraulic': () => import('./pages/calculation/HydraulicAnalysis'),
     '/ai/chat': () => import('./pages/ai/AIChat'),
-    '/ai/report': () => import('./pages/ai/ReportPreview'),
-    '/ai/trace': () => import('./pages/data/KnowledgeBase'),
+    '/ai/trace': () => import('./pages/ai/KnowledgeEntry'),
   };
 
   const loader = routeMap[path];
@@ -150,6 +154,14 @@ export const router = createBrowserRouter([
         ),
       },
       {
+        path: 'report',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <Report />
+          </Suspense>
+        ),
+      },
+      {
         path: 'ai/chat',
         element: (
           <Suspense fallback={<Loading />}>
@@ -158,18 +170,22 @@ export const router = createBrowserRouter([
         ),
       },
       {
-        path: 'ai/report',
-        element: (
-          <Suspense fallback={<Loading />}>
-            <ReportPreview />
-          </Suspense>
-        ),
+        path: 'ai/knowledge',
+        element: <Navigate to="/ai/trace" replace />,
       },
       {
         path: 'ai/trace',
         element: (
           <Suspense fallback={<Loading />}>
-            <KnowledgeBase />
+            <KnowledgeEntry />
+          </Suspense>
+        ),
+      },
+      {
+        path: 'ai/report',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <ReportPreview />
           </Suspense>
         ),
       },

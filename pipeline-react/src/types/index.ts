@@ -137,6 +137,12 @@ export interface KnowledgeDocument {
   sourceType?: string;
   tags?: string;
   remark?: string;
+  author?: string;
+  summary?: string;
+  language?: string;
+  version?: string;
+  externalId?: string;
+  effectiveAt?: string;
   fileName: string;
   fileExtension?: string;
   fileSize?: number;
@@ -148,6 +154,8 @@ export interface KnowledgeDocument {
   chunkCount?: number;
   retryCount?: number;
   status: string;
+  ingestStage?: string;
+  progressPercent?: number;
   failureReason?: string;
   lastIngestTime?: string;
   createBy?: string;
@@ -161,6 +169,8 @@ export interface KnowledgeIngestTask {
   taskType: string;
   attemptNo?: number;
   status: string;
+  ingestStage?: string;
+  progressPercent?: number;
   agentDocId?: string;
   chunkCount?: number;
   failureReason?: string;

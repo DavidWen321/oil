@@ -37,6 +37,10 @@ public class KnowledgeIngestAsyncService {
     private static final String STATUS_FAILED = "FAILED";
     private static final String STATUS_PROCESSING = "PROCESSING";
     private static final String STATUS_UPLOADED = "UPLOADED";
+    private static final String STAGE_QUEUED = "QUEUED";
+    private static final String STAGE_INGESTING = "INGESTING";
+    private static final String STAGE_DONE = "DONE";
+    private static final String STAGE_FAILED = "FAILED";
     private static final String STORAGE_LEGACY = "LEGACY_AGENT";
     private static final String DEFAULT_TAG = "知识库";
 
@@ -50,7 +54,9 @@ public class KnowledgeIngestAsyncService {
                             String previousAgentDocId,
                             Integer previousChunkCount,
                             String previousStatus,
-                            LocalDateTime previousLastIngestTime) {
+                            LocalDateTime previousLastIngestTime,
+                            String previousIngestStage,
+                            Integer previousProgressPercent) {
         KnowledgeDocument document = documentMapper.selectById(documentId);
         KnowledgeIngestTask task = taskMapper.selectById(taskId);
         if (document == null || task == null) {
@@ -63,13 +69,19 @@ public class KnowledgeIngestAsyncService {
                 previousAgentDocId,
                 defaultInt(previousChunkCount),
                 StrUtil.blankToDefault(previousStatus, STATUS_UPLOADED),
-                previousLastIngestTime);
+                previousLastIngestTime,
+                StrUtil.blankToDefault(previousIngestStage, STAGE_QUEUED),
+                defaultInt(previousProgressPercent));
         LocalDateTime startedAt = LocalDateTime.now();
         task.setStatus(STATUS_PROCESSING);
+        task.setIngestStage(STAGE_INGESTING);
+        task.setProgressPercent(10);
         task.setStartedAt(startedAt);
         taskMapper.updateById(task);
 
         document.setStatus(STATUS_PROCESSING);
+        document.setIngestStage(STAGE_INGESTING);
+        document.setProgressPercent(10);
         document.setFailureReason(null);
         documentMapper.updateById(document);
 
@@ -86,11 +98,14 @@ public class KnowledgeIngestAsyncService {
             Map<String, Object> documentPayload = mapValue(agentResponse.get("document"));
             String newAgentDocId = stringValue(documentPayload.get("doc_id"));
             Integer newChunkCount = resolveChunkCount(documentPayload, previous.chunkCount());
+            String ingestStage = resolveIngestStage(documentPayload, STAGE_DONE);
+            Integer progressPercent = resolveProgressPercent(documentPayload, success ? 100 : 0);
             String message = stringValue(agentResponse.get("message"));
 
             if (!success) {
                 rollbackNewIndexIfNeeded(previous, newAgentDocId);
-                applyFailedIngest(document, task, previous, message, finishedAt);
+                String failureDetail = resolveAgentFailureMessage(message, ingestStage);
+                applyFailedIngest(document, task, previous, failureDetail, finishedAt, ingestStage, progressPercent);
                 return;
             }
 
@@ -101,7 +116,7 @@ public class KnowledgeIngestAsyncService {
                     String detail = rolledBack
                             ? "本次重试失败，已回滚新索引并保留旧索引"
                             : "本次重试失败，旧索引未替换成功且新索引回滚失败，请人工检查向量库";
-                    applyFailedIngest(document, task, previous, detail, finishedAt);
+                    applyFailedIngest(document, task, previous, detail, finishedAt, ingestStage, progressPercent);
                     return;
                 }
             }
@@ -109,11 +124,15 @@ public class KnowledgeIngestAsyncService {
             document.setAgentDocId(newAgentDocId);
             document.setChunkCount(newChunkCount);
             document.setStatus(STATUS_INDEXED);
+            document.setIngestStage(ingestStage);
+            document.setProgressPercent(progressPercent);
             document.setFailureReason(null);
             document.setLastIngestTime(finishedAt);
             documentMapper.updateById(document);
 
             task.setStatus("SUCCESS");
+            task.setIngestStage(ingestStage);
+            task.setProgressPercent(progressPercent);
             task.setAgentDocId(newAgentDocId);
             task.setChunkCount(newChunkCount);
             task.setFailureReason(null);
@@ -122,7 +141,7 @@ public class KnowledgeIngestAsyncService {
         } catch (RuntimeException ex) {
             LocalDateTime finishedAt = LocalDateTime.now();
             log.error("Knowledge document ingest failed asynchronously", ex);
-            applyFailedIngest(document, task, previous, ex.getMessage(), finishedAt);
+            applyFailedIngest(document, task, previous, ex.getMessage(), finishedAt, STAGE_FAILED, 0);
         }
     }
 
@@ -152,24 +171,31 @@ public class KnowledgeIngestAsyncService {
     }
 
     private void applyFailedIngest(KnowledgeDocument document, KnowledgeIngestTask task,
-                                   ExistingIndexState previous, String message, LocalDateTime finishedAt) {
+                                   ExistingIndexState previous, String message, LocalDateTime finishedAt,
+                                   String failedStage, Integer failedProgressPercent) {
         String normalizedMessage = StrUtil.blankToDefault(message, "入库失败，请稍后重试");
         if (previous.hasAvailableIndex()) {
             document.setAgentDocId(previous.agentDocId());
             document.setChunkCount(previous.chunkCount());
             document.setStatus(previous.status());
+            document.setIngestStage(previous.ingestStage());
+            document.setProgressPercent(previous.progressPercent());
             document.setFailureReason("本次任务失败，已保留上次可用索引: " + normalizedMessage);
             document.setLastIngestTime(previous.lastIngestTime());
         } else {
             document.setAgentDocId(null);
             document.setChunkCount(0);
             document.setStatus(STATUS_FAILED);
+            document.setIngestStage(StrUtil.blankToDefault(failedStage, STAGE_FAILED));
+            document.setProgressPercent(defaultInt(failedProgressPercent));
             document.setFailureReason(normalizedMessage);
             document.setLastIngestTime(previous.lastIngestTime());
         }
         documentMapper.updateById(document);
 
         task.setStatus(STATUS_FAILED);
+        task.setIngestStage(StrUtil.blankToDefault(failedStage, STAGE_FAILED));
+        task.setProgressPercent(defaultInt(failedProgressPercent));
         task.setChunkCount(previous.hasAvailableIndex() ? previous.chunkCount() : 0);
         task.setFailureReason(normalizedMessage);
         task.setFinishedAt(finishedAt);
@@ -207,6 +233,14 @@ public class KnowledgeIngestAsyncService {
         body.add("source", resolveSource(document));
         body.add("category", document.getCategory());
         body.add("tags", resolveTags(document));
+        appendOptionalField(body, "author", document.getAuthor());
+        appendOptionalField(body, "summary", document.getSummary());
+        appendOptionalField(body, "language", document.getLanguage());
+        appendOptionalField(body, "version", document.getVersion());
+        appendOptionalField(body, "external_id", document.getExternalId());
+        if (document.getEffectiveAt() != null) {
+            body.add("effective_at", document.getEffectiveAt().toString());
+        }
 
         String uploadUrl = properties.getAgentBaseUrl() + properties.getUploadPath();
         HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, headers);
@@ -283,6 +317,29 @@ public class KnowledgeIngestAsyncService {
         return chunkCount > 0 ? chunkCount : fallback;
     }
 
+    private String resolveIngestStage(Map<String, Object> documentPayload, String fallback) {
+        return StrUtil.blankToDefault(stringValue(documentPayload.get("ingest_stage")), fallback);
+    }
+
+    private Integer resolveProgressPercent(Map<String, Object> documentPayload, int fallback) {
+        int value = intValue(documentPayload.get("progress_percent"));
+        return value > 0 ? value : fallback;
+    }
+
+    private String resolveAgentFailureMessage(String remoteMessage, String ingestStage) {
+        String normalizedStage = StrUtil.blankToDefault(StrUtil.trim(ingestStage), STAGE_FAILED);
+        String normalizedMessage = StrUtil.trim(remoteMessage);
+        String genericMessage = StrUtil.format("Agent indexing failed at stage {}", normalizedStage);
+
+        if (StrUtil.isBlank(normalizedMessage)) {
+            return genericMessage;
+        }
+        if (StrUtil.containsAnyIgnoreCase(normalizedMessage, "uploaded", "indexed successfully", "写入知识库注册表")) {
+            return genericMessage;
+        }
+        return genericMessage + ": " + normalizedMessage;
+    }
+
     private String stringValue(Object value) {
         return value == null ? null : String.valueOf(value);
     }
@@ -305,6 +362,13 @@ public class KnowledgeIngestAsyncService {
         return StrUtil.isNotBlank(tags) ? tags : DEFAULT_TAG;
     }
 
+    private void appendOptionalField(MultiValueMap<String, Object> body, String fieldName, String value) {
+        String normalized = StrUtil.trimToNull(value);
+        if (normalized != null) {
+            body.add(fieldName, normalized);
+        }
+    }
+
     private String stripExtension(String fileName) {
         if (StrUtil.isBlank(fileName) || !fileName.contains(".")) {
             return StrUtil.blankToDefault(fileName, "未命名文档");
@@ -320,7 +384,13 @@ public class KnowledgeIngestAsyncService {
         return value == null || value <= 0 ? fallback : value;
     }
 
-    private record ExistingIndexState(String agentDocId, int chunkCount, String status, LocalDateTime lastIngestTime) {
+    private record ExistingIndexState(
+            String agentDocId,
+            int chunkCount,
+            String status,
+            LocalDateTime lastIngestTime,
+            String ingestStage,
+            int progressPercent) {
 
         private boolean hasAvailableIndex() {
             return StrUtil.isNotBlank(agentDocId) && STATUS_INDEXED.equalsIgnoreCase(status);

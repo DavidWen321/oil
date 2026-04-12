@@ -41,9 +41,15 @@ public class KnowledgeDocumentController {
                                             @RequestParam(value = "category", required = false) String category,
                                             @RequestParam(value = "sourceType", required = false) String sourceType,
                                             @RequestParam(value = "tags", required = false) String tags,
-                                            @RequestParam(value = "remark", required = false) String remark) {
+                                            @RequestParam(value = "remark", required = false) String remark,
+                                            @RequestParam(value = "author", required = false) String author,
+                                            @RequestParam(value = "summary", required = false) String summary,
+                                            @RequestParam(value = "language", required = false) String language,
+                                            @RequestParam(value = "version", required = false) String version,
+                                            @RequestParam(value = "externalId", required = false) String externalId,
+                                            @RequestParam(value = "effectiveAt", required = false) String effectiveAt) {
         KnowledgeDocument document = knowledgeDocumentService.uploadDocument(
-                file, title, category, sourceType, tags, remark);
+                file, title, category, sourceType, tags, remark, author, summary, language, version, externalId, effectiveAt);
         return Result.ok(document, "知识文档已接收，正在后台入库");
     }
 

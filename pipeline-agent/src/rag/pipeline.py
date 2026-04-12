@@ -3,6 +3,8 @@ RAG Pipeline
 整合所有RAG组件的完整流程
 """
 
+import json
+from pathlib import Path
 from typing import List, Optional, Dict, Any
 from dataclasses import dataclass, field
 
@@ -40,7 +42,34 @@ class IndexingReport:
     documents_loaded: int
     documents_indexed: int
     document_ids: List[str] = field(default_factory=list)
+    document_chunk_counts: Dict[str, int] = field(default_factory=dict)
     chunk_count: int = 0
+
+
+@dataclass
+class AddDocumentReport:
+    """Incremental indexing result for one uploaded document."""
+
+    success: bool
+    doc_id: str = ""
+    chunk_count: int = 0
+    dense_ready: bool = False
+    sparse_ready: bool = False
+    ingest_stage: str = "QUEUED"
+    progress_percent: int = 0
+    message: str = ""
+
+
+@dataclass
+class RouteStepTrace:
+    """One step in the agentic retrieval loop."""
+
+    route: str
+    reason: str
+    result_count: int = 0
+    quality_after: str = "low"
+    continue_next: bool = False
+    details: Dict[str, Any] = field(default_factory=dict)
 
 
 class RAGPipeline:
@@ -77,6 +106,7 @@ class RAGPipeline:
         self.self_rag = self_rag or get_self_rag()
         self.query_rewriter = get_query_rewriter()
         self.graph_rag = graph_rag or GraphRAGRetriever(get_knowledge_graph_builder())
+        self._last_sparse_revision: Optional[str] = None
 
     def index_documents_report(
         self,
@@ -106,6 +136,7 @@ class RAGPipeline:
                 documents_loaded=0,
                 documents_indexed=0,
                 document_ids=[],
+                document_chunk_counts={},
                 chunk_count=0,
             )
 
@@ -117,6 +148,7 @@ class RAGPipeline:
         all_embeddings = []
         bm25_corpus = []
         indexed_doc_ids = []
+        doc_chunk_counts: Dict[str, int] = {}
 
         for doc in documents:
             logger.info(f"处理文档: {doc.title}")
@@ -127,8 +159,8 @@ class RAGPipeline:
             # 准备向量化文本
             texts_to_embed = []
             for chunk in chunks:
-                # 使用full_text进行向量化（包含上下文）
-                texts_to_embed.append(chunk.full_text or chunk.content)
+                # Parent/child retrieval embeds the fine-grained child text.
+                texts_to_embed.append(chunk.retrieval_text or chunk.content)
 
                 # 如果启用HyPE，也对假设问题进行向量化
                 if chunk.hypothetical_questions:
@@ -147,13 +179,20 @@ class RAGPipeline:
                 for chunk in chunks:
                     bm25_corpus.append({
                         "chunk_id": chunk.chunk_id,
-                        "content": chunk.content,
-                        "full_text": chunk.full_text
+                        "content": chunk.retrieval_text or chunk.content,
+                        "full_text": chunk.full_text,
+                        "doc_id": chunk.doc_id,
+                        "doc_title": chunk.doc_title,
+                        "source": chunk.source,
+                        "category": chunk.category.value if chunk.category else "",
+                        "chunk_index": chunk.chunk_index,
                     })
 
         # 4. 批量插入Milvus
         if all_chunks:
             self.vector_store.insert_chunks(all_chunks, all_embeddings)
+            for chunk in all_chunks:
+                doc_chunk_counts[chunk.doc_id] = doc_chunk_counts.get(chunk.doc_id, 0) + 1
 
         # 5. 构建BM25索引
         if bm25_corpus:
@@ -166,6 +205,7 @@ class RAGPipeline:
             documents_loaded=len(documents),
             documents_indexed=len(indexed_doc_ids),
             document_ids=indexed_doc_ids,
+            document_chunk_counts=doc_chunk_counts,
             chunk_count=len(all_chunks),
         )
 
@@ -205,12 +245,12 @@ class RAGPipeline:
             for chunk in chunks:
                 bm25_corpus.append({
                     "chunk_id": chunk.chunk_id,
-                    "content": chunk.content,
+                    "content": chunk.retrieval_text or chunk.content,
                     "full_text": chunk.full_text,
                     "doc_id": chunk.doc_id,
                     "doc_title": chunk.doc_title,
                     "source": chunk.source,
-                    "category": chunk.category,
+                    "category": chunk.category.value if chunk.category else "",
                     "chunk_index": chunk.chunk_index,
                 })
 
@@ -220,6 +260,7 @@ class RAGPipeline:
             self.retriever.clear_sparse_index()
 
         logger.info(f"BM25索引刷新完成，文档数: {len(documents)}，分块数: {len(bm25_corpus)}")
+        self._last_sparse_revision = self._read_sparse_revision(knowledge_base_path)
         return len(documents)
 
     def ensure_retriever_ready(self, knowledge_base_path: str = "knowledge_base") -> int:
@@ -230,6 +271,16 @@ class RAGPipeline:
         exists but the in-memory BM25 index has not been rebuilt yet.
         """
         if getattr(self.retriever, "_sparse_corpus_built", False):
+            self._last_sparse_revision = self._read_sparse_revision(knowledge_base_path)
+            return len(getattr(self.retriever, "_index_to_chunk", {}))
+        return self.refresh_sparse_index(knowledge_base_path)
+
+    def sync_sparse_index_if_needed(self, knowledge_base_path: str = "knowledge_base") -> int:
+        """Refresh process-local BM25 when another worker updated the shared revision."""
+
+        current_revision = self._read_sparse_revision(knowledge_base_path)
+        sparse_ready = bool(getattr(self.retriever, "_sparse_corpus_built", False))
+        if sparse_ready and current_revision and current_revision == self._last_sparse_revision:
             return len(getattr(self.retriever, "_index_to_chunk", {}))
         return self.refresh_sparse_index(knowledge_base_path)
 
@@ -253,8 +304,8 @@ class RAGPipeline:
             RAG响应
         """
         top_k = top_k or rag_config.retrieval["final_k"]
+        self.sync_sparse_index_if_needed()
 
-        # 1. Self-RAG决策
         if skip_self_rag:
             decision = RetrievalDecision.RETRIEVE
             decision_reason = "跳过Self-RAG"
@@ -263,8 +314,7 @@ class RAGPipeline:
 
         logger.info(f"Self-RAG决策: {decision.value} - {decision_reason}")
 
-        # 如果不需要检索，直接返回
-        if decision != RetrievalDecision.RETRIEVE:
+        if decision in {RetrievalDecision.DIRECT, RetrievalDecision.CALCULATE}:
             return RAGResponse(
                 context="",
                 sources=[],
@@ -273,19 +323,90 @@ class RAGPipeline:
                 metadata={"reason": decision_reason}
             )
 
-        # 2. 查询改写（可选）
         rewritten_query = query
         if rag_config.features.get("query_rewrite", False):
             rewritten_query = self.query_rewriter.rewrite(query)
 
-        # 3. 混合检索
-        retrieval_results = self.retriever.retrieve(
-            query=rewritten_query,
-            top_k=top_k * 2,  # 检索更多，留给重排序筛选
-            category_filter=category_filter
-        )
+        route_plan = self.self_rag.plan_routes(rewritten_query, decision)
+        route_trace: List[RouteStepTrace] = []
+        rerank_results: List[RerankResult] = []
+        graph_results: List[Dict[str, Any]] = []
+        database_results: List[Dict[str, Any]] = []
+        quality = RetrievalQuality.LOW
+        quality_reason = "尚未执行检索"
 
-        if not retrieval_results:
+        for index, route_item in enumerate(route_plan):
+            route_name = str(route_item.get("route", "hybrid"))
+            route_reason = str(route_item.get("reason", ""))
+            step_details: Dict[str, Any] = {}
+            step_result_count = 0
+
+            if route_name == "hybrid":
+                hybrid_candidates, reranked = self._run_hybrid_route(
+                    query=rewritten_query,
+                    top_k=top_k,
+                    category_filter=category_filter,
+                )
+                rerank_results = reranked or rerank_results
+                step_result_count = len(reranked)
+                step_details = {
+                    "hybrid_candidates": len(hybrid_candidates),
+                    "reranked_results": len(reranked),
+                }
+            elif route_name == "graph":
+                graph_batch = self.graph_rag.retrieve(query, top_k=3)
+                graph_results = self._merge_auxiliary_results(
+                    graph_results,
+                    graph_batch,
+                )
+                step_result_count = len(graph_batch)
+                step_details = {
+                    "graph_results": len(graph_batch),
+                    "graph_results_total": len(graph_results),
+                }
+            elif route_name == "database":
+                database_batch = self._run_database_route(query, top_k=top_k)
+                database_results = self._merge_auxiliary_results(
+                    database_results,
+                    database_batch,
+                )
+                step_result_count = len(database_batch)
+                step_details = {
+                    "database_results": len(database_batch),
+                    "database_results_total": len(database_results),
+                }
+            else:
+                logger.debug("Skip unknown agentic route: {}", route_name)
+
+            quality, quality_reason = self._evaluate_agentic_quality(
+                query=query,
+                rerank_results=rerank_results,
+                graph_results=graph_results,
+                database_results=database_results,
+            )
+            continue_next = self._should_continue_agentic_loop(
+                current_quality=quality,
+                route_plan=route_plan,
+                current_index=index,
+                current_route=route_name,
+                rerank_results=rerank_results,
+                graph_results=graph_results,
+                database_results=database_results,
+            )
+            route_trace.append(
+                RouteStepTrace(
+                    route=route_name,
+                    reason=route_reason,
+                    result_count=step_result_count,
+                    quality_after=quality.value,
+                    continue_next=continue_next,
+                    details=step_details,
+                )
+            )
+            if not continue_next:
+                break
+
+        if not rerank_results and not graph_results and not database_results:
             return RAGResponse(
                 context="",
                 sources=[],
@@ -293,33 +414,28 @@ class RAGPipeline:
                 decision=decision,
                 should_fallback=True,
                 query_rewritten=rewritten_query if rewritten_query != query else None,
-                metadata={"reason": "无检索结果"}
+                metadata={
+                    "reason": "无检索结果",
+                    "decision_reason": decision_reason,
+                    "agentic_trace": [self._serialize_route_trace(item) for item in route_trace],
+                    "planned_routes": route_plan,
+                }
             )
-
-        # 4. 重排序
-        rerank_results = self.reranker.rerank(
-            query=rewritten_query,
-            results=retrieval_results,
-            top_k=top_k
-        )
-        rerank_results = self._dedupe_rerank_results(rerank_results)[:top_k]
-
-        # 4.5 Graph RAG检索
-        graph_results = self.graph_rag.retrieve(query, top_k=3)
-
-        # 5. CRAG质量评估
-        quality, quality_reason = self.self_rag.evaluate_retrieval_quality(
-            query=query,
-            results=rerank_results
-        )
 
         logger.info(f"CRAG评估: {quality.value} - {quality_reason}")
 
-        # 6. 构建上下文
-        context = self._build_context(rerank_results, quality, graph_results)
+        context = self._build_context(
+            rerank_results,
+            quality,
+            graph_results,
+            database_results,
+        )
 
-        # 7. 构建来源引用
-        sources = self._build_sources(rerank_results, graph_results)
+        sources = self._build_sources(
+            rerank_results,
+            graph_results,
+            database_results,
+        )
 
         return RAGResponse(
             context=context,
@@ -333,6 +449,9 @@ class RAGPipeline:
                 "quality_reason": quality_reason,
                 "num_results": len(rerank_results),
                 "graph_results": len(graph_results),
+                "database_results": len(database_results),
+                "planned_routes": route_plan,
+                "agentic_trace": [self._serialize_route_trace(item) for item in route_trace],
             }
         )
 
@@ -343,25 +462,215 @@ class RAGPipeline:
         deduped: List[RerankResult] = []
         seen = set()
         for item in results:
-            key = (getattr(item, "chunk_id", None), getattr(item, "doc_id", None), getattr(item, "content", "")[:120])
+            parent_key = RAGPipeline._extract_parent_chunk_key(getattr(item, "chunk_id", None))
+            if parent_key:
+                key = ("parent", getattr(item, "doc_id", None), parent_key)
+            else:
+                key = (
+                    getattr(item, "chunk_id", None),
+                    getattr(item, "doc_id", None),
+                    getattr(item, "content", "")[:120],
+                )
             if key in seen:
                 continue
             seen.add(key)
             deduped.append(item)
         return deduped
 
+    @staticmethod
+    def _extract_parent_chunk_key(chunk_id: Optional[str]) -> Optional[str]:
+        if not chunk_id or "-c" not in chunk_id:
+            return None
+        return chunk_id.rsplit("-c", 1)[0]
+
+    def preview_agentic_routes(
+        self,
+        query: str,
+        *,
+        skip_self_rag: bool = False,
+    ) -> Dict[str, Any]:
+        """Return the route plan without executing retrieval."""
+
+        if skip_self_rag:
+            decision = RetrievalDecision.RETRIEVE
+            decision_reason = "跳过Self-RAG"
+        else:
+            decision, decision_reason = self.self_rag.should_retrieve(query)
+
+        rewritten_query = query
+        if rag_config.features.get("query_rewrite", False):
+            rewritten_query = self.query_rewriter.rewrite(query)
+
+        route_plan = self.self_rag.plan_routes(rewritten_query, decision)
+        return {
+            "decision": decision.value,
+            "decision_reason": decision_reason,
+            "query_rewritten": rewritten_query if rewritten_query != query else None,
+            "planned_routes": route_plan,
+            "route_hints": self.self_rag.detect_route_hints(rewritten_query),
+        }
+
+    def _run_hybrid_route(
+        self,
+        *,
+        query: str,
+        top_k: int,
+        category_filter: Optional[str],
+    ) -> tuple[List[RetrievalResult], List[RerankResult]]:
+        retrieval_results = self.retriever.retrieve(
+            query=query,
+            top_k=top_k * 2,
+            category_filter=category_filter,
+        )
+        if not retrieval_results:
+            return [], []
+
+        rerank_top_k = max(top_k * 2, top_k)
+        reranked = self.reranker.rerank(
+            query=query,
+            results=retrieval_results,
+            top_k=rerank_top_k,
+        )
+        reranked = self._dedupe_rerank_results(reranked)[:top_k]
+        return retrieval_results, reranked
+
+    def _run_database_route(self, query: str, top_k: int) -> List[Dict[str, Any]]:
+        from src.agents import get_data_agent
+
+        raw_output = get_data_agent().execute(query)
+        return self._parse_database_route_output(raw_output, top_k=top_k)
+
+    def _parse_database_route_output(self, raw_output: str, top_k: int) -> List[Dict[str, Any]]:
+        try:
+            payload = json.loads(raw_output)
+        except Exception:
+            payload = {"raw": raw_output}
+
+        rows = payload.get("data")
+        if isinstance(rows, dict):
+            rows = [rows]
+        if not isinstance(rows, list):
+            rows = []
+
+        contexts: List[Dict[str, Any]] = []
+        for index, row in enumerate(rows[: max(top_k, 1)], start=1):
+            row_text = json.dumps(row, ensure_ascii=False, default=str)
+            contexts.append(
+                {
+                    "type": "database",
+                    "content": row_text,
+                    "confidence": 0.78,
+                    "source": "database",
+                    "title": f"数据库结果 {index}",
+                }
+            )
+
+        if not contexts and payload.get("raw"):
+            contexts.append(
+                {
+                    "type": "database",
+                    "content": str(payload.get("raw", ""))[:500],
+                    "confidence": 0.62,
+                    "source": "database",
+                    "title": "数据库结果",
+                }
+            )
+        return contexts
+
+    @staticmethod
+    def _merge_auxiliary_results(existing: List[Dict[str, Any]], incoming: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        merged = list(existing)
+        seen = {
+            (
+                str(item.get("type", "")),
+                str(item.get("content", ""))[:240],
+            )
+            for item in merged
+        }
+        for item in incoming:
+            key = (
+                str(item.get("type", "")),
+                str(item.get("content", ""))[:240],
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(item)
+        return merged
+
+    def _evaluate_agentic_quality(
+        self,
+        *,
+        query: str,
+        rerank_results: List[RerankResult],
+        graph_results: List[Dict[str, Any]],
+        database_results: List[Dict[str, Any]],
+    ) -> tuple[RetrievalQuality, str]:
+        if rerank_results:
+            return self.self_rag.evaluate_retrieval_quality(query=query, results=rerank_results)
+        if database_results and graph_results:
+            return RetrievalQuality.HIGH, "数据库与图谱均提供了补充上下文"
+        if database_results:
+            return RetrievalQuality.MEDIUM, "数据库结果可回答结构化事实"
+        if graph_results:
+            return RetrievalQuality.MEDIUM, "图谱结果可支持关系型问题"
+        return RetrievalQuality.LOW, "尚未获得有效上下文"
+
+    @staticmethod
+    def _should_continue_agentic_loop(
+        *,
+        current_quality: RetrievalQuality,
+        route_plan: List[Dict[str, Any]],
+        current_index: int,
+        current_route: str,
+        rerank_results: List[RerankResult],
+        graph_results: List[Dict[str, Any]],
+        database_results: List[Dict[str, Any]],
+    ) -> bool:
+        if current_index >= len(route_plan) - 1:
+            return False
+        remaining_routes = [
+            str(item.get("route", ""))
+            for item in route_plan[current_index + 1 :]
+            if str(item.get("route", ""))
+        ]
+        if not remaining_routes:
+            return False
+        if not rerank_results and not graph_results and not database_results:
+            return True
+        if current_quality == RetrievalQuality.HIGH:
+            return False
+        return any(route != current_route for route in remaining_routes)
+
+    @staticmethod
+    def _serialize_route_trace(item: RouteStepTrace) -> Dict[str, Any]:
+        return {
+            "route": item.route,
+            "reason": item.reason,
+            "result_count": item.result_count,
+            "quality_after": item.quality_after,
+            "continue_next": item.continue_next,
+            "details": item.details,
+        }
+
     def _build_context(
         self,
         results: List[RerankResult],
         quality: RetrievalQuality,
         graph_results: Optional[List[Dict[str, Any]]] = None,
+        database_results: Optional[List[Dict[str, Any]]] = None,
     ) -> str:
         """构建检索上下文"""
         graph_results = graph_results or []
+        database_results = database_results or []
 
         if not results:
-            graph_context = "\n\n".join([item.get("content", "") for item in graph_results if item.get("content")])
-            return graph_context
+            auxiliary_context = [
+                item.get("content", "")
+                for item in [*graph_results, *database_results]
+                if item.get("content")
+            ]
+            return "\n\n".join(auxiliary_context)
 
         # 根据质量决定处理方式
         if quality == RetrievalQuality.HIGH:
@@ -376,6 +685,7 @@ class RAGPipeline:
 
         # 追加图谱上下文
         parts.extend([item.get("content", "") for item in graph_results if item.get("content")])
+        parts.extend([item.get("content", "") for item in database_results if item.get("content")])
 
         return "\n\n---\n\n".join(parts)
 
@@ -383,22 +693,26 @@ class RAGPipeline:
         self,
         results: List[RerankResult],
         graph_results: Optional[List[Dict[str, Any]]] = None,
+        database_results: Optional[List[Dict[str, Any]]] = None,
     ) -> List[Dict[str, Any]]:
         """构建来源引用"""
         sources = []
-        seen_docs = set()
+        seen_sources = set()
 
         for r in results:
-            if r.doc_id not in seen_docs:
-                sources.append({
-                    "doc_id": r.doc_id,
-                    "doc_title": r.doc_title,
-                    "source": r.source,
-                    "category": r.category,
-                    "score": r.final_score,
-                    "content_preview": r.content[:200] + "..." if len(r.content) > 200 else r.content
-                })
-                seen_docs.add(r.doc_id)
+            parent_key = self._extract_parent_chunk_key(r.chunk_id) or r.chunk_id
+            source_key = (r.doc_id, parent_key)
+            if source_key in seen_sources:
+                continue
+            sources.append({
+                "doc_id": r.doc_id,
+                "doc_title": r.doc_title,
+                "source": r.source,
+                "category": r.category,
+                "score": r.final_score,
+                "content_preview": self._build_source_preview(r),
+            })
+            seen_sources.add(source_key)
 
         for index, graph_item in enumerate(graph_results or [], start=1):
             sources.append({
@@ -410,9 +724,37 @@ class RAGPipeline:
                 "content_preview": graph_item.get("content", "")[:200],
             })
 
+        for index, database_item in enumerate(database_results or [], start=1):
+            sources.append({
+                "doc_id": f"database_{index}",
+                "doc_title": database_item.get("title", "结构化数据库结果"),
+                "source": "database",
+                "category": "database",
+                "score": database_item.get("confidence", 0.0),
+                "content_preview": str(database_item.get("content", ""))[:200],
+            })
+
         return sources
 
+    @staticmethod
+    def _build_source_preview(result: RerankResult) -> str:
+        full_text = result.full_text or ""
+        if "[Section]" in full_text and "[Focus Snippet]" in full_text:
+            try:
+                section = full_text.split("[Section]", 1)[1].split("[Parent Context]", 1)[0].strip()
+                snippet = full_text.split("[Focus Snippet]", 1)[1].strip()
+                preview = f"{section}\n{snippet}".strip()
+                return preview[:200] + "..." if len(preview) > 200 else preview
+            except Exception:
+                pass
+        return result.content[:200] + "..." if len(result.content) > 200 else result.content
+
     def add_document(self, file_path: str) -> bool:
+        """Keep the legacy bool-return API for existing callers."""
+
+        return self.add_document_report(file_path).success
+
+    def add_document_report(self, file_path: str) -> AddDocumentReport:
         """
         添加单个文档到知识库
 
@@ -422,31 +764,58 @@ class RAGPipeline:
         Returns:
             是否成功
         """
+        report = AddDocumentReport(
+            success=False,
+            ingest_stage="QUEUED",
+            progress_percent=0,
+            message="等待解析文档",
+        )
         try:
             # 加载文档
             doc = self.document_processor.load_document(file_path)
             if not doc:
-                return False
+                report.ingest_stage = "FAILED"
+                report.message = "文档解析失败"
+                return report
+
+            report.doc_id = doc.doc_id
+            report.ingest_stage = "PARSED"
+            report.progress_percent = 20
+            report.message = "文档解析完成"
 
             # 分块
             chunks = self.chunker.chunk_document(doc)
+            report.chunk_count = len(chunks)
+            report.ingest_stage = "CHUNKED"
+            report.progress_percent = 45
+            report.message = f"文档分块完成，共 {len(chunks)} 个切片"
 
             # 向量化
-            texts = [c.full_text or c.content for c in chunks]
+            texts = [c.retrieval_text or c.content for c in chunks]
             embeddings = self.embeddings.embed_documents(texts)
 
             # 插入Milvus
             self.vector_store.insert_chunks(chunks, embeddings)
+            report.dense_ready = True
+            report.ingest_stage = "DENSE_READY"
+            report.progress_percent = 75
+            report.message = "向量索引写入完成"
 
-            # 更新BM25索引（需要重建）
-            # 这里简化处理，实际可以增量更新
+            self.refresh_sparse_index()
+            report.sparse_ready = True
+            report.ingest_stage = "DONE"
+            report.progress_percent = 100
+            report.message = "Dense 与 Sparse 索引均已就绪"
+            report.success = True
 
-            logger.info(f"已添加文档: {file_path}")
-            return True
+            logger.info(f"已添加文档: {file_path}, chunks={len(chunks)}")
+            return report
 
         except Exception as e:
             logger.error(f"添加文档失败: {e}")
-            return False
+            report.ingest_stage = "FAILED"
+            report.message = str(e)
+            return report
 
     def delete_document(self, doc_id: str) -> bool:
         """
@@ -460,6 +829,7 @@ class RAGPipeline:
         """
         try:
             self.vector_store.delete_by_doc_id(doc_id)
+            self.retriever.remove_document_from_sparse_index(doc_id)
             logger.info(f"已删除文档: {doc_id}")
             return True
         except Exception as e:
@@ -469,6 +839,17 @@ class RAGPipeline:
     def get_stats(self) -> Dict[str, Any]:
         """获取知识库统计信息"""
         return self.vector_store.get_stats()
+
+    @staticmethod
+    def _read_sparse_revision(knowledge_base_path: str) -> str:
+        state_path = Path(knowledge_base_path) / ".registry" / "sparse_state.json"
+        if not state_path.exists():
+            return ""
+        try:
+            payload = json.loads(state_path.read_text(encoding="utf-8"))
+            return str(payload.get("revision") or "")
+        except Exception:
+            return ""
 
 
 # 全局实例

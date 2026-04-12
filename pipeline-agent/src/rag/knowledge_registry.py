@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from src.config import get_settings
+from src.knowledge_graph import create_document_graph_registry, get_knowledge_graph_builder
 from src.models import (
     KnowledgeDocumentMetadata,
     KnowledgeDocumentStatus,
@@ -30,6 +31,7 @@ class KnowledgeBaseRegistry:
 
     REGISTRY_DIR_NAME = ".registry"
     REGISTRY_FILE_NAME = "documents.json"
+    SPARSE_STATE_FILE_NAME = "sparse_state.json"
 
     def __init__(self, root_path: str = "knowledge_base") -> None:
         self.root_path = Path(root_path)
@@ -71,6 +73,18 @@ class KnowledgeBaseRegistry:
                 if existing_status in KnowledgeDocumentStatus._value2member_map_
                 else KnowledgeDocumentStatus.UPLOADED.value
             )
+            ingest_stage = str(existing.get("ingest_stage") or "").strip()
+            if not ingest_stage:
+                ingest_stage = (
+                    "DONE"
+                    if status == KnowledgeDocumentStatus.INDEXED.value
+                    else "FAILED"
+                    if status == KnowledgeDocumentStatus.FAILED.value
+                    else "QUEUED"
+                )
+            progress_percent = int(existing.get("progress_percent", 0) or 0)
+            if progress_percent <= 0 and ingest_stage == "DONE":
+                progress_percent = 100
 
             next_item = {
                 "doc_id": doc_id,
@@ -90,6 +104,9 @@ class KnowledgeBaseRegistry:
                 "file_size_bytes": file_path.stat().st_size,
                 "source_type": sidecar.get("source_type", KnowledgeSourceType.LOCAL_FILE.value),
                 "status": status,
+                "chunk_count": int(existing.get("chunk_count", 0) or 0),
+                "ingest_stage": ingest_stage,
+                "progress_percent": progress_percent,
                 "created_at": created_at,
             }
             existing_comparable = {key: value for key, value in existing.items() if key != "updated_at"}
@@ -102,17 +119,23 @@ class KnowledgeBaseRegistry:
             documents[doc_id] = next_item
 
         stale_doc_ids = [doc_id for doc_id, item in documents.items() if doc_id not in seen_doc_ids and not self._resolve_path(item.get("relative_path", "")).exists()]
+        stale_cleanup_performed = False
         for doc_id in stale_doc_ids:
             try:
                 get_rag_pipeline().delete_document(doc_id)
+                create_document_graph_registry(str(self.root_path)).remove_document(doc_id)
+                stale_cleanup_performed = True
             except Exception as exc:  # noqa: BLE001
                 logger.warning(f"Knowledge registry stale vector cleanup warning for {doc_id}: {exc}")
             documents.pop(doc_id, None)
-        if stale_doc_ids:
+
+        if stale_cleanup_performed:
             try:
                 get_rag_pipeline().refresh_sparse_index(str(self.root_path))
+                self._reload_knowledge_graph()
+                self._bump_sparse_revision("sync:stale_cleanup")
             except Exception as exc:  # noqa: BLE001
-                logger.warning(f"Knowledge registry stale sparse refresh warning: {exc}")
+                logger.warning(f"Knowledge registry sparse refresh warning after stale cleanup: {exc}")
 
         self._save_registry(registry)
         return registry
@@ -176,47 +199,81 @@ class KnowledgeBaseRegistry:
             raise
 
         indexed = False
+        chunk_count = 0
+        ingest_stage = "QUEUED"
+        progress_percent = 0
         pipeline = get_rag_pipeline()
+        document_graph_registry = create_document_graph_registry(str(self.root_path))
         try:
-            indexed = bool(pipeline.add_document(str(target_path)))
+            indexing_report = pipeline.add_document_report(str(target_path))
+            indexed = bool(indexing_report.success)
+            chunk_count = int(indexing_report.chunk_count or 0)
+            ingest_stage = str(indexing_report.ingest_stage or "QUEUED")
+            progress_percent = int(indexing_report.progress_percent or 0)
+            if indexed:
+                document_graph_registry.upsert_document(document)
+                self._reload_knowledge_graph()
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"Knowledge upload indexed with warning: {exc}")
+            if indexed:
+                try:
+                    document_graph_registry.remove_document(document.doc_id)
+                    pipeline.delete_document(document.doc_id)
+                    pipeline.refresh_sparse_index(str(self.root_path))
+                    self._reload_knowledge_graph()
+                    self._bump_sparse_revision(f"rollback:index:{document.doc_id}")
+                except Exception as rollback_exc:  # noqa: BLE001
+                    logger.error(f"Knowledge upload rollback failed for {document.doc_id}: {rollback_exc}")
             indexed = False
-        sparse_refreshed = False
-        if indexed:
-            self._schedule_sparse_refresh(reason=f"upload:{target_path.name}")
-            sparse_refreshed = True
-
-        registry = self._load_registry()
-        documents = registry.setdefault("documents", {})
-        now = self._iso_now()
-        documents[document.doc_id] = {
-            "doc_id": document.doc_id,
-            "title": metadata.title,
-            "source": metadata.source,
-            "category": metadata.category.value,
-            "tags": metadata.tags,
-            "author": metadata.author,
-            "summary": metadata.summary,
-            "language": metadata.language,
-            "version": metadata.version,
-            "external_id": metadata.external_id,
-            "effective_at": metadata.effective_at.isoformat() if metadata.effective_at else None,
-            "file_name": target_path.name,
-            "relative_path": self._relative_path(target_path),
-            "file_type": suffix,
-            "file_size_bytes": len(file_bytes),
-            "source_type": KnowledgeSourceType.UPLOAD.value,
-            "status": (
-                KnowledgeDocumentStatus.INDEXED.value
-                if indexed
-                else KnowledgeDocumentStatus.FAILED.value
-            ),
-            "created_at": now,
-            "updated_at": now,
-        }
-        self._save_registry(registry)
-        return documents[document.doc_id]
+            ingest_stage = "FAILED"
+        try:
+            registry = self._load_registry()
+            documents = registry.setdefault("documents", {})
+            now = self._iso_now()
+            documents[document.doc_id] = {
+                "doc_id": document.doc_id,
+                "title": metadata.title,
+                "source": metadata.source,
+                "category": metadata.category.value,
+                "tags": metadata.tags,
+                "author": metadata.author,
+                "summary": metadata.summary,
+                "language": metadata.language,
+                "version": metadata.version,
+                "external_id": metadata.external_id,
+                "effective_at": metadata.effective_at.isoformat() if metadata.effective_at else None,
+                "file_name": target_path.name,
+                "relative_path": self._relative_path(target_path),
+                "file_type": suffix,
+                "file_size_bytes": len(file_bytes),
+                "source_type": KnowledgeSourceType.UPLOAD.value,
+                "status": (
+                    KnowledgeDocumentStatus.INDEXED.value
+                    if indexed
+                    else KnowledgeDocumentStatus.FAILED.value
+                ),
+                "chunk_count": chunk_count,
+                "ingest_stage": ingest_stage,
+                "progress_percent": progress_percent,
+                "created_at": now,
+                "updated_at": now,
+            }
+            self._save_registry(registry)
+            if indexed:
+                self._bump_sparse_revision(f"upload:{target_path.name}")
+            return documents[document.doc_id]
+        except Exception:
+            if indexed:
+                try:
+                    document_graph_registry.remove_document(document.doc_id)
+                    pipeline.delete_document(document.doc_id)
+                    pipeline.refresh_sparse_index(str(self.root_path))
+                    self._reload_knowledge_graph()
+                    self._bump_sparse_revision(f"rollback:registry:{document.doc_id}")
+                except Exception as rollback_exc:  # noqa: BLE001
+                    logger.error(f"Knowledge registry persistence rollback failed for {document.doc_id}: {rollback_exc}")
+            self._cleanup_uploaded_files(target_path)
+            raise
 
     def delete_document(self, doc_id: str) -> dict[str, Any]:
         """Delete one document from registry, disk, and vector index."""
@@ -232,20 +289,31 @@ class KnowledgeBaseRegistry:
         trash_paths = self._move_document_to_trash(doc_id=doc_id, file_path=target_path, sidecar_path=sidecar_path)
 
         vector_deleted = False
+        graph_deleted = False
+        document_graph_registry = create_document_graph_registry(str(self.root_path))
         try:
             vector_deleted = bool(get_rag_pipeline().delete_document(doc_id))
             if not vector_deleted:
                 raise RuntimeError(f"Vector delete returned false for document: {doc_id}")
-            self._schedule_sparse_refresh(reason=f"delete:{doc_id}")
+            graph_deleted = document_graph_registry.remove_document(doc_id)
+            get_rag_pipeline().refresh_sparse_index(str(self.root_path))
+            self._reload_knowledge_graph()
+            self._bump_sparse_revision(f"delete:{doc_id}")
         except Exception as exc:  # noqa: BLE001
             self._restore_document_from_trash(trash_paths, target_path, sidecar_path)
             if vector_deleted:
                 try:
-                    reindexed = bool(get_rag_pipeline().add_document(str(target_path)))
-                    if reindexed:
-                        self._schedule_sparse_refresh(reason=f"delete-rollback:{doc_id}")
+                    get_rag_pipeline().add_document(str(target_path))
                 except Exception as rollback_exc:  # noqa: BLE001
                     logger.error(f"Knowledge delete rollback failed for {doc_id}: {rollback_exc}")
+            if graph_deleted:
+                try:
+                    restored_document = DocumentProcessor(str(self.root_path)).load_document(str(target_path))
+                    if restored_document is not None:
+                        document_graph_registry.upsert_document(restored_document)
+                        self._reload_knowledge_graph()
+                except Exception as rollback_exc:  # noqa: BLE001
+                    logger.error(f"Knowledge graph rollback failed for {doc_id}: {rollback_exc}")
             raise RuntimeError(f"Delete aborted because index cleanup failed: {exc}") from exc
 
         documents.pop(doc_id, None)
@@ -264,21 +332,38 @@ class KnowledgeBaseRegistry:
             knowledge_base_path=str(self.root_path),
             recreate=recreate,
         )
+        documents = DocumentProcessor(str(self.root_path)).load_all_documents()
+        create_document_graph_registry(str(self.root_path)).rebuild_from_documents(documents)
+        self._reload_knowledge_graph()
         indexed_doc_ids = set(report.document_ids)
         registry = self.sync_registry()
         for item in registry.get("documents", {}).values():
+            doc_id = str(item.get("doc_id") or "")
+            indexed = doc_id in indexed_doc_ids
             item["status"] = (
                 KnowledgeDocumentStatus.INDEXED.value
-                if item.get("doc_id") in indexed_doc_ids
+                if indexed
                 else KnowledgeDocumentStatus.FAILED.value
             )
+            item["ingest_stage"] = "DONE" if indexed else "FAILED"
+            item["progress_percent"] = 100 if indexed else 0
+            item["chunk_count"] = int(report.document_chunk_counts.get(doc_id, 0) if indexed else 0)
             item["updated_at"] = self._iso_now()
         self._save_registry(registry)
+        self._bump_sparse_revision(f"reindex:{'recreate' if recreate else 'reuse'}")
         return {
             "documents_indexed": report.documents_indexed,
             "registry_total": len(registry.get("documents", {})),
             "recreate": recreate,
         }
+
+    def _reload_knowledge_graph(self) -> None:
+        """Reload static graph data plus persisted document graph snapshots."""
+
+        document_graph_registry = create_document_graph_registry(str(self.root_path))
+        get_knowledge_graph_builder().reload_all(
+            document_graph_path=document_graph_registry.path(),
+        )
 
     def get_document(self, doc_id: str) -> Optional[dict[str, Any]]:
         """Get one document from registry."""
@@ -349,6 +434,12 @@ class KnowledgeBaseRegistry:
                 json.dumps({"documents": {}}, ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
+        sparse_state_path = self._sparse_state_path()
+        if not sparse_state_path.exists():
+            sparse_state_path.write_text(
+                json.dumps({"revision": "", "updated_at": ""}, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
 
     def _load_registry(self) -> dict[str, Any]:
         self._ensure_store()
@@ -383,6 +474,26 @@ class KnowledgeBaseRegistry:
 
     def _sidecar_path(self, file_path: Path) -> Path:
         return file_path.with_name(f"{file_path.name}.meta.json")
+
+    def _sparse_state_path(self) -> Path:
+        return self.registry_dir / self.SPARSE_STATE_FILE_NAME
+
+    def _bump_sparse_revision(self, reason: str) -> str:
+        self._ensure_store()
+        revision = datetime.now().isoformat(timespec="microseconds")
+        self._sparse_state_path().write_text(
+            json.dumps(
+                {
+                    "revision": revision,
+                    "updated_at": revision,
+                    "reason": reason,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        return revision
 
     def _schedule_sparse_refresh(self, *, reason: str) -> None:
         with self._sparse_refresh_lock:

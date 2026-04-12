@@ -2,6 +2,7 @@ package com.pipeline.data.service.impl;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 
 import org.springframework.dao.DuplicateKeyException;
@@ -37,6 +38,8 @@ public class KnowledgeDocumentServiceImpl extends ServiceImpl<KnowledgeDocumentM
     private static final String STATUS_UPLOADED = "UPLOADED";
     private static final String STATUS_PROCESSING = "PROCESSING";
     private static final String STATUS_FAILED = "FAILED";
+    private static final String STAGE_QUEUED = "QUEUED";
+    private static final String STAGE_DONE = "DONE";
     private static final String TASK_STATUS_PENDING = "PENDING";
     private static final String TASK_STATUS_PROCESSING = "PROCESSING";
     private static final List<String> SUPPORTED_EXTENSIONS = List.of(".pdf", ".docx", ".md", ".txt");
@@ -62,7 +65,9 @@ public class KnowledgeDocumentServiceImpl extends ServiceImpl<KnowledgeDocumentM
     @Override
     @Transactional(rollbackFor = Exception.class)
     public KnowledgeDocument uploadDocument(MultipartFile file, String title, String category,
-                                            String sourceType, String tags, String remark) {
+                                            String sourceType, String tags, String remark,
+                                            String author, String summary, String language,
+                                            String version, String externalId, String effectiveAt) {
         if (file == null || file.isEmpty()) {
             throw new BusinessException("请先选择要上传的知识文档");
         }
@@ -81,7 +86,20 @@ public class KnowledgeDocumentServiceImpl extends ServiceImpl<KnowledgeDocumentM
         KnowledgeFileStorageService.StoredObject storedObject =
                 storageService.store(content, originalFilename, normalizedCategory, fileHash);
 
-        KnowledgeDocument document = buildDocument(file, title, normalizedCategory, sourceType, tags, remark, extension);
+        KnowledgeDocument document = buildDocument(
+                file,
+                title,
+                normalizedCategory,
+                sourceType,
+                tags,
+                remark,
+                author,
+                summary,
+                language,
+                version,
+                externalId,
+                effectiveAt,
+                extension);
         document.setFileHash(fileHash);
         document.setStorageType(storedObject.storageType());
         document.setStorageBucket(storedObject.bucket());
@@ -115,6 +133,8 @@ public class KnowledgeDocumentServiceImpl extends ServiceImpl<KnowledgeDocumentM
         document.setRetryCount(nextRetryCount);
         document.setStatus(STATUS_UPLOADED);
         document.setFailureReason(null);
+        document.setIngestStage(STAGE_QUEUED);
+        document.setProgressPercent(0);
         updateById(document);
 
         KnowledgeIngestTask task = createTask(document, "RETRY", nextRetryCount + 1);
@@ -132,6 +152,7 @@ public class KnowledgeDocumentServiceImpl extends ServiceImpl<KnowledgeDocumentM
             throw new BusinessException("文档正在处理中，请稍后再删除");
         }
 
+        /*
         if (StrUtil.isNotBlank(document.getAgentDocId())) {
             boolean success = asyncService.deleteAgentDocument(document.getAgentDocId());
             if (!success) {
@@ -139,10 +160,15 @@ public class KnowledgeDocumentServiceImpl extends ServiceImpl<KnowledgeDocumentM
             }
         }
 
-        storageService.delete(document.getStorageType(), document.getStorageBucket(), document.getStorageObjectKey());
+        */
+        DeletionSnapshot snapshot = DeletionSnapshot.from(document);
         taskMapper.delete(new LambdaQueryWrapper<KnowledgeIngestTask>()
                 .eq(KnowledgeIngestTask::getDocumentId, id));
-        return baseMapper.hardDeleteById(id) > 0;
+        boolean deleted = baseMapper.hardDeleteById(id) > 0;
+        if (deleted) {
+            dispatchDeleteCleanupAfterCommit(snapshot);
+        }
+        return deleted;
     }
 
     private void dispatchAsyncAfterCommit(Long documentId, Long taskId, ExistingIndexState previous) {
@@ -156,10 +182,36 @@ public class KnowledgeDocumentServiceImpl extends ServiceImpl<KnowledgeDocumentM
                             previous.agentDocId(),
                             previous.chunkCount(),
                             previous.status(),
-                            previous.lastIngestTime());
+                            previous.lastIngestTime(),
+                            previous.ingestStage(),
+                            previous.progressPercent());
                 } catch (RuntimeException ex) {
                     log.error("Failed to dispatch async knowledge ingest task", ex);
                     markDispatchFailed(documentId, taskId, ex.getMessage());
+                }
+            }
+        });
+    }
+
+    private void dispatchDeleteCleanupAfterCommit(DeletionSnapshot snapshot) {
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                try {
+                    storageService.delete(snapshot.storageType(), snapshot.storageBucket(), snapshot.storageObjectKey());
+                } catch (RuntimeException ex) {
+                    log.error("Failed to delete knowledge file after database delete, docId={}, objectKey={}",
+                            snapshot.documentId(), snapshot.storageObjectKey(), ex);
+                }
+
+                if (StrUtil.isBlank(snapshot.agentDocId())) {
+                    return;
+                }
+
+                boolean success = asyncService.deleteAgentDocument(snapshot.agentDocId());
+                if (!success) {
+                    log.error("Failed to delete knowledge document from agent after database delete, docId={}, agentDocId={}",
+                            snapshot.documentId(), snapshot.agentDocId());
                 }
             }
         });
@@ -171,6 +223,8 @@ public class KnowledgeDocumentServiceImpl extends ServiceImpl<KnowledgeDocumentM
         KnowledgeDocument latestDocument = getById(documentId);
         if (latestDocument != null) {
             latestDocument.setStatus(STATUS_FAILED);
+            latestDocument.setIngestStage(STATUS_FAILED);
+            latestDocument.setProgressPercent(0);
             latestDocument.setFailureReason(detail);
             updateById(latestDocument);
         }
@@ -178,25 +232,38 @@ public class KnowledgeDocumentServiceImpl extends ServiceImpl<KnowledgeDocumentM
         KnowledgeIngestTask latestTask = taskMapper.selectById(taskId);
         if (latestTask != null) {
             latestTask.setStatus(STATUS_FAILED);
+            latestTask.setIngestStage(STATUS_FAILED);
+            latestTask.setProgressPercent(0);
             latestTask.setFailureReason(detail);
             taskMapper.updateById(latestTask);
         }
     }
 
     private KnowledgeDocument buildDocument(MultipartFile file, String title, String category,
-                                            String sourceType, String tags, String remark, String extension) {
+                                            String sourceType, String tags, String remark,
+                                            String author, String summary, String language,
+                                            String version, String externalId, String effectiveAt,
+                                            String extension) {
         KnowledgeDocument document = new KnowledgeDocument();
         document.setTitle(StrUtil.blankToDefault(title, stripExtension(file.getOriginalFilename())));
         document.setCategory(category);
         document.setSourceType(StrUtil.blankToDefault(sourceType, "manual"));
         document.setTags(StrUtil.nullToEmpty(tags));
         document.setRemark(StrUtil.nullToEmpty(remark));
+        document.setAuthor(StrUtil.trimToNull(author));
+        document.setSummary(StrUtil.trimToNull(summary));
+        document.setLanguage(StrUtil.blankToDefault(StrUtil.trimToNull(language), "zh-CN"));
+        document.setVersion(StrUtil.trimToNull(version));
+        document.setExternalId(StrUtil.trimToNull(externalId));
+        document.setEffectiveAt(parseEffectiveAt(effectiveAt));
         document.setFileName(StrUtil.blankToDefault(file.getOriginalFilename(), "unknown"));
         document.setFileExtension(extension);
         document.setFileSize(file.getSize());
         document.setChunkCount(0);
         document.setRetryCount(0);
         document.setStatus(STATUS_UPLOADED);
+        document.setIngestStage(STAGE_QUEUED);
+        document.setProgressPercent(0);
         document.setCreateBy("system");
         return document;
     }
@@ -207,6 +274,8 @@ public class KnowledgeDocumentServiceImpl extends ServiceImpl<KnowledgeDocumentM
         task.setTaskType(taskType);
         task.setAttemptNo(attemptNo);
         task.setStatus(TASK_STATUS_PENDING);
+        task.setIngestStage(STAGE_QUEUED);
+        task.setProgressPercent(0);
         task.setChunkCount(0);
         task.setCreateBy(document.getCreateBy());
         taskMapper.insert(task);
@@ -273,14 +342,51 @@ public class KnowledgeDocumentServiceImpl extends ServiceImpl<KnowledgeDocumentM
         return value == null ? 0 : value;
     }
 
+    private LocalDateTime parseEffectiveAt(String effectiveAt) {
+        String normalized = StrUtil.trimToNull(effectiveAt);
+        if (normalized == null) {
+            return null;
+        }
+        try {
+            return LocalDateTime.parse(normalized);
+        } catch (DateTimeParseException ex) {
+            throw new BusinessException("effectiveAt 鏍煎紡閿欒锛岃浣跨敤 ISO-8601 鏃堕棿锛屼緥濡?2026-04-08T10:30:00");
+        }
+    }
+
     private ExistingIndexState snapshot(KnowledgeDocument document) {
         return new ExistingIndexState(
                 document.getAgentDocId(),
                 defaultInt(document.getChunkCount()),
                 StrUtil.blankToDefault(document.getStatus(), STATUS_UPLOADED),
-                document.getLastIngestTime());
+                document.getLastIngestTime(),
+                StrUtil.blankToDefault(document.getIngestStage(), STAGE_QUEUED),
+                defaultInt(document.getProgressPercent()));
     }
 
-    private record ExistingIndexState(String agentDocId, int chunkCount, String status, LocalDateTime lastIngestTime) {
+    private record ExistingIndexState(
+            String agentDocId,
+            int chunkCount,
+            String status,
+            LocalDateTime lastIngestTime,
+            String ingestStage,
+            int progressPercent) {
+    }
+
+    private record DeletionSnapshot(
+            Long documentId,
+            String storageType,
+            String storageBucket,
+            String storageObjectKey,
+            String agentDocId) {
+
+        private static DeletionSnapshot from(KnowledgeDocument document) {
+            return new DeletionSnapshot(
+                    document.getId(),
+                    document.getStorageType(),
+                    document.getStorageBucket(),
+                    document.getStorageObjectKey(),
+                    document.getAgentDocId());
+        }
     }
 }

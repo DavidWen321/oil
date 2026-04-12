@@ -5,6 +5,9 @@ from enum import Enum
 
 
 class NodeType(str, Enum):
+    DOCUMENT = "document"
+    SECTION = "section"
+    CONCEPT = "concept"
     PIPELINE = "pipeline"
     PUMP_STATION = "pump_station"
     PUMP = "pump"

@@ -30,6 +30,10 @@ public class KnowledgeIngestTask implements Serializable {
 
     private String status;
 
+    private String ingestStage;
+
+    private Integer progressPercent;
+
     private String agentDocId;
 
     private Integer chunkCount;
