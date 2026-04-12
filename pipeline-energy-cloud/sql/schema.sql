@@ -204,3 +204,75 @@ CREATE TABLE `t_operation_log` (
     KEY `idx_create_time` (`create_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='鎿嶄綔鏃ュ織琛?;
 
+-- ============================================================
+-- 9. Knowledge document metadata (t_kb_document)
+-- ============================================================
+DROP TABLE IF EXISTS `t_kb_document`;
+CREATE TABLE `t_kb_document` (
+    `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT 'Primary key',
+    `title` varchar(200) NOT NULL COMMENT 'Document title',
+    `category` varchar(50) NOT NULL COMMENT 'Knowledge category',
+    `source_type` varchar(50) DEFAULT NULL COMMENT 'Source type',
+    `tags` varchar(500) DEFAULT NULL COMMENT 'Comma separated tags',
+    `remark` varchar(1000) DEFAULT NULL COMMENT 'Remark',
+    `author` varchar(100) DEFAULT NULL COMMENT 'Author',
+    `summary` varchar(1000) DEFAULT NULL COMMENT 'Summary',
+    `language` varchar(20) DEFAULT 'zh-CN' COMMENT 'Language',
+    `version` varchar(50) DEFAULT NULL COMMENT 'Version',
+    `external_id` varchar(100) DEFAULT NULL COMMENT 'External id',
+    `effective_at` datetime DEFAULT NULL COMMENT 'Effective time',
+    `file_name` varchar(255) NOT NULL COMMENT 'Original file name',
+    `file_extension` varchar(20) DEFAULT NULL COMMENT 'File extension',
+    `file_size` bigint(20) DEFAULT 0 COMMENT 'File size in bytes',
+    `file_hash` varchar(64) NOT NULL COMMENT 'File hash',
+    `storage_type` varchar(32) NOT NULL DEFAULT 'MINIO' COMMENT 'Storage type',
+    `storage_bucket` varchar(128) NOT NULL COMMENT 'Storage bucket',
+    `storage_object_key` varchar(500) NOT NULL COMMENT 'Storage object key',
+    `agent_doc_id` varchar(64) DEFAULT NULL COMMENT 'Agent document id',
+    `chunk_count` int(11) DEFAULT 0 COMMENT 'Chunk count',
+    `retry_count` int(11) DEFAULT 0 COMMENT 'Retry count',
+    `status` varchar(32) NOT NULL DEFAULT 'UPLOADED' COMMENT 'Document status',
+    `ingest_stage` varchar(32) NOT NULL DEFAULT 'QUEUED' COMMENT 'Ingest stage',
+    `progress_percent` int(11) NOT NULL DEFAULT 0 COMMENT 'Progress percent',
+    `failure_reason` varchar(1000) DEFAULT NULL COMMENT 'Failure reason',
+    `last_ingest_time` datetime DEFAULT NULL COMMENT 'Last ingest time',
+    `create_by` varchar(64) DEFAULT '' COMMENT 'Created by',
+    `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Create time',
+    `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Update time',
+    `is_deleted` tinyint(1) DEFAULT 0 COMMENT 'Logic delete flag',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_file_hash` (`file_hash`),
+    KEY `idx_category` (`category`),
+    KEY `idx_status` (`status`),
+    KEY `idx_agent_doc_id` (`agent_doc_id`),
+    KEY `idx_create_time` (`create_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Knowledge document metadata';
+
+-- ============================================================
+-- 10. Knowledge ingest task (t_kb_ingest_task)
+-- ============================================================
+DROP TABLE IF EXISTS `t_kb_ingest_task`;
+CREATE TABLE `t_kb_ingest_task` (
+    `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT 'Primary key',
+    `document_id` bigint(20) NOT NULL COMMENT 'Knowledge document id',
+    `task_type` varchar(32) NOT NULL COMMENT 'Task type',
+    `attempt_no` int(11) NOT NULL DEFAULT 1 COMMENT 'Attempt number',
+    `status` varchar(32) NOT NULL DEFAULT 'PENDING' COMMENT 'Task status',
+    `ingest_stage` varchar(32) NOT NULL DEFAULT 'QUEUED' COMMENT 'Ingest stage',
+    `progress_percent` int(11) NOT NULL DEFAULT 0 COMMENT 'Progress percent',
+    `agent_doc_id` varchar(64) DEFAULT NULL COMMENT 'Agent document id',
+    `chunk_count` int(11) DEFAULT 0 COMMENT 'Chunk count',
+    `failure_reason` varchar(1000) DEFAULT NULL COMMENT 'Failure reason',
+    `create_by` varchar(64) DEFAULT '' COMMENT 'Created by',
+    `started_at` datetime DEFAULT NULL COMMENT 'Started at',
+    `finished_at` datetime DEFAULT NULL COMMENT 'Finished at',
+    `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Create time',
+    `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Update time',
+    PRIMARY KEY (`id`),
+    KEY `idx_document_id` (`document_id`),
+    KEY `idx_task_status` (`status`),
+    KEY `idx_task_create_time` (`create_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Knowledge ingest task';
+
+SET FOREIGN_KEY_CHECKS = 1;
+
