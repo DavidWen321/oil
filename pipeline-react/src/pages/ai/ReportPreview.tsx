@@ -24,6 +24,7 @@ import type { ColumnsType } from 'antd/es/table';
 import type { EChartsOption } from 'echarts';
 import {
   AppstoreOutlined,
+  ArrowLeftOutlined,
   CheckCircleOutlined,
   DeleteOutlined,
   EyeOutlined,
@@ -33,6 +34,7 @@ import {
   RobotOutlined,
   SearchOutlined,
 } from '@ant-design/icons';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import { calculationHistoryApi, projectApi } from '../../api';
 import { agentApi } from '../../api/agent';
@@ -162,6 +164,10 @@ type DetailPreviewState =
       report: DynamicReportResponsePayload;
     }
   | null;
+
+type ReportHistoryDetailLocationState = {
+  row?: HistoryTableRow;
+};
 
 const ALL_CALC_TYPE_OPTION = '__ALL_CALC_TYPE__';
 const DEFAULT_REPORT_TYPE: ReportType = 'AI_REPORT';
@@ -453,6 +459,19 @@ function formatTime(value?: string) {
   }
   const parsed = dayjs(value);
   return parsed.isValid() ? parsed.format('YYYY-MM-DD HH:mm:ss') : value;
+}
+
+function toHistoryTableRow(item: CalculationHistory, projectLookup: Map<number, Project>): HistoryTableRow {
+  const project = projectLookup.get(Number(item.projectId));
+
+  return {
+    ...item,
+    key: item.id,
+    projectNumber: project?.number || (item.projectId ? String(item.projectId) : '-'),
+    responsible: project?.responsible || item.userName || '-',
+    calcTypeLabel: getCalcTypeLabel(item),
+    updateTimeText: formatTime(item.createTime),
+  };
 }
 
 function parseJson(value?: string) {
@@ -3775,7 +3794,458 @@ function renderDetailMetricCards(items: DetailMetricCardItem[], options: DetailM
   );
 }
 
+function ReportHistoryDetailContent({ row }: { row: HistoryTableRow }) {
+  const detailPayload = useMemo(
+    () => parseJson(row.outputResult) ?? parseJson(row.inputParams),
+    [row.inputParams, row.outputResult],
+  );
+
+  const detailReport = useMemo(() => {
+    if (!detailPayload) {
+      return null;
+    }
+    if (isDynamicReportResponsePayload(detailPayload)) {
+      return detailPayload;
+    }
+
+    const nestedPayload = (detailPayload as { data?: unknown }).data;
+    return isDynamicReportResponsePayload(nestedPayload) ? nestedPayload : null;
+  }, [detailPayload]);
+
+  const historyInputPayload = useMemo(() => parseJson(row.inputParams), [row.inputParams]);
+
+  const historyOutputPayload = useMemo(() => {
+    const parsed = parseJson(row.outputResult);
+    return asRecord(getValueByPath(parsed, 'data')) ?? asRecord(parsed);
+  }, [row.outputResult]);
+
+  const historyInputBase = useMemo(
+    () => asRecord(getValueByPath(historyInputPayload, 'baseParams')) ?? historyInputPayload,
+    [historyInputPayload],
+  );
+
+  const sensitivityVariableResults = useMemo(
+    () => asRecordArray(getValueByPath(historyOutputPayload, 'variableResults')),
+    [historyOutputPayload],
+  );
+
+  const sensitivityRankingRows = useMemo(
+    () => asRecordArray(getValueByPath(historyOutputPayload, 'sensitivityRanking')),
+    [historyOutputPayload],
+  );
+
+  const sensitivityDetailRows = useMemo<SensitivityDetailRow[]>(
+    () =>
+      sensitivityVariableResults.flatMap((result, resultIndex) => {
+        const variableName = String(result.variableName ?? result.variableType ?? '敏感变量');
+        return asRecordArray(result.dataPoints).map((point, pointIndex) => ({
+          key: `${resultIndex}-${pointIndex}`,
+          variableName,
+          changePercent: formatValue(point.changePercent, '%'),
+          endStationPressure: formatValue(point.endStationPressure),
+          frictionHeadLoss: formatValue(point.frictionHeadLoss),
+          flowRegime: formatValue(point.flowRegime),
+          hydraulicSlope: formatValue(point.hydraulicSlope),
+          reynoldsNumber: formatValue(point.reynoldsNumber),
+        }));
+      }),
+    [sensitivityVariableResults],
+  );
+
+  const inputValueSources = useMemo(() => [historyInputBase, historyInputPayload] as unknown[], [historyInputBase, historyInputPayload]);
+  const outputValueSources = useMemo(() => [historyOutputPayload] as unknown[], [historyOutputPayload]);
+  const baseResultSources = useMemo(
+    () => [asRecord(getValueByPath(historyOutputPayload, 'baseResult')), historyOutputPayload].filter(Boolean) as unknown[],
+    [historyOutputPayload],
+  );
+
+  const detailInfoCards = useMemo<DetailMetricCardItem[]>(
+    () =>
+      filterMetricCards([
+        { label: '项目名称', value: row.projectName || '-', tone: 'blue', span: 8 },
+        { label: '项目编号', value: row.projectNumber || '-', tone: 'cyan', span: 4 },
+        { label: '负责人', value: row.responsible || '-', tone: 'green', span: 4 },
+        { label: '计算类型', value: row.calcTypeLabel || '-', tone: 'purple', span: 4 },
+        { label: '更新时间', value: row.updateTimeText || '-', tone: 'amber', span: 4 },
+        { label: '备注', value: row.remark || '-', tone: 'blue', span: 8 },
+      ]),
+    [row],
+  );
+
+  const inputMetricCards = useMemo<DetailMetricCardItem[]>(() => {
+    const startAltitude = formatValue(pickFirstValue(inputValueSources, ['startAltitude', 'startElevation']));
+    const endAltitude = formatValue(pickFirstValue(inputValueSources, ['endAltitude', 'endElevation']));
+
+    return filterMetricCards([
+      { label: '流量', value: formatValue(pickFirstValue(inputValueSources, ['flowRate', 'throughput', 'flow'])), tone: 'blue' },
+      { label: '密度', value: formatValue(pickFirstValue(inputValueSources, ['density'])), tone: 'cyan' },
+      { label: '粘度', value: formatValue(pickFirstValue(inputValueSources, ['viscosity'])), tone: 'green' },
+      { label: '长度', value: formatValue(pickFirstValue(inputValueSources, ['length', 'pipelineLength'])), tone: 'amber' },
+      { label: '管径', value: formatValue(pickFirstValue(inputValueSources, ['diameter', 'pipeDiameter'])), tone: 'purple' },
+      { label: '壁厚', value: formatValue(pickFirstValue(inputValueSources, ['thickness', 'wallThickness'])), tone: 'blue' },
+      { label: '粗糙度', value: formatValue(pickFirstValue(inputValueSources, ['roughness'])), tone: 'cyan' },
+      {
+        label: '首站进站压头',
+        value: formatValue(pickFirstValue(inputValueSources, ['inletPressure', 'firstStationInPressure', 'stationInPressure'])),
+        tone: 'amber',
+      },
+      { label: '起点高程', value: startAltitude, tone: 'green' },
+      { label: '终点高程', value: endAltitude, tone: 'green' },
+      { label: '泵数量', value: buildPumpCountDisplay(inputValueSources), tone: 'purple', span: 12 },
+      { label: '扬程', value: buildPumpHeadDisplay(inputValueSources), tone: 'purple', span: 12 },
+      { label: '效率', value: buildEfficiencyDisplay(inputValueSources), tone: 'blue' },
+      { label: '电价', value: formatValue(pickFirstValue(inputValueSources, ['electricityPrice', 'powerPrice']), '元/kWh'), tone: 'cyan' },
+      { label: '工作天数', value: formatValue(pickFirstValue(inputValueSources, ['workingDays']), '天'), tone: 'green' },
+      { label: '敏感变量类型', value: buildSensitiveVariableDisplay(historyInputPayload, historyInputBase), tone: 'amber' },
+    ]);
+  }, [historyInputBase, historyInputPayload, inputValueSources]);
+
+  const hydraulicResultCards = useMemo<DetailMetricCardItem[]>(
+    () => [
+      { label: '雷诺数', value: formatValue(pickFirstValue(outputValueSources, ['reynoldsNumber'])), tone: 'blue' },
+      { label: '流态', value: formatValue(pickFirstValue(outputValueSources, ['flowRegime', 'regime'])), tone: 'cyan' },
+      { label: '摩阻损失', value: formatValue(pickFirstValue(outputValueSources, ['frictionHeadLoss', 'frictionLoss'])), tone: 'green' },
+      { label: '水力坡降', value: formatValue(pickFirstValue(outputValueSources, ['hydraulicSlope', 'slope'])), tone: 'amber' },
+      { label: '总扬程', value: formatValue(pickFirstValue(outputValueSources, ['totalHead'])), tone: 'purple' },
+      { label: '首站出站压头', value: formatValue(pickFirstValue(outputValueSources, ['firstStationOutPressure', 'outletPressure'])), tone: 'blue' },
+      { label: '末站进站压头', value: formatValue(pickFirstValue(outputValueSources, ['endStationInPressure', 'terminalInPressure'])), tone: 'cyan' },
+    ],
+    [outputValueSources],
+  );
+
+  const optimizationResultCards = useMemo<DetailMetricCardItem[]>(
+    () => [
+      {
+        label: '推荐泵组合',
+        value:
+          formatValue(pickFirstValue(outputValueSources, ['recommendedPumpCombination', 'pumpCombination'])) !== '-'
+            ? formatValue(pickFirstValue(outputValueSources, ['recommendedPumpCombination', 'pumpCombination']))
+            : buildPumpDisplay(outputValueSources),
+        tone: 'purple',
+        span: 8,
+      },
+      { label: '总扬程', value: formatValue(pickFirstValue(outputValueSources, ['totalHead'])), tone: 'blue' },
+      { label: '总压降', value: formatValue(pickFirstValue(outputValueSources, ['totalPressureDrop', 'pressureDrop'])), tone: 'cyan' },
+      { label: '末站进站压头', value: formatValue(pickFirstValue(outputValueSources, ['endStationInPressure', 'terminalInPressure'])), tone: 'green' },
+      { label: '可行性', value: formatValue(pickFirstValue(outputValueSources, ['isFeasible', 'feasible'])), tone: 'amber' },
+      { label: '年能耗', value: formatValue(pickFirstValue(outputValueSources, ['totalEnergyConsumption', 'annualEnergyConsumption', 'energyConsumption'])), tone: 'blue' },
+      { label: '总成本', value: formatValue(pickFirstValue(outputValueSources, ['totalCost', 'annualCost'])), tone: 'cyan' },
+      {
+        label: '推荐说明',
+        value: formatValue(pickFirstValue(outputValueSources, ['description', 'recommendation', 'remark'])),
+        tone: 'purple',
+        span: 8,
+      },
+    ],
+    [outputValueSources],
+  );
+
+  const sensitivityBaseResultCards = useMemo<DetailMetricCardItem[]>(
+    () => [
+      { label: '雷诺数', value: formatValue(pickFirstValue(baseResultSources, ['reynoldsNumber'])), tone: 'blue' },
+      { label: '流态', value: formatValue(pickFirstValue(baseResultSources, ['flowRegime', 'regime'])), tone: 'cyan' },
+      { label: '摩阻损失', value: formatValue(pickFirstValue(baseResultSources, ['frictionHeadLoss', 'frictionLoss'])), tone: 'green' },
+      { label: '水力坡降', value: formatValue(pickFirstValue(baseResultSources, ['hydraulicSlope', 'slope'])), tone: 'amber' },
+      { label: '总扬程', value: formatValue(pickFirstValue(baseResultSources, ['totalHead'])), tone: 'purple' },
+      { label: '首站出站压头', value: formatValue(pickFirstValue(baseResultSources, ['firstStationOutPressure', 'outletPressure'])), tone: 'blue' },
+      { label: '末站进站压头', value: formatValue(pickFirstValue(baseResultSources, ['endStationInPressure', 'terminalInPressure'])), tone: 'cyan' },
+    ],
+    [baseResultSources],
+  );
+
+  const sensitivitySummaryCards = useMemo<DetailMetricCardItem[]>(
+    () =>
+      sensitivityVariableResults.map((item, index) => {
+        const rankItem = sensitivityRankingRows.find(
+          (rank) => String(rank.variableType ?? '') === String(item.variableType ?? ''),
+        );
+
+        return {
+          label: `${String(item.variableName ?? item.variableType ?? `变量 ${index + 1}`)} / 排名 ${formatValue(rankItem?.rank)}`,
+          value: `敏感系数 ${formatValue(item.sensitivityCoefficient)}，最大影响 ${formatValue(item.maxImpactPercent, '%')}`,
+          tone: (['purple', 'blue', 'cyan', 'green'] as DetailMetricTone[])[index % 4],
+          span: 8,
+        };
+      }),
+    [sensitivityRankingRows, sensitivityVariableResults],
+  );
+
+  const sensitivityDetailColumns = useMemo<ColumnsType<SensitivityDetailRow>>(
+    () => [
+      { title: '变量', dataIndex: 'variableName', key: 'variableName' },
+      { title: '变化比例', dataIndex: 'changePercent', key: 'changePercent', width: 120 },
+      { title: '压力', dataIndex: 'endStationPressure', key: 'endStationPressure', width: 120 },
+      { title: '摩阻', dataIndex: 'frictionHeadLoss', key: 'frictionHeadLoss', width: 120 },
+      { title: '流态', dataIndex: 'flowRegime', key: 'flowRegime', width: 120 },
+      { title: '水力坡降', dataIndex: 'hydraulicSlope', key: 'hydraulicSlope', width: 120 },
+      { title: '雷诺数', dataIndex: 'reynoldsNumber', key: 'reynoldsNumber', width: 120 },
+    ],
+    [],
+  );
+
+  const currentHistoryCalcType = String(row.calcType ?? '');
+  const isAiReportRecord = isAiReportHistory(row);
+  const isHydraulicRecord = currentHistoryCalcType === 'HYDRAULIC' || row.calcTypeLabel.includes('水力');
+  const isOptimizationRecord = currentHistoryCalcType === 'OPTIMIZATION' || row.calcTypeLabel.includes('优化');
+  const isSensitivityRecord = currentHistoryCalcType === 'SENSITIVITY' || row.calcTypeLabel.includes('敏感');
+
+  return (
+    <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      <Card style={detailSectionStyle} bodyStyle={detailSectionBodyStyle} title="计算基本信息">
+        {renderDetailMetricCards(detailInfoCards, {
+          equalWidth: true,
+          singleLine: true,
+          compact: true,
+          minColumnWidth: 180,
+          minHeight: 88,
+          valueFontSize: 'clamp(14px, 1.8vw, 18px)',
+        })}
+      </Card>
+
+      {isAiReportRecord && detailReport ? (
+        renderReportContent(detailReport)
+      ) : (
+        <>
+          <Card style={detailSectionStyle} bodyStyle={detailSectionBodyStyle} title="计算入参">
+            {renderDetailMetricCards(inputMetricCards, {
+              singleLine: true,
+              valueFontSize: 'clamp(16px, 1.8vw, 22px)',
+            })}
+          </Card>
+
+          {isHydraulicRecord ? (
+            <Card style={detailSectionStyle} bodyStyle={detailSectionBodyStyle} title="水力结果">
+              {renderDetailMetricCards(hydraulicResultCards)}
+            </Card>
+          ) : null}
+
+          {isOptimizationRecord ? (
+            <Card style={detailSectionStyle} bodyStyle={detailSectionBodyStyle} title="优化结果">
+              {renderDetailMetricCards(optimizationResultCards)}
+            </Card>
+          ) : null}
+
+          {isSensitivityRecord ? (
+            <>
+              <Card style={detailSectionStyle} bodyStyle={detailSectionBodyStyle} title="敏感性结果">
+                <Space direction="vertical" size={20} style={{ width: '100%' }}>
+                  <div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: '#1e293b', marginBottom: 12 }}>基准结果</div>
+                    {renderDetailMetricCards(sensitivityBaseResultCards)}
+                  </div>
+
+                  <div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: '#1e293b', marginBottom: 12 }}>
+                      敏感系数 / 最大影响 / 排名
+                    </div>
+                    {sensitivitySummaryCards.length ? (
+                      renderDetailMetricCards(sensitivitySummaryCards)
+                    ) : (
+                      <Empty description="暂无敏感性摘要数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                    )}
+                  </div>
+                </Space>
+              </Card>
+
+              <Card
+                style={detailSectionStyle}
+                bodyStyle={tableCardBodyStyle}
+                title="各变化比例下的压力 / 摩阻 / 流态明细"
+              >
+                <Table
+                  columns={sensitivityDetailColumns}
+                  dataSource={sensitivityDetailRows}
+                  rowKey="key"
+                  pagination={false}
+                  scroll={{ x: 900, y: 360 }}
+                  locale={{
+                    emptyText: <Empty description="暂无敏感性变化明细" image={Empty.PRESENTED_IMAGE_SIMPLE} />,
+                  }}
+                />
+              </Card>
+            </>
+          ) : null}
+
+          {!isHydraulicRecord && !isOptimizationRecord && !isSensitivityRecord ? (
+            <Card style={detailSectionStyle} bodyStyle={detailSectionBodyStyle} title="计算结果">
+              <pre
+                style={{
+                  margin: 0,
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  fontSize: 12,
+                  lineHeight: 1.6,
+                }}
+              >
+                {row.outputResult || row.inputParams || (detailPayload ? JSON.stringify(detailPayload, null, 2) : '暂无结果数据')}
+              </pre>
+            </Card>
+          ) : null}
+        </>
+      )}
+    </Space>
+  );
+}
+
+export function ReportHistoryDetailPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { historyId } = useParams<{ historyId: string }>();
+
+  const initialRow = useMemo(() => {
+    const state = location.state as ReportHistoryDetailLocationState | null;
+    const candidate = state?.row;
+
+    if (!candidate || Number(candidate.id) !== Number(historyId)) {
+      return null;
+    }
+
+    return candidate;
+  }, [historyId, location.state]);
+
+  const [loading, setLoading] = useState(!initialRow);
+  const [row, setRow] = useState<HistoryTableRow | null>(initialRow);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const targetId = Number(historyId);
+    if (!Number.isFinite(targetId)) {
+      setRow(null);
+      setLoading(false);
+      setError('报告编号无效。');
+      return;
+    }
+
+    let active = true;
+    setLoading(true);
+    setError('');
+
+    void Promise.all([calculationHistoryApi.detail(targetId), projectApi.list()])
+      .then(([historyResponse, projectResponse]) => {
+        if (!active) {
+          return;
+        }
+
+        const history = historyResponse.data;
+        if (!history) {
+          setRow(null);
+          setError('未找到对应的智能报告记录。');
+          return;
+        }
+
+        const projectLookup = new Map((projectResponse.data ?? []).map((project) => [project.proId, project]));
+        setRow(toHistoryTableRow(history, projectLookup));
+      })
+      .catch(() => {
+        if (!active) {
+          return;
+        }
+
+        if (!initialRow) {
+          setRow(null);
+          setError('读取报告详情失败，请稍后重试。');
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [historyId, initialRow]);
+
+  const detailReport = useMemo(() => (row ? extractDynamicReportFromOutput(row.outputResult) : null), [row]);
+  const projectScope = useMemo(
+    () => resolveReportProjectScope(detailReport, row?.projectName),
+    [detailReport, row?.projectName],
+  );
+  const comparisonCount = useMemo(() => getReportComparisonCount(detailReport), [detailReport]);
+
+  const reportTitle = useMemo(() => {
+    if (!row) {
+      return '智能报告详情';
+    }
+
+    return buildScopedReportTitle({
+      projectNames: projectScope.projectNames,
+      reportKind: getReportKindFromPayload(detailReport),
+      comparisonCount,
+      fallbackTitle: detailReport?.title || `${row.projectName || '未命名项目'}智能报告`,
+    });
+  }, [comparisonCount, detailReport, projectScope.projectNames, row]);
+
+  const reportAbstract = useMemo(() => {
+    if (!row) {
+      return '';
+    }
+
+    return normalizeReportAbstract(detailReport?.abstract || row.remark, comparisonCount);
+  }, [comparisonCount, detailReport, row]);
+
+  return (
+    <AnimatedPage>
+      <div style={{ padding: 24 }}>
+        <Space direction="vertical" size={24} style={{ width: '100%' }}>
+          <Card style={cardStyle} bodyStyle={{ padding: 24 }}>
+            <Space direction="vertical" size={16} style={{ width: '100%' }}>
+              <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/ai/report')} style={{ width: 'fit-content' }}>
+                返回智能报告列表
+              </Button>
+
+              <Space wrap size={[8, 8]}>
+                <Tag color="geekblue">{row?.calcTypeLabel || '智能报告'}</Tag>
+                {projectScope.projectNames.length ? (
+                  <Tag color="blue">{buildProjectScopeBadge(projectScope.projectNames, row?.projectName || '未命名项目')}</Tag>
+                ) : null}
+                {row?.updateTimeText ? <Tag>{row.updateTimeText}</Tag> : null}
+              </Space>
+
+              <div>
+                <Title level={2} style={{ margin: 0, color: '#0f172a' }}>
+                  {reportTitle}
+                </Title>
+                <Paragraph type="secondary" style={{ margin: '12px 0 0' }}>
+                  {reportAbstract || '查看该智能报告的完整分析结果、图表和报告内容。'}
+                </Paragraph>
+              </div>
+            </Space>
+          </Card>
+
+          {error ? (
+            <Alert
+              type={row ? 'warning' : 'error'}
+              showIcon
+              message={row ? '详情已展示本地缓存数据' : '读取报告详情失败'}
+              description={error}
+            />
+          ) : null}
+
+          {loading && !row ? (
+            <Card style={cardStyle}>
+              <div style={{ textAlign: 'center', padding: '56px 0' }}>
+                <Spin size="large" />
+              </div>
+            </Card>
+          ) : row ? (
+            <ReportHistoryDetailContent row={row} />
+          ) : (
+            <Card style={cardStyle}>
+              <div style={{ padding: 40 }}>
+                <Empty description="暂无可展示的智能报告详情" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              </div>
+            </Card>
+          )}
+        </Space>
+      </div>
+    </AnimatedPage>
+  );
+}
+
 export default function ReportPreview() {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -5247,7 +5717,11 @@ export default function ReportPreview() {
                               <Space wrap>
                                 <Button
                                   icon={<EyeOutlined style={{ color: '#22c1ff' }} />}
-                                  onClick={() => setDetailPreview({ mode: 'history', row: record })}
+                                  onClick={() =>
+                                    navigate(`/ai/report/detail/${record.id}`, {
+                                      state: { row: record } satisfies ReportHistoryDetailLocationState,
+                                    })
+                                  }
                                   disabled={isDeleting}
                                 >
                                   查看
