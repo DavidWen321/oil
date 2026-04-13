@@ -235,7 +235,7 @@ export default function OilPropertyList() {
 
   return (
     <AnimatedPage className={styles.page}>
-      <div className={styles.pageContent}>
+      <div className={styles.pageContent} style={{ maxWidth: 1600 }}>
         <header className={styles.header}>
           <div className={styles.headerTop}>
             <div className={styles.headerInfo}>

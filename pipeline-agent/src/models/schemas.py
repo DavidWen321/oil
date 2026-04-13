@@ -236,6 +236,7 @@ class ReportRiskItem(BaseModel):
     riskType: str
     level: str
     reason: str
+    impact: Optional[str] = None
     suggestion: str
     code: Optional[str] = None
     message: Optional[str] = None
@@ -287,6 +288,37 @@ class DynamicReportSection(BaseModel):
     table: Optional[ReportTableData] = None
 
 
+class SensitivityInsightBlock(BaseModel):
+    """Single narrative block for the sensitivity smart report."""
+
+    title: str
+    content: str
+
+
+class SensitivityReportAiInsights(BaseModel):
+    """Structured insight blocks rendered next to sensitivity charts."""
+
+    rankingInsight: Optional[SensitivityInsightBlock] = None
+    trendInsight: Optional[SensitivityInsightBlock] = None
+    impactInsight: Optional[SensitivityInsightBlock] = None
+    tableConclusion: Optional[SensitivityInsightBlock] = None
+
+
+class OptimizationInsightBlock(BaseModel):
+    """Single narrative block for the optimization smart report."""
+
+    title: str
+    content: str
+
+
+class OptimizationReportAiInsights(BaseModel):
+    """Structured insight blocks rendered next to optimization charts."""
+
+    schemeInsight: Optional[OptimizationInsightBlock] = None
+    feasibilityInsight: Optional[OptimizationInsightBlock] = None
+    economicInsight: Optional[OptimizationInsightBlock] = None
+
+
 class DynamicReportAiAnalysis(BaseModel):
     """Skill-driven AI analysis blocks for the report page."""
 
@@ -298,6 +330,8 @@ class DynamicReportAiAnalysis(BaseModel):
     riskJudgement: list[ReportRiskItem] = Field(default_factory=list)
     riskIdentify: list[ReportRiskItem] = Field(default_factory=list)
     suggestions: list[ReportSuggestionItem] = Field(default_factory=list)
+    sensitivityInsights: Optional[SensitivityReportAiInsights] = None
+    optimizationInsights: Optional[OptimizationReportAiInsights] = None
 
 
 class DynamicReportRequest(BaseModel):

@@ -40,9 +40,9 @@ def operation_suggestion_skill(ctx: dict[str, Any]) -> list[ReportSuggestionItem
                 _build_suggestion(
                     target=target,
                     priority="high",
-                    text=f"建议将 {target} 作为运行控制中的重点监测对象，优先保证该变量稳定。",
-                    reason="敏感系数偏高，系统对该变量变化反应明显。",
-                    expected="降低变量波动放大效应，提升结果稳定性。",
+                    text=f"建议将 {target} 作为运行控制中的重点监测对象，并优先保证该变量稳定。",
+                    reason="敏感系数偏高，系统对该变量变化的响应已经十分明显。",
+                    expected="有助于降低结果波动并提高运行边界的稳定性。",
                 )
             )
         elif code == "max_impact_high":
@@ -52,7 +52,7 @@ def operation_suggestion_skill(ctx: dict[str, Any]) -> list[ReportSuggestionItem
                     priority="high",
                     text="建议优先复核大幅波动区间的计算结果，并增加关键变量上下限校核。",
                     reason="最大影响幅度较大，系统结果在设定波动范围内变化明显。",
-                    expected="降低大幅偏移导致的运行风险。",
+                    expected="有助于降低大幅偏移导致的运行风险。",
                 )
             )
         elif code in {"end_station_pressure_low", "end_station_pressure_jump"}:
@@ -60,9 +60,9 @@ def operation_suggestion_skill(ctx: dict[str, Any]) -> list[ReportSuggestionItem
                 _build_suggestion(
                     target=target,
                     priority="high",
-                    text="建议核查目标输量与泵站组合，必要时提升末站压力裕度。",
-                    reason="末站压力已接近或低于安全边界，需要优先复核压力保障能力。",
-                    expected="提升压力可行性并降低运行风险。",
+                    text="建议复核目标输量与泵站组合，必要时提升末站压力裕度。",
+                    reason="末站压力已经接近或低于安全边界，需要优先校核压力保障能力。",
+                    expected="有助于提升压力可行性并降低运行风险。",
                 )
             )
         elif code in {"pump_efficiency", "pump_efficiency_low"}:
@@ -70,9 +70,9 @@ def operation_suggestion_skill(ctx: dict[str, Any]) -> list[ReportSuggestionItem
                 _build_suggestion(
                     target=target,
                     priority="high",
-                    text="建议优先复核低效率泵组运行组合，并对低负荷泵组做停启优化。",
-                    reason="泵效偏低会提高单位输量能耗，削弱运行经济性。",
-                    expected="降低单位能耗并减少无效扬程。",
+                    text="建议优先复核低效率泵组运行组合，并评估低负荷泵组停启策略。",
+                    reason="泵效偏低会提高单位输量能耗，并削弱扬程利用效率。",
+                    expected="有助于降低单位能耗并改善运行经济性。",
                 )
             )
         elif code == "flow_regime_shift":
@@ -82,7 +82,7 @@ def operation_suggestion_skill(ctx: dict[str, Any]) -> list[ReportSuggestionItem
                     priority="medium",
                     text="建议补充流态临界区间校核，并评估波动工况下的调度保护策略。",
                     reason="流态发生切换，系统可能进入新的运行状态。",
-                    expected="避免运行波动触发不稳定流动特征。",
+                    expected="有助于避免运行波动触发不稳定流动特征。",
                 )
             )
         elif code == "pipeline_resistance_high":
@@ -92,7 +92,7 @@ def operation_suggestion_skill(ctx: dict[str, Any]) -> list[ReportSuggestionItem
                     priority="medium",
                     text="建议复核粗糙度、流量设定及沿程摩阻参数，必要时重新评估运行方案。",
                     reason="摩阻损失随变量变化持续上升，输送阻力影响较强。",
-                    expected="改善输送过程稳定性，降低压损增长风险。",
+                    expected="有助于改善输送稳定性并降低压损增长风险。",
                 )
             )
         elif code == "sensitivity_coefficient_medium":
@@ -101,8 +101,8 @@ def operation_suggestion_skill(ctx: dict[str, Any]) -> list[ReportSuggestionItem
                     target=target,
                     priority="medium",
                     text=f"建议持续跟踪 {target} 的波动范围，并结合典型工况复核控制阈值。",
-                    reason="该变量已对系统结果产生可感知影响。",
-                    expected="提前识别异常波动，降低后续放大风险。",
+                    reason="该变量已经对系统结果产生可感知影响。",
+                    expected="有助于提前识别异常波动并降低后续放大风险。",
                 )
             )
         elif code == "max_impact_medium":
@@ -111,8 +111,8 @@ def operation_suggestion_skill(ctx: dict[str, Any]) -> list[ReportSuggestionItem
                     target=target,
                     priority="medium",
                     text="建议针对典型变化比例补充结果复核，确认系统对变量波动的容忍区间。",
-                    reason="最大影响幅度已达到中等水平。",
-                    expected="明确运行边界，提升调度可控性。",
+                    reason="最大影响幅度已经达到中等水平。",
+                    expected="有助于明确运行边界并提升调度可控性。",
                 )
             )
 
@@ -126,7 +126,7 @@ def operation_suggestion_skill(ctx: dict[str, Any]) -> list[ReportSuggestionItem
                     "并结合实际工况复核控制策略。"
                 ),
                 reason="当前敏感性分析已识别关键变量，但尚未出现明确高风险告警。",
-                expected="保持系统运行边界稳定，避免关键变量波动放大。",
+                expected="有助于维持系统运行边界稳定，避免关键变量波动放大。",
             )
         )
 

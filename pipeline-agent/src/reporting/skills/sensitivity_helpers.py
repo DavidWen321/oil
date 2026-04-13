@@ -34,6 +34,15 @@ def format_number(value: Any, digits: int = 2, suffix: str = "") -> str:
     return f"{text}{suffix}"
 
 
+def format_signed_percent(value: Any, digits: int = 0) -> str:
+    numeric = to_float(value)
+    if numeric is None:
+        return "-"
+    sign = "+" if numeric > 0 else ""
+    text = f"{numeric:.{digits}f}".rstrip("0").rstrip(".")
+    return f"{sign}{text}%"
+
+
 def pick_first_value(sources: list[dict[str, Any] | None], keys: list[str]) -> Any:
     for source in sources:
         if not isinstance(source, dict):
@@ -47,7 +56,7 @@ def pick_first_value(sources: list[dict[str, Any] | None], keys: list[str]) -> A
 
 def classify_sensitivity_impact_level(value: float | None) -> str:
     if value is None:
-        return "当前数据不足以支持进一步判断"
+        return "数据不足"
     if value >= 0.8:
         return "较强"
     if value >= 0.4:
@@ -67,13 +76,13 @@ def evaluate_sensitivity_risk_level(
         or (min_end_station_pressure is not None and min_end_station_pressure < 0)
         or flow_regime_changed
     ):
-        return "是（较高）"
+        return "高风险"
     if (
         (sensitivity_coefficient is not None and sensitivity_coefficient >= 0.4)
         or (max_impact_percent is not None and max_impact_percent >= 10)
     ):
-        return "是（中等）"
-    return "否（可控）"
+        return "中风险"
+    return "可控"
 
 
 def build_sensitivity_base_condition(input_payload: dict[str, Any], input_base: dict[str, Any] | None) -> str:
@@ -124,6 +133,13 @@ def sort_sensitivity_ranking_rows(output_payload: dict[str, Any]) -> list[dict[s
     return sorted(rows, key=_sort_key)
 
 
+def sort_sensitivity_impact_rows(output_payload: dict[str, Any]) -> list[dict[str, Any]]:
+    return sorted(
+        as_record_array(output_payload.get("variableResults")),
+        key=lambda item: -(to_float(item.get("maxImpactPercent")) or float("-inf")),
+    )
+
+
 def get_sensitivity_primary_variable_result(output_payload: dict[str, Any]) -> dict[str, Any]:
     variable_results = as_record_array(output_payload.get("variableResults"))
     if not variable_results:
@@ -153,6 +169,7 @@ def normalize_sensitivity_risk_rows(rows: list[dict[str, Any]]) -> list[dict[str
             pick_first_value([row], ["message", "reason", "description", "text", "title"]) or ""
         ).strip()
         suggestion = str(pick_first_value([row], ["suggestion", "action", "advice"]) or "").strip()
+        impact = str(pick_first_value([row], ["impact", "effect", "resultImpact"]) or "").strip()
         if not risk_code and not message:
             continue
         normalized.append(
@@ -162,6 +179,7 @@ def normalize_sensitivity_risk_rows(rows: list[dict[str, Any]]) -> list[dict[str
                 "level": level,
                 "message": message,
                 "suggestion": suggestion,
+                "impact": impact,
             }
         )
     return normalized
@@ -179,14 +197,67 @@ def extract_sensitivity_risk_rules(ctx: dict[str, Any]) -> list[dict[str, Any]]:
     return normalize_sensitivity_risk_rows(as_record_array(ctx.get("risk_flags")))
 
 
-def _resolve_trend_label(first_value: float | None, last_value: float | None) -> str:
+def resolve_trend_label(first_value: float | None, last_value: float | None) -> str:
     if first_value is None or last_value is None:
-        return "当前数据不足以支持进一步判断"
+        return "数据不足"
     if last_value > first_value:
         return "整体上升"
     if last_value < first_value:
         return "整体下降"
     return "变化不明显"
+
+
+def get_change_label(row: dict[str, Any]) -> str:
+    return format_signed_percent(row.get("changePercent"))
+
+
+def get_row_span_text(rows: list[dict[str, Any]], key: str, suffix: str = "") -> str:
+    values = [to_float(item.get(key)) for item in rows]
+    valid_values = [value for value in values if value is not None]
+    if not valid_values:
+        return "-"
+    minimum = min(valid_values)
+    maximum = max(valid_values)
+    if minimum == maximum:
+        return format_number(minimum, suffix=suffix)
+    return f"{format_number(minimum, suffix=suffix)} ~ {format_number(maximum, suffix=suffix)}"
+
+
+def build_regime_segments(rows: list[dict[str, Any]]) -> list[str]:
+    if not rows:
+        return []
+
+    segments: list[str] = []
+    current_regime = str(rows[0].get("flowRegime") or "").strip() or "-"
+    start_label = get_change_label(rows[0])
+    end_label = start_label
+
+    for row in rows[1:]:
+        regime = str(row.get("flowRegime") or "").strip() or "-"
+        label = get_change_label(row)
+        if regime == current_regime:
+            end_label = label
+            continue
+        segments.append(f"{start_label} 至 {end_label} 为 {current_regime}")
+        current_regime = regime
+        start_label = label
+        end_label = label
+
+    segments.append(f"{start_label} 至 {end_label} 为 {current_regime}")
+    return segments
+
+
+def pick_extreme_point(
+    rows: list[dict[str, Any]],
+    key: str,
+    mode: str,
+) -> dict[str, Any]:
+    valid_rows = [row for row in rows if to_float(row.get(key)) is not None]
+    if not valid_rows:
+        return {}
+    if mode == "max":
+        return max(valid_rows, key=lambda item: to_float(item.get(key)) or float("-inf"))
+    return min(valid_rows, key=lambda item: to_float(item.get(key)) or float("inf"))
 
 
 def extract_sensitivity_insights(ctx: dict[str, Any]) -> dict[str, Any]:
@@ -200,6 +271,7 @@ def extract_sensitivity_insights(ctx: dict[str, Any]) -> dict[str, Any]:
     base_result = as_record(output_payload.get("baseResult")) or output_payload
     variable_results = as_record_array(output_payload.get("variableResults"))
     ranking_rows = sort_sensitivity_ranking_rows(output_payload)
+    impact_rows = sort_sensitivity_impact_rows(output_payload)
     primary_variable_result = get_sensitivity_primary_variable_result(output_payload)
     top_rank = ranking_rows[0] if ranking_rows else {}
 
@@ -241,27 +313,32 @@ def extract_sensitivity_insights(ctx: dict[str, Any]) -> dict[str, Any]:
         pick_first_value([base_result], ["endStationInPressure", "endStationPressure", "terminalInPressure"])
     )
     if base_end_station_pressure is None:
-        base_result_status = "当前数据不足以支持进一步判断"
+        base_result_status = "数据不足"
     elif base_end_station_pressure >= 0:
         base_result_status = "正常"
     else:
         base_result_status = "存在压力风险"
 
-    pressure_trend_text = _resolve_trend_label(
+    pressure_trend_text = resolve_trend_label(
         to_float(first_point.get("endStationPressure")),
         to_float(last_point.get("endStationPressure")),
     )
-    friction_trend_text = _resolve_trend_label(
+    friction_trend_text = resolve_trend_label(
         to_float(first_point.get("frictionHeadLoss")),
         to_float(last_point.get("frictionHeadLoss")),
     )
 
-    project_names = ctx.get("project", {}).get("projectNames") or []
+    project = as_record(ctx.get("project"))
+    project_names = project.get("projectNames") or []
     project_name = str(snapshot.get("projectName") or (project_names[0] if project_names else "当前项目"))
 
     return {
         "projectName": project_name,
         "generatedAt": snapshot.get("generatedAt"),
+        "inputPayload": input_payload,
+        "inputBase": input_base,
+        "outputPayload": output_payload,
+        "baseResult": base_result,
         "baseCondition": build_sensitivity_base_condition(input_payload, input_base),
         "variableTypeText": build_sensitive_variable_display(input_payload, input_base),
         "baseResultStatus": base_result_status,
@@ -269,11 +346,17 @@ def extract_sensitivity_insights(ctx: dict[str, Any]) -> dict[str, Any]:
         "topRankNumber": top_rank_number,
         "sensitivityCoefficient": sensitivity_coefficient,
         "maxImpactPercent": max_impact_percent,
-        "pointRows": point_rows,
+        "variableResults": variable_results,
         "rankingRows": ranking_rows,
+        "impactRows": impact_rows,
+        "primaryVariableResult": primary_variable_result,
+        "pointRows": point_rows,
+        "firstPoint": first_point,
+        "lastPoint": last_point,
         "pressureTrendText": pressure_trend_text,
         "frictionTrendText": friction_trend_text,
         "flowRegimeChanged": flow_regime_changed,
+        "flowRegimeSegments": build_regime_segments(point_rows),
         "minEndStationPressure": min_end_station_pressure,
         "impactLevel": classify_sensitivity_impact_level(sensitivity_coefficient),
         "riskLevel": evaluate_sensitivity_risk_level(
@@ -282,4 +365,8 @@ def extract_sensitivity_insights(ctx: dict[str, Any]) -> dict[str, Any]:
             min_end_station_pressure,
             flow_regime_changed,
         ),
+        "minPressurePoint": pick_extreme_point(point_rows, "endStationPressure", "min"),
+        "maxPressurePoint": pick_extreme_point(point_rows, "endStationPressure", "max"),
+        "maxFrictionPoint": pick_extreme_point(point_rows, "frictionHeadLoss", "max"),
+        "minFrictionPoint": pick_extreme_point(point_rows, "frictionHeadLoss", "min"),
     }

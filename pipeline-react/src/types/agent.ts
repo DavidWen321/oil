@@ -265,6 +265,7 @@ export interface DynamicReportRiskItem {
   riskType: string;
   level: string;
   reason: string;
+  impact?: string | null;
   suggestion: string;
   code?: string | null;
   message?: string | null;
@@ -306,6 +307,29 @@ export interface DynamicReportSectionPayload {
   table?: DynamicReportTableData | null;
 }
 
+export interface DynamicReportSensitivityInsightBlockPayload {
+  title: string;
+  content: string;
+}
+
+export interface DynamicReportSensitivityInsightsPayload {
+  rankingInsight?: DynamicReportSensitivityInsightBlockPayload | null;
+  trendInsight?: DynamicReportSensitivityInsightBlockPayload | null;
+  impactInsight?: DynamicReportSensitivityInsightBlockPayload | null;
+  tableConclusion?: DynamicReportSensitivityInsightBlockPayload | null;
+}
+
+export interface DynamicReportOptimizationInsightBlockPayload {
+  title: string;
+  content: string;
+}
+
+export interface DynamicReportOptimizationInsightsPayload {
+  schemeInsight?: DynamicReportOptimizationInsightBlockPayload | null;
+  feasibilityInsight?: DynamicReportOptimizationInsightBlockPayload | null;
+  economicInsight?: DynamicReportOptimizationInsightBlockPayload | null;
+}
+
 export interface DynamicReportAiAnalysisPayload {
   summary: string[];
   metricAnalysis: string[];
@@ -315,6 +339,8 @@ export interface DynamicReportAiAnalysisPayload {
   riskJudgement: DynamicReportRiskItem[];
   riskIdentify?: DynamicReportRiskItem[];
   suggestions: DynamicReportSuggestionItem[];
+  sensitivityInsights?: DynamicReportSensitivityInsightsPayload | null;
+  optimizationInsights?: DynamicReportOptimizationInsightsPayload | null;
 }
 
 export interface DynamicReportHydraulicSnapshotPayload {

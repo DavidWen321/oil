@@ -152,8 +152,13 @@ services:
     container_name: pipeline-calculation
     environment:
       SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR: pipeline-nacos:8848
+      SPRING_DATASOURCE_URL: jdbc:mysql://pipeline-mysql:3306/pipeline_cloud?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=false&serverTimezone=GMT%2B8
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: root
       JAVA_OPTS: -Xms256m -Xmx512m -Dfile.encoding=UTF-8
     depends_on:
+      mysql:
+        condition: service_healthy
       nacos:
         condition: service_healthy
 

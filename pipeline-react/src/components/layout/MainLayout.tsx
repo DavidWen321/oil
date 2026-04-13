@@ -204,7 +204,7 @@ export default function MainLayout() {
         <div className={`${styles.logo} ${collapsed && !isMobile ? styles.logoCollapsed : ''}`}>
           <div className={styles.logoBrand}>
           <span className={styles.logoIcon}>P</span>
-          {(!collapsed || isMobile) && <span className={styles.logoText}>管道能助手</span>}
+          {(!collapsed || isMobile) && <span className={styles.logoText}>管道智能助手</span>}
           </div>
           {!isMobile && (
             <Button

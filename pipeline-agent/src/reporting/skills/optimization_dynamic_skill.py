@@ -6,7 +6,13 @@ from typing import Any
 from langchain_openai import ChatOpenAI
 
 from src.config import settings
-from src.models.schemas import DynamicReportAiAnalysis, ReportRiskItem, ReportSuggestionItem
+from src.models.schemas import (
+    DynamicReportAiAnalysis,
+    OptimizationInsightBlock,
+    OptimizationReportAiInsights,
+    ReportRiskItem,
+    ReportSuggestionItem,
+)
 from src.utils import logger
 
 
@@ -381,6 +387,57 @@ def _build_fallback_comparison(fact_pack: dict[str, Any]) -> list[str]:
     return items[:4]
 
 
+def _build_fallback_optimization_insights(fact_pack: dict[str, Any]) -> OptimizationReportAiInsights:
+    recommended = _as_record(fact_pack.get("recommendedScheme"))
+    overview = _as_record(fact_pack.get("schemeOverview"))
+    scheme_name = str(recommended.get("name") or "当前推荐方案").strip() or "当前推荐方案"
+    feasible = recommended.get("feasible")
+    total_head = recommended.get("totalHead")
+    total_pressure_drop = recommended.get("totalPressureDrop")
+    end_pressure = recommended.get("endStationInPressure")
+    total_energy = recommended.get("totalEnergyConsumption")
+    total_cost = recommended.get("totalCost")
+    pressure_margin = recommended.get("pressureMargin")
+    recommendation_text = str(recommended.get("recommendationText") or "").strip()
+    evaluated_count = int(overview.get("evaluatedCount") or 0)
+    feasible_count = int(overview.get("feasibleCount") or 0)
+
+    scheme_parts = [f"当前推荐泵组为“{scheme_name}”，是本轮方案评估后优先保留的组合。"]
+    if evaluated_count:
+        scheme_parts.append(f"本轮共评估 {evaluated_count} 个方案，其中 {feasible_count} 个满足当前约束。")
+    if recommendation_text:
+        scheme_parts.append(f"推荐说明为：{recommendation_text}")
+    else:
+        scheme_parts.append("该组合被优先推荐，主要因为它在供压能力、运行稳定性和经济性之间更均衡。")
+
+    feasibility_parts = [
+        f"当前方案总扬程为 {_format_metric(total_head, 'm')}，总压降为 {_format_metric(total_pressure_drop, 'm')}，末站进站压头为 {_format_metric(end_pressure, 'm')}。"
+    ]
+    if feasible is False:
+        feasibility_parts.append("结果显示该方案仍未完全满足当前工况约束，需要继续复核泵组组合与压力边界。")
+    elif pressure_margin is not None:
+        if float(pressure_margin) >= 0:
+            feasibility_parts.append(f"末站压力相对最低要求形成了 {_format_metric(float(pressure_margin), 'm')} 的裕度，具备基本水力可行性。")
+        else:
+            feasibility_parts.append(f"末站压力相对最低要求仍存在 {_format_metric(abs(float(pressure_margin)), 'm')} 的缺口，水力可行性需要进一步校核。")
+    else:
+        feasibility_parts.append("从当前结果看，方案能够提供基本输送能力，但仍需结合现场工况持续校核。")
+
+    economic_parts = [f"当前方案年能耗为 {_format_metric(total_energy, 'kWh')}，总成本为 {_format_metric(total_cost, '元')}。"]
+    if isinstance(total_energy, (int, float)) and total_energy >= 1000000:
+        economic_parts.append("年能耗水平偏高，后续应继续关注泵组效率与运行时长安排。")
+    elif isinstance(total_cost, (int, float)) and total_cost >= 800000:
+        economic_parts.append("总成本压力较大，说明当前方案虽然可用，但仍有进一步优化经济性的空间。")
+    else:
+        economic_parts.append("从当前结果看，该方案在满足运行要求的同时具备一定经济性。")
+
+    return OptimizationReportAiInsights(
+        schemeInsight=OptimizationInsightBlock(title="方案解读", content=" ".join(scheme_parts)),
+        feasibilityInsight=OptimizationInsightBlock(title="水力可行性解读", content=" ".join(feasibility_parts)),
+        economicInsight=OptimizationInsightBlock(title="经济性解读", content=" ".join(economic_parts)),
+    )
+
+
 def _build_fallback_risks(fact_pack: dict[str, Any]) -> list[ReportRiskItem]:
     risk_rows = [row for row in _as_list(fact_pack.get("riskItems")) if isinstance(row, dict)]
     if risk_rows:
@@ -556,6 +613,7 @@ def _build_fallback(ctx: dict[str, Any]) -> DynamicReportAiAnalysis:
         comparison=_build_fallback_comparison(fact_pack),
         riskJudgement=risk_items,
         suggestions=_build_fallback_suggestions(fact_pack, risk_items),
+        optimizationInsights=_build_fallback_optimization_insights(fact_pack),
     )
 
 
@@ -579,6 +637,7 @@ def _coerce_risks(value: Any, fallback: list[ReportRiskItem]) -> list[ReportRisk
                 riskType=risk_type or "optimization_risk",
                 level=_normalize_level(row.get("level")),
                 reason=reason,
+                impact=str(row.get("impact") or "").strip() or None,
                 suggestion=suggestion or "建议结合当前工况进一步复核。",
                 code=str(row.get("code") or risk_type or "").strip() or None,
                 message=str(row.get("message") or reason).strip() or None,
@@ -641,12 +700,14 @@ def build_optimization_report_ai_sections(ctx: dict[str, Any]) -> DynamicReportA
                 "Keep the output structure fixed, but make the content specific to the current optimization result.",
                 "If candidate-scheme details are insufficient, state that directly instead of guessing.",
                 "Return JSON only with this schema:",
-                '{"summary":["..."],"schemeExplain":["..."],"comparison":["..."],"riskJudgement":[{"target":"...","riskType":"...","level":"high|medium|low","reason":"...","suggestion":"..."}],"suggestions":[{"target":"...","reason":"...","action":"...","expected":"...","priority":"high|medium|low"}]}',
+                '{"summary":["..."],"optimizationInsights":{"schemeInsight":{"title":"方案解读","content":"..."},"feasibilityInsight":{"title":"水力可行性解读","content":"..."},"economicInsight":{"title":"经济性解读","content":"..."}},"riskJudgement":[{"target":"...","riskType":"...","level":"high|medium|low","reason":"...","impact":"...","suggestion":"..."}],"suggestions":[{"target":"...","reason":"...","action":"...","expected":"...","priority":"high|medium|low"}]}',
                 "Rules:",
                 "- summary: 2 to 4 concise bullets about evaluated scheme count, feasible count, recommended scheme and key metrics.",
-                "- schemeExplain: 2 to 4 bullets explaining why the recommended scheme is preferred under the current operating condition.",
-                "- comparison: 2 to 4 bullets comparing the recommended scheme with alternative schemes when evidence exists; if not, explicitly say candidate detail is limited.",
+                "- schemeInsight.content: explain why this pump-group combination is recommended under the current condition.",
+                "- feasibilityInsight.content: explain why the scheme is hydraulically feasible or where the feasibility boundary still exists, focusing on total head, pressure drop and end-station pressure.",
+                "- economicInsight.content: explain the scheme's energy and cost performance, and whether the current result is economically balanced.",
                 "- riskJudgement: prioritize supplied rule risks, feasibility constraints, pressure risks, high energy cost or economic pressure; do not create more than 4 items.",
+                "- Each riskJudgement item should include target, level, reason, impact and suggestion whenever evidence exists.",
                 "- suggestions: give concrete operating checks or optimization actions that directly follow from the current risks and comparison; do not create more than 4 items.",
                 "- If there is no clear risk, return empty arrays for riskJudgement and suggestions.",
                 json.dumps({"facts": fact_pack}, ensure_ascii=False),
@@ -663,6 +724,31 @@ def build_optimization_report_ai_sections(ctx: dict[str, Any]) -> DynamicReportA
     comparison = _clean_lines(parsed.get("comparison"), 4) or fallback.comparison
     risk_judgement = _coerce_risks(parsed.get("riskJudgement"), fallback.riskJudgement)
     suggestions = _coerce_suggestions(parsed.get("suggestions"), fallback.suggestions)
+    raw_optimization_insights = _as_record(parsed.get("optimizationInsights"))
+
+    scheme_insight_raw = _as_record(raw_optimization_insights.get("schemeInsight") or parsed.get("schemeInsight"))
+    feasibility_insight_raw = _as_record(
+        raw_optimization_insights.get("feasibilityInsight") or parsed.get("feasibilityInsight")
+    )
+    economic_insight_raw = _as_record(raw_optimization_insights.get("economicInsight") or parsed.get("economicInsight"))
+
+    fallback_optimization_insights = fallback.optimizationInsights or _build_fallback_optimization_insights(fact_pack)
+    optimization_insights = OptimizationReportAiInsights(
+        schemeInsight=OptimizationInsightBlock(
+            title=str(scheme_insight_raw.get("title") or fallback_optimization_insights.schemeInsight.title),
+            content=str(scheme_insight_raw.get("content") or fallback_optimization_insights.schemeInsight.content),
+        ),
+        feasibilityInsight=OptimizationInsightBlock(
+            title=str(feasibility_insight_raw.get("title") or fallback_optimization_insights.feasibilityInsight.title),
+            content=str(
+                feasibility_insight_raw.get("content") or fallback_optimization_insights.feasibilityInsight.content
+            ),
+        ),
+        economicInsight=OptimizationInsightBlock(
+            title=str(economic_insight_raw.get("title") or fallback_optimization_insights.economicInsight.title),
+            content=str(economic_insight_raw.get("content") or fallback_optimization_insights.economicInsight.content),
+        ),
+    )
 
     return DynamicReportAiAnalysis(
         summary=summary,
@@ -670,6 +756,7 @@ def build_optimization_report_ai_sections(ctx: dict[str, Any]) -> DynamicReportA
         comparison=comparison,
         riskJudgement=risk_judgement,
         suggestions=suggestions,
+        optimizationInsights=optimization_insights,
     )
 
 

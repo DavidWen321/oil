@@ -30,6 +30,8 @@ function nowrapTitle(text: string) {
   return <span style={{ whiteSpace: 'nowrap' }}>{text}</span>;
 }
 
+const PROJECT_TABLE_SCROLL_X = 1120;
+
 export default function ProjectList() {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<Project[]>([]);
@@ -247,7 +249,7 @@ export default function ProjectList() {
 
   return (
     <AnimatedPage className={styles.page}>
-      <div className={styles.pageContent}>
+      <div className={styles.pageContent} style={{ maxWidth: 1680 }}>
         {!viewingProject ? (
           <header className={styles.header}>
             <div className={styles.headerTop}>
@@ -293,7 +295,7 @@ export default function ProjectList() {
               dataSource={filteredData}
               rowKey="proId"
               loading={loading}
-              scroll={{ x: 1100 }}
+              scroll={{ x: PROJECT_TABLE_SCROLL_X }}
               pagination={{
                 pageSize: 10,
                 showSizeChanger: true,
