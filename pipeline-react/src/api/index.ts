@@ -1,4 +1,4 @@
-import { http } from './request';
+﻿import { http } from './request';
 import type {
   CalculationHistory,
   HydraulicAnalysisParams,
@@ -122,8 +122,8 @@ export const calculationHistoryApi = {
       params,
     }),
   detail: (id: number) => http.get<R<CalculationHistory>>(`/calculation/history/${id}`),
+  report: (payload: SaveReportRequest) => http.post<R<CalculationHistory>>('/calculation/history/report', payload),
   delete: (id: number) => http.delete<R<void>>(`/calculation/history/${id}`),
   batchDelete: (ids: number[]) => http.post<R<number>>('/calculation/history/batch-delete', ids),
-  saveReport: (data: SaveReportRequest) =>
-    http.post<R<CalculationHistory>>('/calculation/history/report', data),
 };
+

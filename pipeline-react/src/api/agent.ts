@@ -16,7 +16,8 @@ import type {
 } from '../types/agent';
 
 const AGENT_API_BASE =
-  import.meta.env.VITE_AGENT_API_BASE_URL || 'http://127.0.0.1:8100/api/v1';
+  import.meta.env.VITE_AGENT_API_BASE_URL ||
+  (import.meta.env.DEV ? '/api/v1' : 'http://127.0.0.1:8100/api/v1');
 
 async function parseJson<T>(response: Response): Promise<T> {
   const text = await response.text();
@@ -53,10 +54,18 @@ function buildHeaders(headers?: HeadersInit) {
 }
 
 async function requestAgent<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${AGENT_API_BASE}${path}`, {
-    ...init,
-    headers: buildHeaders(init?.headers),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${AGENT_API_BASE}${path}`, {
+      ...init,
+      headers: buildHeaders(init?.headers),
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message) {
+      throw new Error(`智能报告服务连接失败：${error.message}`);
+    }
+    throw new Error('智能报告服务连接失败，请稍后重试。');
+  }
 
   if (!response.ok) {
     let errorMessage = `request failed: ${response.status}`;

@@ -66,11 +66,6 @@ const menuItems: MenuProps['items'] = [
     ],
   },
   {
-    key: '/report',
-    icon: <BarChartOutlined />,
-    label: '报告中心',
-  },
-  {
     key: 'ai',
     icon: <RobotOutlined />,
     label: '智能助手',
@@ -159,7 +154,11 @@ export default function MainLayout() {
     }
   };
 
-  const getSelectedKeys = () => [location.pathname];
+  const getSelectedKeys = () => {
+    const { pathname } = location;
+    if (pathname.startsWith('/ai/report')) return ['/ai/report'];
+    return [pathname];
+  };
 
   const getOpenKeys = () => {
     const { pathname } = location;
@@ -202,9 +201,20 @@ export default function MainLayout() {
         width={getSiderWidth()}
         collapsedWidth={72}
       >
-        <div className={styles.logo}>
+        <div className={`${styles.logo} ${collapsed && !isMobile ? styles.logoCollapsed : ''}`}>
+          <div className={styles.logoBrand}>
           <span className={styles.logoIcon}>P</span>
-          {(!collapsed || isMobile) && <span className={styles.logoText}>管道能助手</span>}
+          {(!collapsed || isMobile) && <span className={styles.logoText}>管道智能助手</span>}
+          </div>
+          {!isMobile && (
+            <Button
+              type="text"
+              icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+              onClick={toggleCollapsed}
+              className={styles.logoTrigger}
+              aria-label={collapsed ? '展开侧边栏' : '收起侧边栏'}
+            />
+          )}
         </div>
 
         <Menu

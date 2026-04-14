@@ -235,11 +235,13 @@ export default function OilPropertyList() {
 
   return (
     <AnimatedPage className={styles.page}>
-      <div className={styles.pageContent}>
+      <div className={styles.pageContent} style={{ maxWidth: 1600 }}>
         <header className={styles.header}>
           <div className={styles.headerTop}>
             <div className={styles.headerInfo}>
-              <h1 className={styles.title}>油品特性</h1>
+              <h1 className={styles.title}>
+                <span className={styles.titleAccent}>油品特性</span>
+              </h1>
               <p className={styles.subtitle}>管理油品物性参数，突出名称、密度与运动粘度等核心指标。</p>
             </div>
             <div className={styles.headerActions}>

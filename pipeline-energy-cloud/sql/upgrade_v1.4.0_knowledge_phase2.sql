@@ -1,14 +1,29 @@
+/*
+ * Knowledge module schema upgrade - phase 2
+ * Version: v1.4.0
+ */
+
 USE `pipeline_cloud`;
 
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
 
 ALTER TABLE `t_kb_document`
-    ADD COLUMN `file_hash` varchar(64) DEFAULT NULL AFTER `file_size`,
-    ADD COLUMN `storage_type` varchar(32) DEFAULT 'MINIO' AFTER `file_hash`,
-    ADD COLUMN `storage_bucket` varchar(128) DEFAULT NULL AFTER `storage_type`,
-    ADD COLUMN `storage_object_key` varchar(500) DEFAULT NULL AFTER `storage_bucket`,
-    ADD COLUMN `retry_count` int(11) DEFAULT 0 AFTER `chunk_count`,
+    ADD COLUMN `file_hash` varchar(64) DEFAULT NULL AFTER `file_size`;
+
+ALTER TABLE `t_kb_document`
+    ADD COLUMN `storage_type` varchar(32) DEFAULT 'MINIO' AFTER `file_hash`;
+
+ALTER TABLE `t_kb_document`
+    ADD COLUMN `storage_bucket` varchar(128) DEFAULT NULL AFTER `storage_type`;
+
+ALTER TABLE `t_kb_document`
+    ADD COLUMN `storage_object_key` varchar(500) DEFAULT NULL AFTER `storage_bucket`;
+
+ALTER TABLE `t_kb_document`
+    ADD COLUMN `retry_count` int(11) DEFAULT 0 AFTER `chunk_count`;
+
+ALTER TABLE `t_kb_document`
     ADD COLUMN `last_ingest_time` datetime DEFAULT NULL AFTER `failure_reason`;
 
 UPDATE `t_kb_document`
@@ -22,9 +37,7 @@ WHERE `file_hash` IS NULL
    OR `storage_object_key` IS NULL;
 
 ALTER TABLE `t_kb_document`
-    MODIFY COLUMN `status` varchar(32) NOT NULL DEFAULT 'UPLOADED';
-
-ALTER TABLE `t_kb_document`
+    MODIFY COLUMN `status` varchar(32) NOT NULL DEFAULT 'UPLOADED',
     MODIFY COLUMN `file_hash` varchar(64) NOT NULL,
     MODIFY COLUMN `storage_type` varchar(32) NOT NULL DEFAULT 'MINIO',
     MODIFY COLUMN `storage_bucket` varchar(128) NOT NULL,
@@ -51,7 +64,7 @@ CREATE TABLE IF NOT EXISTS `t_kb_ingest_task` (
     KEY `idx_document_id` (`document_id`),
     KEY `idx_task_status` (`status`),
     KEY `idx_task_create_time` (`create_time`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Knowledge ingest task';
 
 SET FOREIGN_KEY_CHECKS = 1;
 

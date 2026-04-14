@@ -30,6 +30,8 @@ function nowrapTitle(text: string) {
   return <span style={{ whiteSpace: 'nowrap' }}>{text}</span>;
 }
 
+const PROJECT_TABLE_SCROLL_X = 1120;
+
 export default function ProjectList() {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<Project[]>([]);
@@ -247,14 +249,16 @@ export default function ProjectList() {
 
   return (
     <AnimatedPage className={styles.page}>
-      <div className={styles.pageContent}>
+      <div className={styles.pageContent} style={{ maxWidth: 1680 }}>
         {!viewingProject ? (
           <header className={styles.header}>
             <div className={styles.headerTop}>
               <div className={styles.headerInfo}>
-                <h1 className={styles.title}>项目管理</h1>
+                <h1 className={styles.title}>
+                  <span className={styles.titleAccent}>项目管理</span>
+                </h1>
                 <p className={styles.subtitle}>
-                  管理管道工程项目基本信息，包括项目创建、编辑、删除和计算详情查看。
+                  管道工程项目的创建、维护与计算分析
                 </p>
               </div>
               <div className={styles.headerActions}>
@@ -291,7 +295,7 @@ export default function ProjectList() {
               dataSource={filteredData}
               rowKey="proId"
               loading={loading}
-              scroll={{ x: 1100 }}
+              scroll={{ x: PROJECT_TABLE_SCROLL_X }}
               pagination={{
                 pageSize: 10,
                 showSizeChanger: true,

@@ -1,14 +1,23 @@
+/*
+ * Knowledge module schema upgrade - phase 3
+ * Version: v1.5.0
+ */
+
 USE `pipeline_cloud`;
 
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
 
 ALTER TABLE `t_kb_document`
-    ADD COLUMN `ingest_stage` varchar(32) NOT NULL DEFAULT 'QUEUED' AFTER `status`,
+    ADD COLUMN `ingest_stage` varchar(32) NOT NULL DEFAULT 'QUEUED' AFTER `status`;
+
+ALTER TABLE `t_kb_document`
     ADD COLUMN `progress_percent` int(11) NOT NULL DEFAULT 0 AFTER `ingest_stage`;
 
 ALTER TABLE `t_kb_ingest_task`
-    ADD COLUMN `ingest_stage` varchar(32) NOT NULL DEFAULT 'QUEUED' AFTER `status`,
+    ADD COLUMN `ingest_stage` varchar(32) NOT NULL DEFAULT 'QUEUED' AFTER `status`;
+
+ALTER TABLE `t_kb_ingest_task`
     ADD COLUMN `progress_percent` int(11) NOT NULL DEFAULT 0 AFTER `ingest_stage`;
 
 UPDATE `t_kb_document`

@@ -46,20 +46,6 @@ export default function Login() {
     }
   };
 
-  const handleQuickLogin = async () => {
-    setLoading(true);
-    try {
-      const res = await authApi.login({ username: 'admin', password: 'admin123' });
-      if (applyLoginResult(res)) {
-        message.success('已使用默认账号登录');
-      }
-    } catch {
-      // Error is handled by the request interceptor.
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <div className={styles.container}>
       <div className={styles.background}>
@@ -107,17 +93,7 @@ export default function Login() {
               登录
             </Button>
           </Form.Item>
-
-          <Form.Item>
-            <Button type="default" block onClick={handleQuickLogin} disabled={loading}>
-              快速登录（admin/admin123）
-            </Button>
-          </Form.Item>
         </Form>
-
-        <div className={styles.footer}>
-          <p>默认账号: admin / admin123</p>
-        </div>
       </Card>
     </div>
   );

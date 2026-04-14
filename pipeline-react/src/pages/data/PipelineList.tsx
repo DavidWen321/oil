@@ -36,6 +36,8 @@ function nowrapTitle(text: string) {
   return <span style={{ whiteSpace: 'nowrap' }}>{text}</span>;
 }
 
+const PIPELINE_TABLE_SCROLL_X = 1540;
+
 export default function PipelineList() {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<Pipeline[]>([]);
@@ -307,11 +309,13 @@ export default function PipelineList() {
 
   return (
     <AnimatedPage className={styles.page}>
-      <div className={styles.pageContent}>
+      <div className={styles.pageContent} style={{ maxWidth: 1760 }}>
         <header className={styles.header}>
           <div className={styles.headerTop}>
             <div className={styles.headerInfo}>
-              <h1 className={styles.title}>管道参数</h1>
+              <h1 className={styles.title}>
+                <span className={styles.titleAccent}>管道参数</span>
+              </h1>
               <p className={styles.subtitle}>
                 管理数据库中全部项目的管道参数，并自动同步最新的管径、长度、壁厚、输量与高程数据。
               </p>
@@ -348,7 +352,7 @@ export default function PipelineList() {
             dataSource={filteredData}
             rowKey="id"
             loading={loading}
-            scroll={{ x: 1430 }}
+            scroll={{ x: PIPELINE_TABLE_SCROLL_X }}
             pagination={{
               pageSize: 10,
               showSizeChanger: true,

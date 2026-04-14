@@ -43,6 +43,8 @@ function formatNumber(value: number | undefined, precision?: number) {
   return typeof precision === 'number' ? value.toFixed(precision) : value;
 }
 
+const PUMP_STATION_TABLE_SCROLL_X = 1350;
+
 export default function PumpStationList() {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<PumpStation[]>([]);
@@ -221,11 +223,13 @@ export default function PumpStationList() {
 
   return (
     <AnimatedPage className={styles.page}>
-      <div className={styles.pageContent}>
+      <div className={styles.pageContent} style={{ maxWidth: 1760 }}>
         <header className={styles.header}>
           <div className={styles.headerTop}>
             <div className={styles.headerInfo}>
-              <h1 className={styles.title}>泵站参数</h1>
+              <h1 className={styles.title}>
+                <span className={styles.titleAccent}>泵站参数</span>
+              </h1>
               <p className={styles.subtitle}>
                 管理共享泵站设备参数信息，集中维护关键运行指标。
               </p>
@@ -262,7 +266,7 @@ export default function PumpStationList() {
             dataSource={filteredData}
             rowKey="id"
             loading={loading}
-            scroll={{ x: 1250 }}
+            scroll={{ x: PUMP_STATION_TABLE_SCROLL_X }}
             pagination={{
               pageSize: 10,
               showSizeChanger: true,

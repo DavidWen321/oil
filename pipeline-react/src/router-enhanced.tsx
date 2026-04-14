@@ -24,6 +24,10 @@ const SensitivityAnalysis = lazy(() => import('./pages/calculation/SensitivityAn
 const Report = lazy(() => import('./pages/report/Report'));
 const AIChat = lazy(() => import('./pages/ai/AIChat'));
 const ReportPreview = lazy(() => import('./pages/ai/ReportPreview'));
+const ReportHistoryDetail = lazy(async () => {
+  const module = await import('./pages/ai/ReportPreview');
+  return { default: module.ReportHistoryDetailPage };
+});
 
 const Loading = () => (
   <div
@@ -186,6 +190,14 @@ export const router = createBrowserRouter([
         element: (
           <Suspense fallback={<Loading />}>
             <ReportPreview />
+          </Suspense>
+        ),
+      },
+      {
+        path: 'ai/report/detail/:historyId',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <ReportHistoryDetail />
           </Suspense>
         ),
       },

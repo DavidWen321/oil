@@ -265,7 +265,10 @@ export interface DynamicReportRiskItem {
   riskType: string;
   level: string;
   reason: string;
+  impact?: string | null;
   suggestion: string;
+  code?: string | null;
+  message?: string | null;
 }
 
 export interface DynamicReportSuggestionItem {
@@ -274,6 +277,7 @@ export interface DynamicReportSuggestionItem {
   action: string;
   expected: string;
   priority: string;
+  text?: string | null;
 }
 
 export interface DynamicReportMetricItem {
@@ -301,6 +305,63 @@ export interface DynamicReportSectionPayload {
   metrics: DynamicReportMetricItem[];
   items: DynamicReportBulletItem[];
   table?: DynamicReportTableData | null;
+}
+
+export interface DynamicReportSensitivityInsightBlockPayload {
+  title: string;
+  content: string;
+}
+
+export interface DynamicReportSensitivityInsightsPayload {
+  rankingInsight?: DynamicReportSensitivityInsightBlockPayload | null;
+  trendInsight?: DynamicReportSensitivityInsightBlockPayload | null;
+  impactInsight?: DynamicReportSensitivityInsightBlockPayload | null;
+  tableConclusion?: DynamicReportSensitivityInsightBlockPayload | null;
+}
+
+export interface DynamicReportOptimizationInsightBlockPayload {
+  title: string;
+  content: string;
+}
+
+export interface DynamicReportOptimizationInsightsPayload {
+  schemeInsight?: DynamicReportOptimizationInsightBlockPayload | null;
+  feasibilityInsight?: DynamicReportOptimizationInsightBlockPayload | null;
+  economicInsight?: DynamicReportOptimizationInsightBlockPayload | null;
+}
+
+export interface DynamicReportAiAnalysisPayload {
+  summary: string[];
+  metricAnalysis: string[];
+  schemeExplain?: string[];
+  comparison?: string[];
+  changeAnalysis?: string[];
+  riskJudgement: DynamicReportRiskItem[];
+  riskIdentify?: DynamicReportRiskItem[];
+  suggestions: DynamicReportSuggestionItem[];
+  sensitivityInsights?: DynamicReportSensitivityInsightsPayload | null;
+  optimizationInsights?: DynamicReportOptimizationInsightsPayload | null;
+}
+
+export interface DynamicReportHydraulicSnapshotPayload {
+  projectName?: string | null;
+  generatedAt?: string | null;
+  input: Record<string, unknown>;
+  output: Record<string, unknown>;
+}
+
+export interface DynamicReportOptimizationSnapshotPayload {
+  projectName?: string | null;
+  generatedAt?: string | null;
+  input: Record<string, unknown>;
+  output: Record<string, unknown>;
+}
+
+export interface DynamicReportSensitivitySnapshotPayload {
+  projectName?: string | null;
+  generatedAt?: string | null;
+  input: Record<string, unknown>;
+  output: Record<string, unknown>;
 }
 
 export interface DynamicReportRequestPayload {
@@ -333,12 +394,16 @@ export interface DynamicReportRequestPayload {
   allow_pump_adjust?: boolean;
   remark?: string;
   user_prompt?: string;
+  hydraulic_snapshot?: DynamicReportHydraulicSnapshotPayload;
+  optimization_snapshot?: DynamicReportOptimizationSnapshotPayload;
+  sensitivity_snapshot?: DynamicReportSensitivitySnapshotPayload;
 }
 
 export interface DynamicReportResponsePayload {
   title: string;
   abstract: string;
   source: 'ai' | 'rules' | 'hybrid';
+  aiAnalysis?: DynamicReportAiAnalysisPayload;
   summary: string[];
   highlights: string[];
   risks: DynamicReportRiskItem[];
