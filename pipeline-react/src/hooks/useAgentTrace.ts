@@ -2,6 +2,7 @@
 import { agentApi } from '../api/agent';
 import { useSSE } from './useSSE';
 import { useUserStore } from '../stores/userStore';
+import { getToolDisplayStatus } from '../features/ai-chat/utils/toolOutput';
 import type {
   AgentTraceState,
   HITLRequest,
@@ -46,6 +47,25 @@ function findRunningToolIndex(
     if (idxByCallId >= 0) return idxByCallId;
   }
   return tools.findIndex((tool) => tool.tool === toolName && tool.status === 'running');
+}
+
+function resolveToolStatus(
+  baseTool: ToolExecutionEvent,
+  nextOutput?: string,
+  preferredStatus?: ToolExecutionEvent['status'],
+): ToolExecutionEvent['status'] {
+  const candidate: ToolExecutionEvent = {
+    ...baseTool,
+    status: preferredStatus ?? baseTool.status,
+    output: nextOutput ?? baseTool.output,
+  };
+
+  const derivedStatus = getToolDisplayStatus(candidate);
+  if (derivedStatus === 'failed') {
+    return 'failed';
+  }
+
+  return preferredStatus ?? baseTool.status;
 }
 
 const V2_BASE_URL = toV2BaseUrl(agentApi.baseUrl);
@@ -431,12 +451,15 @@ export function useAgentTrace(sessionId: string) {
           const targetIndex = findRunningToolIndex(prev.activeTools, callId, toolName);
           const updatedTools = [...prev.activeTools];
           if (targetIndex >= 0) {
-            updatedTools[targetIndex] = {
+            const nextTool = {
               ...updatedTools[targetIndex],
-              status: 'completed',
               call_id: updatedTools[targetIndex].call_id ?? callId,
               output: toolOutput,
               timestamp,
+            };
+            updatedTools[targetIndex] = {
+              ...nextTool,
+              status: resolveToolStatus(nextTool, toolOutput, 'completed'),
             };
           }
           return {
@@ -499,11 +522,15 @@ export function useAgentTrace(sessionId: string) {
           const targetIndex = findRunningToolIndex(prev.activeTools, callId, toolName);
           const updatedTools = [...prev.activeTools];
           if (targetIndex >= 0) {
-            updatedTools[targetIndex] = {
+            const nextTool = {
               ...updatedTools[targetIndex],
               call_id: updatedTools[targetIndex].call_id ?? callId,
               output: toolOutput,
               timestamp,
+            };
+            updatedTools[targetIndex] = {
+              ...nextTool,
+              status: resolveToolStatus(nextTool, toolOutput),
             };
           }
           return {
@@ -529,11 +556,14 @@ export function useAgentTrace(sessionId: string) {
           const targetIndex = findRunningToolIndex(prev.activeTools, callId, toolName);
           const updatedTools = [...prev.activeTools];
           if (targetIndex >= 0) {
-            updatedTools[targetIndex] = {
+            const nextTool = {
               ...updatedTools[targetIndex],
-              status: 'completed',
               call_id: updatedTools[targetIndex].call_id ?? callId,
               timestamp,
+            };
+            updatedTools[targetIndex] = {
+              ...nextTool,
+              status: resolveToolStatus(nextTool, nextTool.output, 'completed'),
             };
           }
           return {

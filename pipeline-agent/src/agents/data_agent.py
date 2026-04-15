@@ -12,6 +12,7 @@ from langchain_classic.agents import AgentExecutor, create_tool_calling_agent
 
 from src.config import settings
 from src.skills import get_skill_runtime
+from src.tools.database_tools import get_database_schema_guide
 from src.tools.mcp_langchain_adapter import get_mcp_langchain_tools
 from src.utils import logger
 
@@ -33,6 +34,19 @@ class DataAgent:
         self._llm = None
         self._agent_executor = None
         self._skill_runtime = get_skill_runtime()
+
+    def _build_system_prompt(self) -> str:
+        base_prompt = self._skill_runtime.get_prompt(self.SKILL_NAME, "system")
+        schema_prompt = get_database_schema_guide()
+        retry_rules = (
+            "\n\n补充规则：\n"
+            "1. 只能使用真实表名和真实字段名，绝不允许编造 projects、pipelines 之类的英文复数表名。\n"
+            "2. 能用现成查询工具时，优先用现成工具；只有筛选、聚合、排序等现成工具不覆盖时，才调用 execute_safe_sql。\n"
+            "3. 如果 SQL 返回表不存在、字段不存在、unknown table、unknown column，必须根据下面 schema 立即改写并重试一次。\n"
+            "4. 用户问“负责人是王军的项目有哪些”这类问题时，应查询 t_project.responsible，而不是猜测 projects.owner 之类字段。\n\n"
+            f"{schema_prompt}"
+        )
+        return f"{base_prompt}{retry_rules}"
 
     @property
     def llm(self) -> ChatOpenAI:
@@ -59,7 +73,7 @@ class DataAgent:
         """获取Agent执行器"""
         if self._agent_executor is None:
             prompt = ChatPromptTemplate.from_messages([
-                ("system", self._skill_runtime.get_prompt(self.SKILL_NAME, "system")),
+                ("system", self._build_system_prompt()),
                 ("human", "{input}"),
                 ("placeholder", "{agent_scratchpad}")
             ])

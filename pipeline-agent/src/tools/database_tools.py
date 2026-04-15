@@ -17,6 +17,26 @@ from src.utils import logger, decimal_to_float
 # 创建数据库引擎
 _engine = None
 
+BUSINESS_SCHEMA_GUIDE = """
+数据库查询只能使用下面这些真实业务表名和字段名，不要臆造英文复数表名：
+- t_project(pro_id, number, name, responsible, build_date, create_time, update_time, is_deleted)
+- t_pipeline(id, pro_id, name, length, diameter, thickness, throughput, start_altitude, end_altitude, roughness, work_time, create_time, update_time)
+- t_pump_station(id, name, pump_efficiency, electric_efficiency, displacement, come_power, zmi480_lift, zmi375_lift, create_time, update_time)
+- t_oil_property(id, name, density, viscosity, create_time, update_time)
+- t_calculation_history(id, pro_id, pipeline_id, calc_type, calc_name, input_params, flow_rate, flow_velocity, reynolds_number, flow_regime, friction_factor, friction_loss, hydraulic_slope, optimal_pump480, optimal_pump375, total_head, end_station_pressure, energy_consumption, annual_cost, output_result, create_by, create_time, remark)
+- t_sensitivity_analysis(id, pipeline_id, history_id, analysis_type, variable_name, base_value, variation_range, steps, results, conclusion, sensitivity_index, create_by, create_time)
+
+常见映射：
+- 项目 -> t_project
+- 管道 -> t_pipeline
+- 泵站 -> t_pump_station
+- 油品 -> t_oil_property
+
+不要使用 projects / pipelines / pump_stations / oil_properties 这类虚构表名。
+""".strip()
+
+TABLE_NAME_PATTERN = re.compile(r"\b(?:FROM|JOIN)\s+([`\"\[]?[\w\.]+[`\"\]]?)", re.IGNORECASE)
+
 
 def get_engine():
     """获取数据库引擎单例"""
@@ -57,6 +77,35 @@ def execute_query(sql: str, params: dict = None) -> List[dict]:
         raise
 
 
+def get_database_schema_guide() -> str:
+    """Return a concise schema guide for prompts and SQL error recovery."""
+    return BUSINESS_SCHEMA_GUIDE
+
+
+def _normalize_table_name(raw_name: str) -> str:
+    normalized = str(raw_name or "").strip().strip("`[]\"")
+    if "." in normalized:
+        normalized = normalized.split(".")[-1]
+    return normalized.lower()
+
+
+def _extract_table_names(sql: str) -> list[str]:
+    tables: list[str] = []
+    for match in TABLE_NAME_PATTERN.findall(sql or ""):
+        normalized = _normalize_table_name(match)
+        if normalized:
+            tables.append(normalized)
+    return tables
+
+
+def _build_unknown_table_message(unknown_tables: list[str]) -> str:
+    tables = ", ".join(sorted(set(unknown_tables)))
+    return (
+        f"查询失败：检测到不存在或不允许访问的表名：{tables}。"
+        f" 请改用下面这些真实业务表名后重试：{BUSINESS_SCHEMA_GUIDE}"
+    )
+
+
 # ==================== LangChain Tools ====================
 
 @tool
@@ -72,7 +121,7 @@ def query_projects(limit: int = 20) -> str:
     """
     try:
         sql = """
-            SELECT pro_id, number, name, responsible, build_date, description
+            SELECT pro_id, number, name, responsible, build_date
             FROM t_project
             ORDER BY pro_id DESC
             LIMIT :limit
@@ -94,7 +143,6 @@ def query_projects(limit: int = 20) -> str:
                     "name": p.get("name", ""),
                     "responsible": p.get("responsible"),
                     "build_date": p.get("build_date"),
-                    "description": p.get("description", ""),
                 }
             )
 
@@ -125,7 +173,7 @@ def query_project_by_id(project_id: int) -> str:
     """
     try:
         sql = """
-            SELECT pro_id, number, name, responsible, build_date, description
+            SELECT pro_id, number, name, responsible, build_date
             FROM t_project
             WHERE pro_id = :project_id
         """
@@ -148,7 +196,6 @@ def query_project_by_id(project_id: int) -> str:
             "name": p.get("name", ""),
             "responsible": p.get("responsible"),
             "build_date": p.get("build_date"),
-            "description": p.get("description", ""),
         }
 
         return json.dumps(
@@ -569,61 +616,71 @@ def get_calculation_parameters(pipeline_id: int, oil_id: int) -> str:
 
 @tool
 def execute_safe_sql(sql: str) -> str:
-    """
-    执行安全的只读SQL查询（仅支持SELECT）
-
-    Args:
-        sql: SELECT查询语句
-
-    Returns:
-        查询结果（JSON格式）
-
-    注意:
-        - 仅支持SELECT语句
-        - 禁止访问sys_user表的password字段
-        - 结果最多返回100条
-    """
+    """Execute read-only SQL against the real business schema."""
     try:
-        # 安全检查
         sql_upper = sql.upper().strip()
 
         if not sql_upper.startswith("SELECT"):
             return json.dumps(
-                {"success": False, "message": "错误: 仅支持SELECT查询", "data": []},
+                {"success": False, "message": "查询失败：只允许执行 SELECT 查询", "data": []},
                 ensure_ascii=False,
                 default=str,
             )
 
-        forbidden_keywords = ["INSERT", "UPDATE", "DELETE", "DROP", "ALTER",
-                              "CREATE", "TRUNCATE", "GRANT", "REVOKE"]
+        forbidden_keywords = [
+            "INSERT",
+            "UPDATE",
+            "DELETE",
+            "DROP",
+            "ALTER",
+            "CREATE",
+            "TRUNCATE",
+            "GRANT",
+            "REVOKE",
+        ]
         for keyword in forbidden_keywords:
             if re.search(rf"\b{keyword}\b", sql_upper):
                 return json.dumps(
                     {
                         "success": False,
-                        "message": f"错误: 不允许使用 {keyword} 操作",
+                        "message": f"查询失败：不允许执行包含 {keyword} 的语句",
                         "data": [],
                     },
                     ensure_ascii=False,
                     default=str,
                 )
 
-        # 禁止访问敏感字段
         if "SYS_USER" in sql_upper and "PASSWORD" in sql_upper:
             return json.dumps(
-                {"success": False, "message": "错误: 不允许查询用户密码", "data": []},
+                {"success": False, "message": "查询失败：禁止查询系统用户密码字段", "data": []},
                 ensure_ascii=False,
                 default=str,
             )
 
-        # 添加LIMIT限制
+        referenced_tables = _extract_table_names(sql)
+        unknown_tables = [
+            table
+            for table in referenced_tables
+            if table not in settings.sql_allowed_tables or table in settings.sql_blocked_tables
+        ]
+        if unknown_tables:
+            return json.dumps(
+                {
+                    "success": False,
+                    "message": _build_unknown_table_message(unknown_tables),
+                    "data": [],
+                },
+                ensure_ascii=False,
+                default=str,
+            )
+
         if "LIMIT" not in sql_upper:
-            sql = sql.rstrip(";") + " LIMIT 100"
+            sql = sql.rstrip(";") + f" LIMIT {settings.SQL_MAX_LIMIT}"
 
         results = execute_query(sql)
         if not results:
             return json.dumps(
-                {"success": True, "message": "查询结果为空", "data": [], "count": 0},
+                {"success": True, "message": "查询成功，但未找到数据", "data": [], "count": 0},
                 ensure_ascii=False,
                 default=str,
             )
@@ -634,16 +691,18 @@ def execute_safe_sql(sql: str) -> str:
             default=str,
         )
     except Exception as e:
-        logger.error(f"执行SQL失败: {e}")
+        logger.error(f"执行安全SQL失败: {e}")
+        error_message = str(e)
+        if any(keyword in error_message.lower() for keyword in ("doesn't exist", "unknown table", "unknown column")):
+            error_message = f"{error_message}。{BUSINESS_SCHEMA_GUIDE}"
         return json.dumps(
-            {"success": False, "message": f"查询失败: {str(e)}", "data": []},
+            {"success": False, "message": f"查询失败：{error_message}", "data": []},
             ensure_ascii=False,
             default=str,
         )
 
 
 # ==================== 工具集合 ====================
-
 DATABASE_TOOLS = [
     query_projects,
     query_project_by_id,
