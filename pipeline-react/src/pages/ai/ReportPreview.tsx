@@ -26,10 +26,12 @@ import {
   AppstoreOutlined,
   ArrowLeftOutlined,
   CheckCircleOutlined,
+  CloseCircleOutlined,
   DeleteOutlined,
   EyeOutlined,
   FileTextOutlined,
   HistoryOutlined,
+  QuestionCircleOutlined,
   ReloadOutlined,
   RobotOutlined,
   SearchOutlined,
@@ -469,7 +471,7 @@ function toHistoryTableRow(item: CalculationHistory, projectLookup: Map<number, 
     key: item.id,
     projectNumber: project?.number || (item.projectId ? String(item.projectId) : '-'),
     responsible: project?.responsible || item.userName || '-',
-    calcTypeLabel: getCalcTypeLabel(item),
+    calcTypeLabel: getDisplayCalcTypeLabel(item),
     updateTimeText: formatTime(item.createTime),
   };
 }
@@ -1290,6 +1292,32 @@ function getCalcTypeLabel(record: Pick<CalculationHistory, 'calcType' | 'calcTyp
     return CALC_TYPE_LABELS[record.calcType];
   }
   return record.calcType || '未知类型';
+}
+
+function getReportKindLabel(kind: ReportKind) {
+  if (kind === 'hydraulic') {
+    return '水力分析';
+  }
+  if (kind === 'sensitivity') {
+    return '敏感性分析';
+  }
+  if (kind === 'optimization' || kind === 'optimization-comparison') {
+    return '泵站优化';
+  }
+  return '智能报告';
+}
+
+function getDisplayCalcTypeLabel(record: Pick<CalculationHistory, 'calcType' | 'calcTypeName' | 'outputResult'>) {
+  if (isAiReportHistory(record)) {
+    const reportPayload = extractDynamicReportFromOutput(record.outputResult);
+    const reportKind = getReportKindFromPayload(reportPayload);
+    const reportKindLabel = getReportKindLabel(reportKind);
+    if (reportKindLabel !== '智能报告') {
+      return reportKindLabel;
+    }
+  }
+
+  return getCalcTypeLabel(record);
 }
 
 function dedupeProjectNames(names: Array<string | null | undefined>) {
@@ -2369,6 +2397,25 @@ type OptimizationInsightBlockData = {
   content: string;
 };
 
+type OptimizationExpertTopic = 'recommendation' | 'risk' | 'economics' | 'operation' | 'scenario' | 'general';
+
+type OptimizationExpertReply = {
+  topic: OptimizationExpertTopic;
+  topicLabel: string;
+  headline: string;
+  paragraphs: string[];
+  evidence: string[];
+  caveat?: string;
+};
+
+const OPTIMIZATION_REPORT_QUICK_QUESTIONS = [
+  '为什么推荐这个方案',
+  '当前方案主要风险是什么',
+  '从能耗和成本看值不值得用',
+  '现场应该怎么执行这套方案',
+  '如果工况变化需要注意什么',
+];
+
 function renderOptimizationInsightCard(block: OptimizationInsightBlockData, accentColor: string) {
   return (
     <Card
@@ -2395,6 +2442,689 @@ function renderOptimizationInsightCard(block: OptimizationInsightBlockData, acce
         <Paragraph style={{ margin: 0, color: '#334155', lineHeight: 1.8 }}>{block.content}</Paragraph>
       </div>
     </Card>
+  );
+}
+
+function pickOptimizationExpertTopic(question: string): OptimizationExpertTopic {
+  const normalized = question.trim().toLowerCase();
+  if (!normalized) {
+    return 'recommendation';
+  }
+  if (
+    normalized.includes('风险') ||
+    normalized.includes('隐患') ||
+    normalized.includes('问题') ||
+    normalized.includes('约束')
+  ) {
+    return 'risk';
+  }
+  if (
+    normalized.includes('能耗') ||
+    normalized.includes('成本') ||
+    normalized.includes('经济') ||
+    normalized.includes('省电') ||
+    normalized.includes('费用')
+  ) {
+    return 'economics';
+  }
+  if (
+    normalized.includes('执行') ||
+    normalized.includes('操作') ||
+    normalized.includes('调度') ||
+    normalized.includes('怎么做') ||
+    normalized.includes('如何做')
+  ) {
+    return 'operation';
+  }
+  if (
+    normalized.includes('流量') ||
+    normalized.includes('工况') ||
+    normalized.includes('变化') ||
+    normalized.includes('波动') ||
+    normalized.includes('上涨') ||
+    normalized.includes('下降')
+  ) {
+    return 'scenario';
+  }
+  if (
+    normalized.includes('为什么') ||
+    normalized.includes('推荐') ||
+    normalized.includes('理由') ||
+    normalized.includes('依据')
+  ) {
+    return 'recommendation';
+  }
+  return 'general';
+}
+
+function buildOptimizationExpertReply(params: {
+  question: string;
+  projectName: string;
+  recommendedCombination: string;
+  feasibilityText: string;
+  isFeasible: boolean | null;
+  recommendationText: string;
+  currentCondition: string;
+  endStationInPressure: number | null;
+  totalHead: number | null;
+  totalPressureDrop: number | null;
+  totalEnergyConsumption: number | null;
+  totalCost: number | null;
+  riskItems: DynamicReportResponsePayload['risks'];
+  suggestionItems: DynamicReportResponsePayload['suggestions'];
+}): OptimizationExpertReply {
+  const {
+    question,
+    projectName,
+    recommendedCombination,
+    feasibilityText,
+    isFeasible,
+    recommendationText,
+    currentCondition,
+    endStationInPressure,
+    totalHead,
+    totalPressureDrop,
+    totalEnergyConsumption,
+    totalCost,
+    riskItems,
+    suggestionItems,
+  } = params;
+
+  const topRisk = riskItems[0];
+  const topSuggestion = suggestionItems[0];
+  const topEvidence = [
+    `推荐泵组：${recommendedCombination}`,
+    `末站进站压头：${formatValue(endStationInPressure, 'm')}`,
+    `总扬程：${formatValue(totalHead, 'm')}`,
+    `总压降：${formatValue(totalPressureDrop, 'm')}`,
+    `年能耗：${formatValue(totalEnergyConsumption, 'kWh')}`,
+    `总成本：${formatValue(totalCost, '元')}`,
+    `当前判定：${feasibilityText}`,
+  ];
+
+  const topic = pickOptimizationExpertTopic(question);
+
+  if (topic === 'risk') {
+    return {
+      topic,
+      topicLabel: '风险判断',
+      headline: `当前方案最需要关注的风险`,
+      paragraphs: [
+        topRisk
+          ? `对 ${projectName} 这套 ${recommendedCombination} 方案，当前最直接的风险点是“${topRisk.reason}”。这说明问题不在报告表达，而在当前返回结果本身已经暴露出边界。`
+          : `当前返回结果没有给出明显高风险项，但这不等于完全没有风险。对泵站优化来说，末站进站压头、总压降和长期能耗仍然是持续跟踪重点。`,
+        isFeasible === true
+          ? `从水力判定看，当前方案是可行的，所以风险更偏向“裕度够不够”和“长期运行代价高不高”，而不是立即不可用。`
+          : `当前方案没有形成稳定的可行性结论，说明风险已经从“优化空间”上升到了“是否能稳定执行”的层面。`,
+        topSuggestion
+          ? `优先动作建议直接看 ${topSuggestion.action}。这条建议最接近当前报告能给出的落地动作。`
+          : `如果现场需要先做一件事，优先复核末站压力边界和当前推荐泵组的稳定性。`,
+      ],
+      evidence: topRisk
+        ? [`风险对象：${topRisk.target || projectName}`, `风险等级：${topRisk.level || '中'}`, ...topEvidence]
+        : topEvidence,
+      caveat: '当前接口没有返回完整备选方案清单，所以这里判断的是“当前推荐方案的风险”，不是所有方案之间的全量风险排序。',
+    };
+  }
+
+  if (topic === 'economics') {
+    const economicJudgement =
+      totalEnergyConsumption !== null && totalEnergyConsumption >= 1000000
+        ? '年能耗已经偏高，说明这套方案在长期运行下的节能压力不小。'
+        : totalCost !== null && totalCost >= 800000
+          ? '总成本压力偏大，方案虽然可能可行，但未必是最舒服的经济解。'
+          : '从当前结果看，这套方案在满足运行要求的同时，经济性处于可接受区间。';
+
+    return {
+      topic,
+      topicLabel: '经济性判断',
+      headline: `这套方案从能耗和成本上值不值得用`,
+      paragraphs: [
+        `${recommendedCombination} 当前对应的年能耗是 ${formatValue(totalEnergyConsumption, 'kWh')}，总成本是 ${formatValue(totalCost, '元')}。${economicJudgement}`,
+        `如果你的目标更偏向“先保可行，再看经济性”，那现在这套方案是可以继续推进的；如果你的目标是“极致省电/极致省钱”，那还需要更多候选方案结果做横向比较。`,
+        recommendationText !== '当前数据不足以支持进一步判断'
+          ? `系统原始推荐说明也给出了依据：${recommendationText}`
+          : '当前接口返回了经济性结果，但没有给出与其他候选组合的差值。',
+      ],
+      evidence: topEvidence,
+      caveat: '当前接口只返回推荐方案本身，没有返回第二名、第三名方案，所以这里可以判断“贵不贵、耗不耗”，但不能严格证明“它一定最省”。',
+    };
+  }
+
+  if (topic === 'operation') {
+    return {
+      topic,
+      topicLabel: '执行建议',
+      headline: `现场执行这套方案时，优先盯住什么`,
+      paragraphs: [
+        `现场执行的核心不是重复“推荐 ${recommendedCombination}”，而是确认它在当前工况 ${currentCondition} 下能否稳定保持 ${feasibilityText}。`,
+        topSuggestion
+          ? `当前最直接的执行动作是：${topSuggestion.action}。这样做的目的，是 ${topSuggestion.expected}。`
+          : `建议先按当前推荐泵组组织运行，并持续跟踪末站进站压头、总压降和能耗三项关键指标。`,
+        endStationInPressure !== null && endStationInPressure < 10
+          ? '因为当前末站进站压头偏低，现场执行时要优先看压力余量，不要只盯能耗。'
+          : '因为当前末站压力还有一定空间，现场执行时可以同时兼顾压力和能耗两个方向。',
+      ],
+      evidence: topSuggestion
+        ? [`建议优先级：${topSuggestion.priority || 'medium'}`, `建议对象：${topSuggestion.target || projectName}`, ...topEvidence]
+        : topEvidence,
+      caveat: '当前报告能给的是“执行重点”和“复核顺序”，不是 DCS/PLC 层面的自动调度指令。',
+    };
+  }
+
+  if (topic === 'scenario') {
+    return {
+      topic,
+      topicLabel: '工况变化判断',
+      headline: `如果工况变化，当前方案最先受什么影响`,
+      paragraphs: [
+        `这套 ${recommendedCombination} 方案的结论，是建立在当前工况 ${currentCondition} 上的。工况一旦变化，最先要看的不是标题变没变，而是末站进站压头和总压降会不会把可行性边界顶穿。`,
+        endStationInPressure !== null && endStationInPressure < 10
+          ? `当前末站进站压头只有 ${formatValue(endStationInPressure, 'm')}，裕度不算宽。如果流量继续上升、入口条件变差或介质变黏，方案更容易从“可行”滑向“受限”。`
+          : `当前末站进站压头是 ${formatValue(endStationInPressure, 'm')}，还有一定缓冲空间。工况波动时，先观察压力是否明显回落，再决定要不要复核泵组。`,
+        `如果你真正关心“流量上升 10% 后该不该切方案”，需要重新跑一次优化计算；当前报告可以给你监控重点，但不能替代重新计算。`,
+      ],
+      evidence: topRisk ? [`当前最高风险：${topRisk.reason}`, ...topEvidence] : topEvidence,
+      caveat: '当前接口没有返回扰动工况下的新优化结果，所以这里给的是专家复核路径，不是新的优化结论。',
+    };
+  }
+
+  if (topic === 'general') {
+    return {
+      topic,
+      topicLabel: '综合判断',
+      headline: `当前报告能回答的核心问题`,
+      paragraphs: [
+        `基于当前优化结果，这份报告最能确定的是三件事：推荐泵组是 ${recommendedCombination}，当前水力判定是 ${feasibilityText}，以及这套方案对应的能耗和成本水平。`,
+        `如果你更关心“为什么推荐”“风险在哪”“现场怎么执行”“工况变化怎么办”，可以直接用上面的快捷追问继续聚焦。`,
+        `报告这里不会脱离当前优化结果单独编故事，所有回答都只围绕这份报告的真实数据展开。`,
+      ],
+      evidence: topEvidence,
+      caveat: '当前接口没有完整候选方案对比数据，所以智能报告更适合做“解释当前方案”，不适合硬编“所有方案全排序”。',
+    };
+  }
+
+  return {
+    topic: 'recommendation',
+    topicLabel: '推荐理由',
+    headline: `为什么当前推荐 ${recommendedCombination}`,
+    paragraphs: [
+      `${recommendedCombination} 被放在当前报告的首位，是因为这套方案在当前工况 ${currentCondition} 下拿到了可执行的优化结果。`,
+      recommendationText !== '当前数据不足以支持进一步判断'
+        ? `系统原始推荐说明是：${recommendationText}`
+        : `从返回结果看，当前方案对应末站进站压头 ${formatValue(endStationInPressure, 'm')}、总扬程 ${formatValue(totalHead, 'm')}、年能耗 ${formatValue(totalEnergyConsumption, 'kWh')}、总成本 ${formatValue(totalCost, '元')}。这些都是当前推荐成立的直接依据。`,
+      isFeasible === true
+        ? '更重要的是，当前方案的水力判定是可行，这意味着它不是纸面上好看，而是具备执行基础。'
+        : '不过当前方案的可行性并不稳，所以这个推荐更像“当前最接近目标的方案”，不是可以无条件直接执行的最终结论。',
+    ],
+    evidence: topEvidence,
+    caveat: '当前接口没有返回全部候选组合的明细排序，因此这里能说明“它为什么值得优先看”，但不能伪装成已经完成了所有备选方案的严格排名。',
+  };
+}
+
+function OptimizationReportFollowUpCard(props: {
+  projectName: string;
+  recommendedCombination: string;
+  feasibilityText: string;
+  isFeasible: boolean | null;
+  recommendationText: string;
+  currentCondition: string;
+  endStationInPressure: number | null;
+  totalHead: number | null;
+  totalPressureDrop: number | null;
+  totalEnergyConsumption: number | null;
+  totalCost: number | null;
+  riskItems: DynamicReportResponsePayload['risks'];
+  suggestionItems: DynamicReportResponsePayload['suggestions'];
+}) {
+  const [draftQuestion, setDraftQuestion] = useState('');
+  const [submittedQuestion, setSubmittedQuestion] = useState(OPTIMIZATION_REPORT_QUICK_QUESTIONS[0]);
+
+  const activeQuestion = submittedQuestion.trim() || OPTIMIZATION_REPORT_QUICK_QUESTIONS[0];
+  const reply = buildOptimizationExpertReply({
+    question: activeQuestion,
+    projectName: props.projectName,
+    recommendedCombination: props.recommendedCombination,
+    feasibilityText: props.feasibilityText,
+    isFeasible: props.isFeasible,
+    recommendationText: props.recommendationText,
+    currentCondition: props.currentCondition,
+    endStationInPressure: props.endStationInPressure,
+    totalHead: props.totalHead,
+    totalPressureDrop: props.totalPressureDrop,
+    totalEnergyConsumption: props.totalEnergyConsumption,
+    totalCost: props.totalCost,
+    riskItems: props.riskItems,
+    suggestionItems: props.suggestionItems,
+  });
+
+  return (
+    <Card size="small" title="报告追问" bodyStyle={{ padding: 20 }}>
+      <Space direction="vertical" size={16} style={{ width: '100%' }}>
+        <div
+          style={{
+            borderRadius: 16,
+            padding: '14px 16px',
+            border: '1px solid rgba(191, 219, 254, 0.95)',
+            background: 'linear-gradient(180deg, rgba(239, 246, 255, 0.96) 0%, rgba(255,255,255,1) 100%)',
+          }}
+        >
+          <Text strong style={{ color: '#1d4ed8' }}>
+            围绕当前泵站优化结果追问
+          </Text>
+          <Paragraph style={{ margin: '8px 0 0', color: '#334155', lineHeight: 1.8 }}>
+            这里只回答当前这份优化报告里的事实，不会跳成第二个聊天助手。你可以点快捷问题，也可以自己输入一句追问。
+          </Paragraph>
+        </div>
+
+        <Space wrap size={[8, 8]}>
+          {OPTIMIZATION_REPORT_QUICK_QUESTIONS.map((item) => (
+            <Button
+              key={item}
+              size="small"
+              type={activeQuestion === item ? 'primary' : 'default'}
+              onClick={() => {
+                setDraftQuestion(item);
+                setSubmittedQuestion(item);
+              }}
+            >
+              {item}
+            </Button>
+          ))}
+        </Space>
+
+        <Input.Search
+          value={draftQuestion}
+          placeholder="例如：如果流量继续上涨，当前方案还稳吗？"
+          enterButton="开始解读"
+          onChange={(event) => setDraftQuestion(event.target.value)}
+          onSearch={(value) => {
+            const normalized = value.trim();
+            if (!normalized) {
+              setSubmittedQuestion(OPTIMIZATION_REPORT_QUICK_QUESTIONS[0]);
+              setDraftQuestion('');
+              return;
+            }
+            setSubmittedQuestion(normalized);
+            setDraftQuestion(normalized);
+          }}
+        />
+
+        <div
+          style={{
+            borderRadius: 20,
+            padding: 18,
+            border: '1px solid rgba(226, 232, 240, 0.95)',
+            background: 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(248,250,252,1) 100%)',
+            boxShadow: '0 10px 24px rgba(15, 23, 42, 0.05)',
+          }}
+        >
+          <Space direction="vertical" size={12} style={{ width: '100%' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+              <div>
+                <Text type="secondary">当前追问</Text>
+                <div style={{ marginTop: 6, color: '#0f172a', fontSize: 20, fontWeight: 700, lineHeight: 1.35 }}>
+                  {reply.headline}
+                </div>
+              </div>
+              <Tag color="blue" style={{ marginInlineEnd: 0, alignSelf: 'flex-start' }}>
+                {reply.topicLabel}
+              </Tag>
+            </div>
+
+            {reply.paragraphs.map((item, index) => (
+              <Paragraph key={`${reply.topic}-${index}`} style={{ margin: 0, color: '#334155', lineHeight: 1.9 }}>
+                {item}
+              </Paragraph>
+            ))}
+
+            <div
+              style={{
+                borderRadius: 16,
+                padding: '12px 14px',
+                border: '1px solid rgba(226, 232, 240, 0.95)',
+                background: 'rgba(248, 250, 252, 0.92)',
+              }}
+            >
+              <Text strong style={{ display: 'block', color: '#0f172a', marginBottom: 10 }}>
+                判断依据
+              </Text>
+              <Space wrap size={[8, 8]}>
+                {reply.evidence.map((item) => (
+                  <Tag key={item} color="default" style={{ paddingInline: 10, paddingBlock: 4, borderRadius: 999 }}>
+                    {item}
+                  </Tag>
+                ))}
+              </Space>
+            </div>
+
+            {reply.caveat ? (
+              <Alert
+                type="info"
+                showIcon
+                message="说明"
+                description={reply.caveat}
+              />
+            ) : null}
+          </Space>
+        </div>
+      </Space>
+    </Card>
+  );
+}
+
+function getOptimizationPumpRunState(count: number | null) {
+  if (count === null) {
+    return {
+      label: '待确认',
+      note: '台数待补全',
+      accent: '#d97706',
+      textColor: '#9a3412',
+      borderColor: 'rgba(245, 158, 11, 0.22)',
+      background: 'rgba(245, 158, 11, 0.14)',
+    };
+  }
+
+  if (count > 0) {
+    return {
+      label: '运行中',
+      note: '参与当前推荐组合',
+      accent: '#16a34a',
+      textColor: '#166534',
+      borderColor: 'rgba(34, 197, 94, 0.24)',
+      background: 'rgba(34, 197, 94, 0.14)',
+    };
+  }
+
+  return {
+    label: '未启用',
+    note: '当前方案未投用',
+    accent: '#94a3b8',
+    textColor: '#475569',
+    borderColor: 'rgba(148, 163, 184, 0.24)',
+    background: 'rgba(148, 163, 184, 0.14)',
+  };
+}
+
+function getOptimizationFeasibilityVisual(isFeasible: boolean | null) {
+  if (isFeasible === true) {
+    return {
+      label: '可行',
+      note: '满足当前约束条件',
+      accent: '#15803d',
+      textColor: '#14532d',
+      borderColor: 'rgba(34, 197, 94, 0.28)',
+      background: 'linear-gradient(180deg, rgba(240, 253, 244, 0.98) 0%, rgba(220, 252, 231, 0.92) 100%)',
+      shadow: '0 14px 30px rgba(22, 163, 74, 0.12)',
+      icon: <CheckCircleOutlined style={{ fontSize: 28, color: '#16a34a' }} />,
+    };
+  }
+
+  if (isFeasible === false) {
+    return {
+      label: '受限',
+      note: '存在运行约束，需要复核',
+      accent: '#dc2626',
+      textColor: '#7f1d1d',
+      borderColor: 'rgba(248, 113, 113, 0.28)',
+      background: 'linear-gradient(180deg, rgba(254, 242, 242, 0.98) 0%, rgba(254, 226, 226, 0.92) 100%)',
+      shadow: '0 14px 30px rgba(239, 68, 68, 0.12)',
+      icon: <CloseCircleOutlined style={{ fontSize: 28, color: '#ef4444' }} />,
+    };
+  }
+
+  return {
+    label: '待确认',
+    note: '当前数据不足以支持进一步判断',
+    accent: '#d97706',
+    textColor: '#9a3412',
+    borderColor: 'rgba(245, 158, 11, 0.28)',
+    background: 'linear-gradient(180deg, rgba(255, 251, 235, 0.98) 0%, rgba(254, 243, 199, 0.92) 100%)',
+    shadow: '0 14px 30px rgba(245, 158, 11, 0.12)',
+    icon: <QuestionCircleOutlined style={{ fontSize: 28, color: '#f59e0b' }} />,
+  };
+}
+
+function PumpGlyph({ accentColor, active }: { accentColor: string; active: boolean }) {
+  const stroke = active ? accentColor : '#94a3b8';
+  const fill = active ? `${accentColor}18` : 'rgba(148, 163, 184, 0.12)';
+
+  return (
+    <div
+      style={{
+        width: 56,
+        height: 56,
+        borderRadius: 18,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: fill,
+        border: `1px solid ${active ? `${accentColor}40` : 'rgba(148, 163, 184, 0.24)'}`,
+        boxShadow: active ? `0 12px 24px ${accentColor}18` : '0 10px 20px rgba(148, 163, 184, 0.12)',
+        flexShrink: 0,
+      }}
+    >
+      <svg width="34" height="34" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+        <path d="M8 50H56" stroke={stroke} strokeWidth="3.2" strokeLinecap="round" />
+        <rect x="10" y="24" width="18" height="18" rx="5" fill={fill} stroke={stroke} strokeWidth="3.2" />
+        <path
+          d="M28 28H37C45.2843 28 52 34.7157 52 43V43H28V28Z"
+          fill={fill}
+          stroke={stroke}
+          strokeWidth="3.2"
+          strokeLinejoin="round"
+        />
+        <circle cx="40" cy="43" r="4.8" fill="white" stroke={stroke} strokeWidth="3.2" />
+        <path d="M52 43H58" stroke={stroke} strokeWidth="3.2" strokeLinecap="round" />
+        <path d="M14 20V14H24V20" stroke={stroke} strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </div>
+  );
+}
+
+function OptimizationRecommendedSchemeBoard({
+  recommendedCombination,
+  pump480Num,
+  pump375Num,
+  isFeasible,
+}: {
+  recommendedCombination: string;
+  pump480Num: number | null;
+  pump375Num: number | null;
+  isFeasible: boolean | null;
+}) {
+  const feasibility = getOptimizationFeasibilityVisual(isFeasible);
+  const pumpCards = [
+    { key: '480', model: 'ZMI480', count: pump480Num, accentColor: '#4e86f7' },
+    { key: '375', model: 'ZMI375', count: pump375Num, accentColor: '#7c6cff' },
+  ];
+
+  return (
+    <div style={{ height: 300, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 12,
+          padding: '12px 14px',
+          borderRadius: 16,
+          border: '1px solid rgba(226, 232, 240, 0.95)',
+          background: 'linear-gradient(180deg, rgba(248, 250, 252, 0.98) 0%, rgba(255,255,255,1) 100%)',
+        }}
+      >
+        <div style={{ minWidth: 0 }}>
+          <div
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              padding: '4px 10px',
+              borderRadius: 999,
+              background: 'rgba(34, 197, 94, 0.12)',
+              color: '#166534',
+              fontSize: 12,
+              fontWeight: 700,
+            }}
+          >
+            最推荐
+          </div>
+          <div style={{ marginTop: 8, color: '#0f172a', fontSize: 18, fontWeight: 700, lineHeight: 1.25 }}>
+            推荐泵组：{recommendedCombination}
+          </div>
+        </div>
+        <Text type="secondary" style={{ flexShrink: 0, fontSize: 12 }}>
+          工程系统布局
+        </Text>
+      </div>
+
+      <div
+        style={{
+          flex: 1,
+          display: 'grid',
+          gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.88fr)',
+          gap: 16,
+        }}
+      >
+        {pumpCards.map((item) => {
+          const runState = getOptimizationPumpRunState(item.count);
+          const countText = item.count === null ? '--' : `${Math.max(0, Math.round(item.count))}`;
+
+          return (
+            <div
+              key={item.key}
+              style={{
+                minWidth: 0,
+                borderRadius: 22,
+                padding: '18px 18px 16px',
+                border: `1px solid ${item.accentColor}24`,
+                background: `linear-gradient(180deg, rgba(255,255,255,0.98) 0%, ${item.accentColor}12 100%)`,
+                boxShadow: `0 14px 28px ${item.accentColor}14`,
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                gap: 14,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ color: '#64748b', fontSize: 12, fontWeight: 600, lineHeight: 1.5 }}>泵组单元</div>
+                  <div style={{ marginTop: 4, color: '#0f172a', fontSize: 20, fontWeight: 800, lineHeight: 1.2 }}>
+                    {item.model}
+                  </div>
+                </div>
+                <PumpGlyph accentColor={item.accentColor} active={item.count !== null && item.count > 0} />
+              </div>
+
+              <div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                  <span
+                    style={{
+                      color: '#0f172a',
+                      fontSize: 'clamp(34px, 3.6vw, 52px)',
+                      fontWeight: 800,
+                      lineHeight: 1,
+                      letterSpacing: '-0.04em',
+                    }}
+                  >
+                    {countText}
+                  </span>
+                  <span style={{ color: '#475569', fontSize: 14, fontWeight: 700 }}>台</span>
+                </div>
+                <div style={{ marginTop: 10 }}>
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      padding: '5px 10px',
+                      borderRadius: 999,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color: runState.textColor,
+                      background: runState.background,
+                      border: `1px solid ${runState.borderColor}`,
+                    }}
+                  >
+                    {runState.label}
+                  </span>
+                </div>
+              </div>
+
+              <div style={{ color: '#64748b', fontSize: 12, lineHeight: 1.6 }}>{runState.note}</div>
+            </div>
+          );
+        })}
+
+        <div
+          style={{
+            minWidth: 0,
+            borderRadius: 22,
+            padding: '18px 18px 16px',
+            border: `1px solid ${feasibility.borderColor}`,
+            background: feasibility.background,
+            boxShadow: feasibility.shadow,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            gap: 14,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ color: '#64748b', fontSize: 12, fontWeight: 600, lineHeight: 1.5 }}>方案状态</div>
+              <div style={{ marginTop: 4, color: feasibility.textColor, fontSize: 18, fontWeight: 800, lineHeight: 1.2 }}>
+                系统判定
+              </div>
+            </div>
+            <div
+              style={{
+                width: 56,
+                height: 56,
+                borderRadius: 18,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: 'rgba(255,255,255,0.6)',
+                border: `1px solid ${feasibility.borderColor}`,
+                flexShrink: 0,
+              }}
+            >
+              {feasibility.icon}
+            </div>
+          </div>
+
+          <div>
+            <div
+              style={{
+                color: feasibility.accent,
+                fontSize: 'clamp(30px, 3vw, 44px)',
+                fontWeight: 800,
+                lineHeight: 1,
+                letterSpacing: '-0.04em',
+              }}
+            >
+              {feasibility.label}
+            </div>
+            <div style={{ marginTop: 12, color: feasibility.textColor, fontSize: 13, lineHeight: 1.7 }}>
+              {feasibility.note}
+            </div>
+          </div>
+
+          <div
+            style={{
+              padding: '10px 12px',
+              borderRadius: 16,
+              background: 'rgba(255,255,255,0.6)',
+              border: `1px solid ${feasibility.borderColor}`,
+              color: feasibility.textColor,
+              fontSize: 12,
+              lineHeight: 1.6,
+            }}
+          >
+            推荐组合：{recommendedCombination}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -2445,11 +3175,6 @@ function renderHydraulicAiReportContentV2(report: DynamicReportResponsePayload, 
   const outputSources = [snapshot.output];
   const projectName = snapshot.projectName || '当前项目';
   const generatedAt = formatTime(snapshot.generatedAt ?? undefined);
-  const displayTitle =
-    report.title && report.title.includes('水力') ? report.title : `${projectName}水力分析智能报告`;
-  const displayDescription =
-    report.abstract ||
-    '本报告基于当前项目真实水力计算结果自动生成，重点围绕总扬程、摩阻损失、末站进站压头与压头变化趋势，判断当前方案的输送可行性与运行关注点。';
   const summaryItems = getHydraulicSummaryItems(report, [report.conclusion || report.abstract || HYDRAULIC_REPORT_CORE_SENTENCE]);
   const leadSentence = report.conclusion || summaryItems[0] || HYDRAULIC_REPORT_CORE_SENTENCE;
 
@@ -2734,15 +3459,6 @@ function renderHydraulicAiReportContentV2(report: DynamicReportResponsePayload, 
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <div>
-        <Title level={4} style={{ marginBottom: 8 }}>
-          {displayTitle}
-        </Title>
-        <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-          {displayDescription}
-        </Paragraph>
-      </div>
-
       <Card size="small" title="报告概览">
         <HydraulicMetricPanelGrid items={overviewItems} minWidth={220} valueFontSize="clamp(18px, 2.2vw, 28px)" />
         {weakMetaItems.length ? (
@@ -3306,6 +4022,7 @@ function renderOptimizationAiReportContentV2(
   report: DynamicReportResponsePayload,
   snapshot: OptimizationReportSnapshot,
 ) {
+  const inputSources = [snapshot.input];
   const outputSources = [snapshot.output];
   const projectName = snapshot.projectName || '当前项目';
   const generatedAt = formatTime(snapshot.generatedAt ?? undefined);
@@ -3328,13 +4045,8 @@ function renderOptimizationAiReportContentV2(
   const recommendationText =
     formatValue(pickFirstValue(outputSources, ['description', 'recommendation', 'remark'])) || '当前数据不足以支持进一步判断';
   const currentCondition = buildOptimizationCurrentCondition(snapshot.input);
-  const displayTitle =
-    report.title && report.title.includes('优化')
-      ? report.title
-      : `${projectName}泵站运行优化分析报告`;
-  const displayDescription =
-    report.abstract ||
-    '本报告基于当前项目泵站优化计算结果自动生成，主要针对推荐泵组合方案的扬程匹配情况、末站压头保障能力、能耗水平、运行成本及整体可行性进行分析，为泵站运行调度和方案选择提供参考。';
+  const startAltitudeText = formatValue(pickFirstValue(inputSources, ['startAltitude', 'startElevation']), 'm');
+  const endAltitudeText = formatValue(pickFirstValue(inputSources, ['endAltitude', 'endElevation']), 'm');
   const summaryFallbackItems = [
     `本次泵站优化分析围绕推荐泵组、水力可行性与运行经济性展开，当前推荐方案为 ${recommendedCombination}。`,
     `关键结果显示，末站进站压头为 ${formatValue(endStationInPressure, 'm')}，总扬程为 ${formatValue(totalHead, 'm')}，年能耗为 ${formatValue(totalEnergyConsumption, 'kWh')}，总成本为 ${formatValue(totalCost, '元')}。`,
@@ -3425,6 +4137,41 @@ function renderOptimizationAiReportContentV2(
     { label: '总成本', value: formatValue(totalCost, '元'), accent: '#ef4444', note: '用于评价当前推荐方案的经济性。' },
   ];
 
+  const optimizationInputCards: DetailMetricCardItem[] = [
+    {
+      label: '流量',
+      value: formatValue(pickFirstValue(inputSources, ['flowRate', 'targetFlow', 'throughput', 'flow']), 'm3/h'),
+      tone: 'blue',
+    },
+    { label: '密度', value: formatValue(pickFirstValue(inputSources, ['density']), 'kg/m3'), tone: 'cyan' },
+    { label: '粘度', value: formatValue(pickFirstValue(inputSources, ['viscosity']), 'mPa·s'), tone: 'green' },
+    { label: '长度', value: formatValue(pickFirstValue(inputSources, ['length', 'pipelineLength']), 'm'), tone: 'amber' },
+    { label: '管径', value: formatValue(pickFirstValue(inputSources, ['diameter', 'pipeDiameter']), 'mm'), tone: 'purple' },
+    {
+      label: '首站进站压头',
+      value: formatValue(pickFirstValue(inputSources, ['inletPressure', 'firstStationInPressure', 'stationInPressure']), 'm'),
+      tone: 'blue',
+    },
+    { label: '起点高程', value: startAltitudeText, tone: 'green' },
+    { label: '终点高程', value: endAltitudeText, tone: 'green' },
+    { label: '泵站参数', value: buildPumpHeadDisplay(inputSources), tone: 'purple', span: 12 },
+    { label: '效率', value: buildEfficiencyDisplay(inputSources), tone: 'cyan', span: 12 },
+    { label: '电价', value: formatValue(pickFirstValue(inputSources, ['electricityPrice', 'powerPrice']), '元/kWh'), tone: 'amber' },
+    { label: '工作天数', value: formatValue(pickFirstValue(inputSources, ['workingDays']), '天'), tone: 'blue' },
+  ];
+
+  const optimizationOutputCards: DetailMetricCardItem[] = [
+    { label: '推荐泵组合', value: recommendedCombination, tone: 'purple', span: 8 },
+    { label: '可行性', value: feasibilityText, tone: 'green' },
+    { label: '480 泵台数', value: formatValue(pump480Num, '台'), tone: 'blue' },
+    { label: '375 泵台数', value: formatValue(pump375Num, '台'), tone: 'cyan' },
+    { label: '总扬程', value: formatValue(totalHead, 'm'), tone: 'blue' },
+    { label: '总压降', value: formatValue(totalPressureDrop, 'm'), tone: 'cyan' },
+    { label: '末站进站压头', value: formatValue(endStationInPressure, 'm'), tone: 'green' },
+    { label: '年能耗', value: formatValue(totalEnergyConsumption, 'kWh'), tone: 'amber' },
+    { label: '总成本', value: formatValue(totalCost, '元'), tone: 'purple' },
+  ];
+
   const fallbackRiskItems: Array<(typeof report.risks)[number] | null> = [
     isFeasible === false
       ? {
@@ -3504,39 +4251,6 @@ function renderOptimizationAiReportContentV2(
     ? suggestionItems
     : fallbackSuggestionItems.filter((item): item is (typeof report.suggestions)[number] => Boolean(item));
 
-  const pumpSchemeChartOption: EChartsOption = {
-    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-    grid: { left: 48, right: 24, top: 32, bottom: 40 },
-    xAxis: {
-      type: 'category',
-      data: ['480 泵', '375 泵'],
-      axisLine: { lineStyle: { color: '#cbd5e1' } },
-      axisLabel: { color: '#64748b' },
-    },
-    yAxis: {
-      type: 'value',
-      name: '台数',
-      nameTextStyle: { color: '#64748b' },
-      axisLabel: {
-        color: '#64748b',
-        formatter: (value: number) => `${Math.round(value)}`,
-      },
-      splitLine: { lineStyle: { color: '#e2e8f0' } },
-    },
-    series: [
-      {
-        type: 'bar',
-        barMaxWidth: 46,
-        label: { show: true, position: 'top', color: '#334155' },
-        itemStyle: {
-          borderRadius: [10, 10, 0, 0],
-          color: (params) => (params.dataIndex === 0 ? '#7c6cff' : '#4e86f7'),
-        },
-        data: [pump480Num ?? 0, pump375Num ?? 0],
-      },
-    ],
-  };
-
   const closureResidual =
     endStationInPressure ?? (totalHead !== null && totalPressureDrop !== null ? Math.max(totalHead - totalPressureDrop, 0) : 0);
   const closureDrop =
@@ -3581,6 +4295,42 @@ function renderOptimizationAiReportContentV2(
           { value: closureDrop ?? 0, itemStyle: { color: '#f59e0b', borderRadius: [10, 10, 0, 0] } },
           { value: closureResidual ?? 0, itemStyle: { color: '#12b981', borderRadius: [10, 10, 0, 0] } },
         ],
+      },
+    ],
+  };
+
+  const pumpSchemeChartOption: EChartsOption = {
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+    grid: { left: 48, right: 24, top: 32, bottom: 40 },
+    xAxis: {
+      type: 'category',
+      data: ['480 泵', '375 泵'],
+      axisLine: { lineStyle: { color: '#cbd5e1' } },
+      axisLabel: { color: '#64748b' },
+    },
+    yAxis: {
+      type: 'value',
+      name: '台数',
+      minInterval: 1,
+      nameTextStyle: { color: '#64748b' },
+      axisLabel: { color: '#64748b' },
+      splitLine: { lineStyle: { color: '#e2e8f0' } },
+    },
+    series: [
+      {
+        type: 'bar',
+        barMaxWidth: 64,
+        label: {
+          show: true,
+          position: 'top',
+          color: '#334155',
+          formatter: ({ value }) => formatValue(typeof value === 'number' ? value : Number(value), '台'),
+        },
+        itemStyle: {
+          borderRadius: [12, 12, 0, 0],
+          color: (params: { dataIndex: number }) => (params.dataIndex === 0 ? '#4e86f7' : '#7c6cff'),
+        },
+        data: [pump480Num ?? 0, pump375Num ?? 0],
       },
     ],
   };
@@ -3631,15 +4381,6 @@ function renderOptimizationAiReportContentV2(
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <div>
-        <Title level={4} style={{ marginBottom: 8 }}>
-          {displayTitle}
-        </Title>
-        <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-          {displayDescription}
-        </Paragraph>
-      </div>
-
       <Card size="small" title="推荐方案总览">
         <HydraulicMetricPanelGrid
           items={overviewItems}
@@ -3674,11 +4415,57 @@ function renderOptimizationAiReportContentV2(
         </div>
       </Card>
 
+      <Row gutter={[16, 16]}>
+        <Col xs={24} xl={12}>
+          <Card size="small" title="计算输入参数" bodyStyle={{ padding: 18 }} style={{ height: '100%' }}>
+            {renderDetailMetricCards(optimizationInputCards, {
+              compact: true,
+              minHeight: 90,
+              valueFontSize: 'clamp(15px, 1.7vw, 20px)',
+            })}
+          </Card>
+        </Col>
+        <Col xs={24} xl={12}>
+          <Card size="small" title="计算输出结果" bodyStyle={{ padding: 18 }} style={{ height: '100%' }}>
+            <Space direction="vertical" size={16} style={{ width: '100%' }}>
+              {renderDetailMetricCards(optimizationOutputCards, {
+                compact: true,
+                minHeight: 90,
+                valueFontSize: 'clamp(15px, 1.7vw, 20px)',
+              })}
+              <div
+                style={{
+                  borderRadius: 14,
+                  padding: '12px 14px',
+                  border: '1px solid rgba(221, 214, 254, 0.95)',
+                  background: 'linear-gradient(180deg, rgba(245, 243, 255, 0.96) 0%, rgba(255,255,255,1) 100%)',
+                }}
+              >
+                <Text strong style={{ display: 'block', color: '#6d28d9', marginBottom: 8 }}>
+                  推荐说明
+                </Text>
+                <Paragraph style={{ margin: 0, color: '#334155', lineHeight: 1.8 }}>{recommendationText}</Paragraph>
+              </div>
+            </Space>
+          </Card>
+        </Col>
+      </Row>
+
       <Card size="small" title="图表分析区">
         <Row gutter={[16, 16]}>
-          <Col xs={24} xl={16}>
-            <Card size="small" title="泵组配置示意图">
+          <Col xs={24} xl={8}>
+            <Card size="small" title="泵组配置示意图" style={{ height: '100%' }}>
               <Chart option={pumpSchemeChartOption} height={300} />
+            </Card>
+          </Col>
+          <Col xs={24} xl={8}>
+            <Card size="small" title="最推荐方案" style={{ height: '100%' }}>
+              <OptimizationRecommendedSchemeBoard
+                recommendedCombination={recommendedCombination}
+                pump480Num={pump480Num}
+                pump375Num={pump375Num}
+                isFeasible={isFeasible}
+              />
             </Card>
           </Col>
           <Col xs={24} xl={8}>
@@ -3704,6 +4491,22 @@ function renderOptimizationAiReportContentV2(
           </Col>
         </Row>
       </Card>
+
+      <OptimizationReportFollowUpCard
+        projectName={projectName}
+        recommendedCombination={recommendedCombination}
+        feasibilityText={feasibilityText}
+        isFeasible={isFeasible}
+        recommendationText={recommendationText}
+        currentCondition={currentCondition}
+        endStationInPressure={endStationInPressure}
+        totalHead={totalHead}
+        totalPressureDrop={totalPressureDrop}
+        totalEnergyConsumption={totalEnergyConsumption}
+        totalCost={totalCost}
+        riskItems={displayRiskItems}
+        suggestionItems={displaySuggestionItems}
+      />
 
       <Row gutter={[16, 16]}>
         <Col xs={24} xl={12}>
@@ -3882,13 +4685,6 @@ function renderSensitivityAiReportContent(report: DynamicReportResponsePayload, 
   });
   const sensitivityImpactLevel = classifySensitivityImpactLevel(sensitivityCoefficient);
   const projectName = snapshot.projectName || '当前项目';
-  const displayTitle =
-    report.title && report.title.includes('敏感')
-      ? report.title
-      : `${projectName}关键变量敏感性分析报告`;
-  const displayDescription =
-    report.abstract ||
-    '本报告基于当前项目敏感性分析计算结果自动生成，主要针对所选敏感变量变化对系统运行结果的影响程度进行分析，重点评估不同变化比例下压力、摩阻损失及流态变化情况，并识别对系统运行影响最显著的关键变量。';
   const baseCondition = buildSensitivityBaseCondition(inputPayload, inputBase);
   const variableTypeText = buildSensitiveVariableDisplay(inputPayload, inputBase);
 
@@ -4040,15 +4836,6 @@ function renderSensitivityAiReportContent(report: DynamicReportResponsePayload, 
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <div>
-        <Title level={4} style={{ marginBottom: 8 }}>
-          {displayTitle}
-        </Title>
-        <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-          {displayDescription}
-        </Paragraph>
-      </div>
-
       <Card size="small" title="基本信息">
         {renderDetailMetricCards(basicInfoCards, {
           singleLine: true,
@@ -4780,15 +5567,6 @@ function renderReportContent(report: DynamicReportResponsePayload) {
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <div>
-        <Title level={4} style={{ marginBottom: 8 }}>
-          {report.title}
-        </Title>
-        <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-          {report.abstract}
-        </Paragraph>
-      </div>
-
       <Card size="small" title="摘要">
         {renderSummaryList(report.summary)}
       </Card>
@@ -5554,17 +6332,7 @@ export default function ReportPreview() {
     () =>
       filteredHistories
         .filter((item) => item.outputResult)
-        .map((item) => {
-          const project = projectLookup.get(Number(item.projectId));
-
-          return {
-            ...item,
-            projectNumber: project?.number || (item.projectId ? String(item.projectId) : '-'),
-            responsible: project?.responsible || item.userName || '-',
-            calcTypeLabel: getCalcTypeLabel(item),
-            updateTimeText: formatTime(item.createTime),
-          };
-        }),
+        .map((item) => toHistoryTableRow(item, projectLookup)),
     [filteredHistories, projectLookup],
   );
 
@@ -5615,17 +6383,7 @@ export default function ReportPreview() {
 
           return true;
         })
-        .map((item) => {
-          const project = projectLookup.get(Number(item.projectId));
-
-          return {
-            ...item,
-            projectNumber: project?.number || (item.projectId ? String(item.projectId) : '-'),
-            responsible: project?.responsible || item.userName || '-',
-            calcTypeLabel: getCalcTypeLabel(item),
-            updateTimeText: formatTime(item.createTime),
-          };
-        });
+        .map((item) => toHistoryTableRow(item, projectLookup));
     },
     [dateRange, histories, projectLookup, searchKeyword, selectedProjectIds],
   );
