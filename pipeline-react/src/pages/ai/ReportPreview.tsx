@@ -1048,7 +1048,7 @@ function buildOptimizationUserPrompt() {
     '1. 报告标题。',
     '2. 报告说明，说明本报告基于当前项目泵站优化计算结果自动生成，主要分析推荐泵组为什么被选中、该方案是否具备水力可行性，以及该方案的能耗与成本表现。',
     '3. 顶部推荐方案总览，重点突出推荐泵组、末站进站压头、总扬程、年能耗、总成本。',
-    '4. 图表分析区固定三行：第一行左侧为泵组配置示意图，右侧为方案解读；第二行左侧为扬程闭合图/瀑布图，右侧为水力可行性解读；第三行左侧为能耗与成本评价图，右侧为经济性解读。',
+    '4. 图表分析区固定三行：第一行左侧为推荐方案主卡，右侧为方案解读；第二行左侧为扬程分配图，右侧为水力可行性解读；第三行左侧为双指标概览卡（展示年能耗与总成本），右侧为经济性解读。',
     '5. 底部结论区固定左右双栏：左侧为风险识别，按对象、等级、原因、影响输出；右侧为优化建议，按建议、原因、预期效果输出。',
     '6. 报告要重点回答三件事：为什么是这组泵、为什么这个方案可行、为什么这个方案相对更经济。',
     '只能依据输入数据分析，不允许编造不存在的数据；若数据不足，请明确说明“当前数据不足以支持进一步判断”。',
@@ -1578,14 +1578,6 @@ function renderSummaryList(items: string[]) {
   );
 }
 
-function getHydraulicSummaryItems(report: DynamicReportResponsePayload, fallback: string[] = []) {
-  const skillItems = report.aiAnalysis?.summary ?? [];
-  if (skillItems.length) {
-    return skillItems;
-  }
-  return report.summary.length ? report.summary : fallback;
-}
-
 function getHydraulicRiskItems(report: DynamicReportResponsePayload) {
   const skillItems = report.aiAnalysis?.riskJudgement ?? [];
   return skillItems.length ? skillItems : report.risks;
@@ -1613,11 +1605,13 @@ const hydraulicMetricAccentPalette = ['#4e86f7', '#12b981', '#f59e0b', '#7c6cff'
 function HydraulicMetricPanelGrid({
   items,
   minWidth = 180,
+  columns,
   valueFontSize = 'clamp(22px, 2.5vw, 30px)',
   noteFontSize = 12,
 }: {
   items: HydraulicMetricPanelItem[];
   minWidth?: number;
+  columns?: number;
   valueFontSize?: CSSProperties['fontSize'];
   noteFontSize?: CSSProperties['fontSize'];
 }) {
@@ -1631,7 +1625,7 @@ function HydraulicMetricPanelGrid({
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: `repeat(auto-fit, minmax(${minWidth}px, 1fr))`,
+        gridTemplateColumns: columns ? `repeat(${columns}, minmax(0, 1fr))` : `repeat(auto-fit, minmax(${minWidth}px, 1fr))`,
         gap: 12,
       }}
     >
@@ -1671,6 +1665,14 @@ function HydraulicMetricPanelGrid({
       })}
     </div>
   );
+}
+
+function buildMetricPanelItems(items: DetailMetricCardItem[]): HydraulicMetricPanelItem[] {
+  return filterMetricCards(items).map((item) => ({
+    label: item.label,
+    value: item.value,
+    accent: detailMetricToneMap[item.tone ?? 'blue'].label,
+  }));
 }
 
 function HydraulicCompactFieldTable({
@@ -2361,14 +2363,6 @@ function SensitivityImpactBandList({ items }: SensitivityImpactBandListProps) {
   );
 }
 
-function getOptimizationSummaryItems(report: DynamicReportResponsePayload, fallback: string[] = []) {
-  const skillItems = report.aiAnalysis?.summary ?? [];
-  if (skillItems.length) {
-    return skillItems;
-  }
-  return report.summary.length ? report.summary : fallback;
-}
-
 function getOptimizationSchemeExplainItems(report: DynamicReportResponsePayload, fallback: string[] = []) {
   const skillItems = report.aiAnalysis?.schemeExplain ?? [];
   if (skillItems.length) {
@@ -2442,6 +2436,365 @@ function renderOptimizationInsightCard(block: OptimizationInsightBlockData, acce
         <Paragraph style={{ margin: 0, color: '#334155', lineHeight: 1.8 }}>{block.content}</Paragraph>
       </div>
     </Card>
+  );
+}
+
+type OptimizationOverviewCardTheme = {
+  headerBackground: string;
+  panelBorder: string;
+  surfaceTint: string;
+  badgeBackground: string;
+  badgeColor: string;
+  dividerColor: string;
+};
+
+const optimizationOverviewCardThemes: Record<'energy' | 'cost', OptimizationOverviewCardTheme> = {
+  energy: {
+    headerBackground: 'linear-gradient(90deg, rgba(230, 242, 255, 0.98) 0%, rgba(240, 248, 255, 0.95) 100%)',
+    panelBorder: 'rgba(204, 222, 245, 0.96)',
+    surfaceTint: 'rgba(236, 245, 255, 0.7)',
+    badgeBackground: 'rgba(222, 247, 236, 0.98)',
+    badgeColor: '#14835c',
+    dividerColor: 'rgba(213, 227, 243, 0.96)',
+  },
+  cost: {
+    headerBackground: 'linear-gradient(90deg, rgba(255, 243, 226, 0.98) 0%, rgba(255, 249, 240, 0.95) 100%)',
+    panelBorder: 'rgba(246, 226, 196, 0.96)',
+    surfaceTint: 'rgba(255, 247, 235, 0.72)',
+    badgeBackground: 'rgba(255, 238, 217, 0.98)',
+    badgeColor: '#b86819',
+    dividerColor: 'rgba(241, 226, 205, 0.96)',
+  },
+};
+
+function formatOptimizationOverviewNumber(value: number | null) {
+  if (value === null || !Number.isFinite(value)) {
+    return '-';
+  }
+
+  const hasFraction = Math.abs(value - Math.trunc(value)) > 0.0001;
+  return value.toLocaleString('zh-CN', {
+    minimumFractionDigits: hasFraction ? 2 : 0,
+    maximumFractionDigits: 2,
+  });
+}
+
+function getOptimizationOverviewStatus(value: number | null, isFeasible: boolean | null) {
+  if (value === null || !Number.isFinite(value)) {
+    return '待判定';
+  }
+  if (isFeasible === false) {
+    return '待复核';
+  }
+  return '较优';
+}
+
+function OptimizationOverviewMetricCard({
+  title,
+  value,
+  unit,
+  badgePrefix,
+  status,
+  description,
+  theme,
+}: {
+  title: string;
+  value: number | null;
+  unit: string;
+  badgePrefix: string;
+  status: string;
+  description: string;
+  theme: OptimizationOverviewCardTheme;
+}) {
+  const formattedValue = formatOptimizationOverviewNumber(value);
+  const badgeStyle =
+    status === '待复核'
+      ? { background: 'rgba(255, 237, 213, 0.98)', color: '#c2410c' }
+      : status === '待判定'
+        ? { background: 'rgba(226, 232, 240, 0.96)', color: '#475569' }
+        : { background: theme.badgeBackground, color: theme.badgeColor };
+
+  return (
+    <div
+      style={{
+        minWidth: 0,
+        height: '100%',
+        borderRadius: 24,
+        overflow: 'hidden',
+        border: `1px solid ${theme.panelBorder}`,
+        background: `linear-gradient(180deg, rgba(255,255,255,0.98) 0%, ${theme.surfaceTint} 100%)`,
+        boxShadow: '0 14px 30px rgba(15, 23, 42, 0.06)',
+      }}
+    >
+      <div
+        style={{
+          padding: '20px 24px',
+          background: theme.headerBackground,
+          borderBottom: `1px solid ${theme.panelBorder}`,
+        }}
+      >
+        <div style={{ color: '#0f172a', fontSize: 18, fontWeight: 700, lineHeight: 1.3 }}>{title}</div>
+      </div>
+      <div style={{ padding: '24px 28px 22px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+          <span
+            style={{
+              color: '#0f172a',
+              fontSize: 'clamp(30px, 3.2vw, 52px)',
+              fontWeight: 800,
+              lineHeight: 1.05,
+              letterSpacing: '-0.03em',
+            }}
+          >
+            {formattedValue}
+          </span>
+          {formattedValue !== '-' ? (
+            <span style={{ color: '#475569', fontSize: 'clamp(18px, 1.9vw, 30px)', fontWeight: 500, lineHeight: 1.2 }}>
+              {unit}
+            </span>
+          ) : null}
+        </div>
+        <div
+          style={{
+            alignSelf: 'flex-start',
+            borderRadius: 14,
+            padding: '8px 14px',
+            background: badgeStyle.background,
+            color: badgeStyle.color,
+            fontSize: 14,
+            fontWeight: 700,
+            lineHeight: 1.2,
+          }}
+        >
+          {badgePrefix}：{status}
+        </div>
+        <div style={{ borderTop: `1px solid ${theme.dividerColor}`, paddingTop: 16, color: '#334155', fontSize: 15, lineHeight: 1.75 }}>
+          {description}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function formatHeadAllocationMetric(value: number | null) {
+  if (value === null || !Number.isFinite(value)) {
+    return '-';
+  }
+
+  const rounded = Number(value.toFixed(4));
+  const isIntegerLike = Math.abs(rounded - Math.round(rounded)) < 0.0001;
+  return rounded.toLocaleString('zh-CN', {
+    minimumFractionDigits: isIntegerLike ? 0 : 1,
+    maximumFractionDigits: 4,
+  });
+}
+
+function formatHeadAllocationPercent(value: number | null, total: number) {
+  if (value === null || !Number.isFinite(value) || total <= 0) {
+    return '--';
+  }
+
+  return `${((value / total) * 100).toFixed(1)}%`;
+}
+
+function OptimizationHeadAllocationBand({
+  totalHead,
+  totalPressureDrop,
+  endStationInPressure,
+}: {
+  totalHead: number | null;
+  totalPressureDrop: number | null;
+  endStationInPressure: number | null;
+}) {
+  const resolvedPressureDrop =
+    totalPressureDrop ?? (totalHead !== null && endStationInPressure !== null ? Math.max(totalHead - endStationInPressure, 0) : null);
+  const resolvedEndStationPressure =
+    endStationInPressure ?? (totalHead !== null && totalPressureDrop !== null ? Math.max(totalHead - totalPressureDrop, 0) : null);
+  const segmentTotal =
+    Math.max(resolvedPressureDrop ?? 0, 0) + Math.max(resolvedEndStationPressure ?? 0, 0);
+  const displayTotal = totalHead ?? (segmentTotal > 0 ? Number(segmentTotal.toFixed(4)) : null);
+
+  if (displayTotal === null || segmentTotal <= 0) {
+    return <Text type="secondary">当前数据不足以支持进一步判断</Text>;
+  }
+
+  const pressureDropWeight = Math.max(resolvedPressureDrop ?? 0, 0.0001);
+  const endStationWeight = Math.max(resolvedEndStationPressure ?? 0, 0.0001);
+  const pressureDropPercent = formatHeadAllocationPercent(resolvedPressureDrop, segmentTotal);
+  const endStationPercent = formatHeadAllocationPercent(resolvedEndStationPressure, segmentTotal);
+  const visualScale = {
+    containerMinHeight: 236,
+    stackGap: 20,
+    headerCapHeight: 18,
+    headerFontSize: 'clamp(20px, 2vw, 30px)',
+    bandMinHeight: 76,
+    bandPaddingX: 20,
+    bandLabelFontSize: 'clamp(12px, 1vw, 14px)',
+    bandValueFontSize: 'clamp(18px, 1.55vw, 24px)',
+    ratioLabelFontSize: 16,
+    ratioValueFontSize: 'clamp(22px, 2vw, 32px)',
+  } as const;
+
+  return (
+    <div style={{ width: '100%', paddingBottom: 4 }}>
+      <div
+        style={{
+          width: '100%',
+          minHeight: visualScale.containerMinHeight,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          gap: visualScale.stackGap,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
+            <span style={{ width: 2, height: visualScale.headerCapHeight, borderRadius: 999, background: '#d7e3f5' }} />
+            <div style={{ flex: 1, height: 1, background: '#d7e3f5' }} />
+          </div>
+          <div
+            style={{
+              color: '#334155',
+              fontSize: visualScale.headerFontSize,
+              fontWeight: 700,
+              lineHeight: 1.1,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            总扬程 {formatHeadAllocationMetric(displayTotal)} m
+          </div>
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
+            <div style={{ flex: 1, height: 1, background: '#d7e3f5' }} />
+            <span style={{ width: 2, height: visualScale.headerCapHeight, borderRadius: 999, background: '#d7e3f5' }} />
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: 'flex',
+            minHeight: visualScale.bandMinHeight,
+            borderRadius: 0,
+            overflow: 'hidden',
+            boxShadow: '0 14px 30px rgba(15, 23, 42, 0.06)',
+          }}
+        >
+          <div
+            style={{
+              flex: pressureDropWeight,
+              minWidth: 0,
+              padding: `0 ${visualScale.bandPaddingX}px`,
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+              alignItems: 'flex-start',
+              gap: 4,
+              background: 'linear-gradient(90deg, #ffb100 0%, #f59e0b 100%)',
+              color: '#ffffff',
+            }}
+          >
+            <span
+              style={{
+                fontSize: visualScale.bandLabelFontSize,
+                fontWeight: 600,
+                lineHeight: 1.15,
+                letterSpacing: '0.01em',
+                opacity: 0.92,
+              }}
+            >
+              总压降
+            </span>
+            <span
+              style={{
+                minWidth: 0,
+                fontSize: visualScale.bandValueFontSize,
+                fontWeight: 700,
+                lineHeight: 1.1,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {formatHeadAllocationMetric(resolvedPressureDrop)} m
+            </span>
+          </div>
+          <div
+            style={{
+              flex: endStationWeight,
+              minWidth: 0,
+              padding: `0 ${visualScale.bandPaddingX}px`,
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+              alignItems: 'flex-start',
+              gap: 4,
+              background: 'linear-gradient(90deg, #23c7a1 0%, #19b68d 100%)',
+              color: '#ffffff',
+            }}
+          >
+            <span
+              style={{
+                fontSize: visualScale.bandLabelFontSize,
+                fontWeight: 600,
+                lineHeight: 1.15,
+                letterSpacing: '0.01em',
+                opacity: 0.92,
+                wordBreak: 'break-all',
+              }}
+            >
+              末站进站压头
+            </span>
+            <span
+              style={{
+                minWidth: 0,
+                fontSize: visualScale.bandValueFontSize,
+                fontWeight: 700,
+                lineHeight: 1.1,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {formatHeadAllocationMetric(resolvedEndStationPressure)} m
+            </span>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <div
+            style={{
+              flex: pressureDropWeight,
+              minWidth: 0,
+              paddingRight: 14,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+            }}
+          >
+            <div style={{ whiteSpace: 'nowrap', color: '#0f172a', fontSize: visualScale.ratioLabelFontSize, lineHeight: 1.2 }}>
+              <span>占比 </span>
+              <span style={{ color: '#f59e0b', fontSize: visualScale.ratioValueFontSize, fontWeight: 700 }}>
+                {pressureDropPercent}
+              </span>
+            </div>
+            <div style={{ flex: 1, minWidth: 40, borderTop: '2px dotted rgba(245, 158, 11, 0.55)' }} />
+          </div>
+          <div
+            style={{
+              flex: endStationWeight,
+              minWidth: 0,
+              paddingLeft: 14,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+            }}
+          >
+            <div style={{ whiteSpace: 'nowrap', color: '#0f172a', fontSize: visualScale.ratioLabelFontSize, lineHeight: 1.2 }}>
+              <span>占比 </span>
+              <span style={{ color: '#19b68d', fontSize: visualScale.ratioValueFontSize, fontWeight: 700 }}>
+                {endStationPercent}
+              </span>
+            </div>
+            <div style={{ flex: 1, minWidth: 40, borderTop: '2px dotted rgba(25, 182, 141, 0.45)' }} />
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -2940,7 +3293,7 @@ function OptimizationRecommendedSchemeBoard({
   ];
 
   return (
-    <div style={{ height: 300, display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div style={{ minHeight: 300, display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div
         style={{
           display: 'flex',
@@ -3003,6 +3356,7 @@ function OptimizationRecommendedSchemeBoard({
                 flexDirection: 'column',
                 justifyContent: 'space-between',
                 gap: 14,
+                overflow: 'hidden',
               }}
             >
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
@@ -3049,7 +3403,7 @@ function OptimizationRecommendedSchemeBoard({
                 </div>
               </div>
 
-              <div style={{ color: '#64748b', fontSize: 12, lineHeight: 1.6 }}>{runState.note}</div>
+              <div style={{ color: '#64748b', fontSize: 11, lineHeight: 1.55 }}>{runState.note}</div>
             </div>
           );
         })}
@@ -3066,6 +3420,7 @@ function OptimizationRecommendedSchemeBoard({
             flexDirection: 'column',
             justifyContent: 'space-between',
             gap: 14,
+            overflow: 'hidden',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
@@ -3174,9 +3529,6 @@ function renderHydraulicAiReportContentV2(report: DynamicReportResponsePayload, 
   const inputSources = [snapshot.input];
   const outputSources = [snapshot.output];
   const projectName = snapshot.projectName || '当前项目';
-  const generatedAt = formatTime(snapshot.generatedAt ?? undefined);
-  const summaryItems = getHydraulicSummaryItems(report, [report.conclusion || report.abstract || HYDRAULIC_REPORT_CORE_SENTENCE]);
-  const leadSentence = report.conclusion || summaryItems[0] || HYDRAULIC_REPORT_CORE_SENTENCE;
 
   const flowRateText = formatValue(pickFirstValue(inputSources, ['flowRate']), 'm³/h');
   const densityText = formatValue(pickFirstValue(inputSources, ['density']), 'kg/m³');
@@ -3204,39 +3556,6 @@ function renderHydraulicAiReportContentV2(report: DynamicReportResponsePayload, 
     totalHead !== null && totalHead !== 0 && frictionHeadLoss !== null ? Number((frictionHeadLoss / totalHead).toFixed(4)) : null;
   const riskItems = getHydraulicRiskItems(report);
   const suggestionItems = getHydraulicSuggestionItems(report);
-
-  const weakMetaItems = [
-    {
-      label: '项目编号',
-      value: formatValue(
-        pickFirstValue(
-          [report.metadata, getValueByPath(report.metadata, 'request')],
-          ['projectNumber', 'projectNo', 'number', 'projectCode'],
-        ),
-      ),
-    },
-    {
-      label: '负责人',
-      value: formatValue(
-        pickFirstValue(
-          [report.metadata, getValueByPath(report.metadata, 'request')],
-          ['responsible', 'owner', 'principal'],
-        ),
-      ),
-    },
-    {
-      label: '备注',
-      value: formatValue(
-        pickFirstValue([report.metadata, getValueByPath(report.metadata, 'request'), snapshot.input], ['remark', 'comment']),
-      ),
-    },
-  ].filter((item) => item.value !== '-');
-
-  const overviewItems: HydraulicMetricPanelItem[] = [
-    { label: '项目名称', value: projectName, accent: '#4e86f7' },
-    { label: '计算类型', value: '水力分析', accent: '#7c6cff' },
-    { label: '更新时间', value: generatedAt, accent: '#12b981' },
-  ];
 
   const coreParameterItems: HydraulicMetricPanelItem[] = [
     { label: '流量', value: flowRateText, accent: '#4e86f7' },
@@ -3459,37 +3778,6 @@ function renderHydraulicAiReportContentV2(report: DynamicReportResponsePayload, 
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <Card size="small" title="报告概览">
-        <HydraulicMetricPanelGrid items={overviewItems} minWidth={220} valueFontSize="clamp(18px, 2.2vw, 28px)" />
-        {weakMetaItems.length ? (
-          <div
-            style={{
-              marginTop: 14,
-              padding: '10px 14px',
-              borderRadius: 14,
-              background: 'rgba(248, 250, 252, 0.9)',
-              border: '1px solid rgba(226, 232, 240, 0.95)',
-            }}
-          >
-            <Text type="secondary">{weakMetaItems.map((item) => `${item.label}：${item.value}`).join(' · ')}</Text>
-          </div>
-        ) : null}
-        <div
-          style={{
-            marginTop: 16,
-            borderRadius: 16,
-            padding: '14px 16px',
-            border: '1px solid rgba(191, 219, 254, 0.95)',
-            background: 'linear-gradient(180deg, rgba(239, 246, 255, 0.96) 0%, rgba(255,255,255,1) 100%)',
-          }}
-        >
-          <Text strong style={{ display: 'block', color: '#1d4ed8', marginBottom: 8 }}>
-            核心判断
-          </Text>
-          <Paragraph style={{ margin: 0, color: '#334155', lineHeight: 1.8 }}>{leadSentence}</Paragraph>
-        </div>
-      </Card>
-
       <Card size="small" title="参数区">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
           <div>
@@ -4025,7 +4313,6 @@ function renderOptimizationAiReportContentV2(
   const inputSources = [snapshot.input];
   const outputSources = [snapshot.output];
   const projectName = snapshot.projectName || '当前项目';
-  const generatedAt = formatTime(snapshot.generatedAt ?? undefined);
   const recommendedCombination = buildOptimizationPumpCombination(outputSources);
   const pump480Num = toFiniteNumber(pickFirstValue(outputSources, ['pump480Num']));
   const pump375Num = toFiniteNumber(pickFirstValue(outputSources, ['pump375Num']));
@@ -4047,16 +4334,6 @@ function renderOptimizationAiReportContentV2(
   const currentCondition = buildOptimizationCurrentCondition(snapshot.input);
   const startAltitudeText = formatValue(pickFirstValue(inputSources, ['startAltitude', 'startElevation']), 'm');
   const endAltitudeText = formatValue(pickFirstValue(inputSources, ['endAltitude', 'endElevation']), 'm');
-  const summaryFallbackItems = [
-    `本次泵站优化分析围绕推荐泵组、水力可行性与运行经济性展开，当前推荐方案为 ${recommendedCombination}。`,
-    `关键结果显示，末站进站压头为 ${formatValue(endStationInPressure, 'm')}，总扬程为 ${formatValue(totalHead, 'm')}，年能耗为 ${formatValue(totalEnergyConsumption, 'kWh')}，总成本为 ${formatValue(totalCost, '元')}。`,
-    feasibilityText === '可行'
-      ? '整体来看，当前推荐方案在满足运行要求的同时兼顾一定经济性，可作为优先候选组合。'
-      : '当前推荐方案仍存在可行性约束，需要继续复核压力边界与泵组配置。',
-  ];
-  const summaryItems = getOptimizationSummaryItems(report, summaryFallbackItems);
-  const leadSentence = report.conclusion || summaryItems[0] || OPTIMIZATION_REPORT_CORE_SENTENCE;
-
   const schemeExplainFallbackItems = [
     `当前推荐方案为 ${recommendedCombination}，说明该组合更符合当前工况下的泵站运行需求。`,
     `总扬程 ${formatValue(totalHead, 'm')} 与总压降 ${formatValue(totalPressureDrop, 'm')} 共同反映了该方案需要承担的能量供给与输送损失水平。`,
@@ -4128,14 +4405,8 @@ function renderOptimizationAiReportContentV2(
         .filter((item): item is string => Boolean(item))
         .join(' '),
   };
-
-  const overviewItems: HydraulicMetricPanelItem[] = [
-    { label: '推荐泵组', value: recommendedCombination, accent: '#7c6cff', note: '系统当前优先推荐的运行组合。' },
-    { label: '末站进站压头', value: formatValue(endStationInPressure, 'm'), accent: '#12b981', note: `水力判定：${feasibilityText}` },
-    { label: '总扬程', value: formatValue(totalHead, 'm'), accent: '#4e86f7', note: '反映当前方案需要承担的整体供能水平。' },
-    { label: '年能耗', value: formatValue(totalEnergyConsumption, 'kWh'), accent: '#f59e0b', note: '用于评价方案长期运行能耗压力。' },
-    { label: '总成本', value: formatValue(totalCost, '元'), accent: '#ef4444', note: '用于评价当前推荐方案的经济性。' },
-  ];
+  const energyOverviewStatus = getOptimizationOverviewStatus(totalEnergyConsumption, isFeasible);
+  const costOverviewStatus = getOptimizationOverviewStatus(totalCost, isFeasible);
 
   const optimizationInputCards: DetailMetricCardItem[] = [
     {
@@ -4250,216 +4521,50 @@ function renderOptimizationAiReportContentV2(
   const displaySuggestionItems = suggestionItems.length
     ? suggestionItems
     : fallbackSuggestionItems.filter((item): item is (typeof report.suggestions)[number] => Boolean(item));
-
-  const closureResidual =
-    endStationInPressure ?? (totalHead !== null && totalPressureDrop !== null ? Math.max(totalHead - totalPressureDrop, 0) : 0);
-  const closureDrop =
-    totalPressureDrop ?? (totalHead !== null && endStationInPressure !== null ? Math.max(totalHead - endStationInPressure, 0) : 0);
-  const headClosureChartOption: EChartsOption = {
-    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-    grid: { left: 48, right: 24, top: 32, bottom: 40 },
-    xAxis: {
-      type: 'category',
-      data: ['总扬程', '总压降', '末站进站压头'],
-      axisLine: { lineStyle: { color: '#cbd5e1' } },
-      axisLabel: { color: '#64748b' },
-    },
-    yAxis: {
-      type: 'value',
-      name: 'm',
-      nameTextStyle: { color: '#64748b' },
-      axisLabel: { color: '#64748b' },
-      splitLine: { lineStyle: { color: '#e2e8f0' } },
-    },
-    series: [
-      {
-        type: 'bar',
-        stack: 'closure',
-        silent: true,
-        itemStyle: { color: 'transparent' },
-        emphasis: { itemStyle: { color: 'transparent' } },
-        data: [0, closureResidual ?? 0, 0],
-      },
-      {
-        type: 'bar',
-        stack: 'closure',
-        barMaxWidth: 44,
-        label: {
-          show: true,
-          position: 'top',
-          color: '#334155',
-          formatter: ({ value }) => formatValue(typeof value === 'number' ? value : Number(value), 'm'),
-        },
-        data: [
-          { value: totalHead ?? 0, itemStyle: { color: '#7c6cff', borderRadius: [10, 10, 0, 0] } },
-          { value: closureDrop ?? 0, itemStyle: { color: '#f59e0b', borderRadius: [10, 10, 0, 0] } },
-          { value: closureResidual ?? 0, itemStyle: { color: '#12b981', borderRadius: [10, 10, 0, 0] } },
-        ],
-      },
-    ],
-  };
-
-  const pumpSchemeChartOption: EChartsOption = {
-    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-    grid: { left: 48, right: 24, top: 32, bottom: 40 },
-    xAxis: {
-      type: 'category',
-      data: ['480 泵', '375 泵'],
-      axisLine: { lineStyle: { color: '#cbd5e1' } },
-      axisLabel: { color: '#64748b' },
-    },
-    yAxis: {
-      type: 'value',
-      name: '台数',
-      minInterval: 1,
-      nameTextStyle: { color: '#64748b' },
-      axisLabel: { color: '#64748b' },
-      splitLine: { lineStyle: { color: '#e2e8f0' } },
-    },
-    series: [
-      {
-        type: 'bar',
-        barMaxWidth: 64,
-        label: {
-          show: true,
-          position: 'top',
-          color: '#334155',
-          formatter: ({ value }) => formatValue(typeof value === 'number' ? value : Number(value), '台'),
-        },
-        itemStyle: {
-          borderRadius: [12, 12, 0, 0],
-          color: (params: { dataIndex: number }) => (params.dataIndex === 0 ? '#4e86f7' : '#7c6cff'),
-        },
-        data: [pump480Num ?? 0, pump375Num ?? 0],
-      },
-    ],
-  };
-
-  const energyCostChartOption: EChartsOption = {
-    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-    grid: { left: 48, right: 48, top: 32, bottom: 40 },
-    xAxis: {
-      type: 'category',
-      data: ['推荐方案'],
-      axisLine: { lineStyle: { color: '#cbd5e1' } },
-      axisLabel: { color: '#64748b' },
-    },
-    yAxis: [
-      {
-        type: 'value',
-        name: 'kWh',
-        axisLabel: { color: '#64748b' },
-        nameTextStyle: { color: '#64748b' },
-        splitLine: { lineStyle: { color: '#e2e8f0' } },
-      },
-      {
-        type: 'value',
-        name: '元',
-        axisLabel: { color: '#64748b' },
-        nameTextStyle: { color: '#64748b' },
-        splitLine: { show: false },
-      },
-    ],
-    series: [
-      {
-        name: '年能耗',
-        type: 'bar',
-        barMaxWidth: 36,
-        itemStyle: { color: '#12b981', borderRadius: [10, 10, 0, 0] },
-        data: [totalEnergyConsumption],
-      },
-      {
-        name: '总成本',
-        type: 'bar',
-        yAxisIndex: 1,
-        barMaxWidth: 36,
-        itemStyle: { color: '#f59e0b', borderRadius: [10, 10, 0, 0] },
-        data: [totalCost],
-      },
-    ],
-  };
+  const optimizationInputPanelItems = buildMetricPanelItems(optimizationInputCards);
+  const optimizationOutputPanelItems = buildMetricPanelItems(optimizationOutputCards);
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <Card size="small" title="推荐方案总览">
+      <Card size="small" title="计算输入参数" bodyStyle={{ padding: 18 }}>
         <HydraulicMetricPanelGrid
-          items={overviewItems}
-          minWidth={200}
-          valueFontSize="clamp(20px, 2.4vw, 30px)"
-          noteFontSize={12}
+          items={optimizationInputPanelItems}
+          minWidth={210}
+          columns={3}
+          valueFontSize="clamp(18px, 2vw, 32px)"
         />
-        <div
-          style={{
-            marginTop: 14,
-            padding: '10px 14px',
-            borderRadius: 14,
-            background: 'rgba(248, 250, 252, 0.9)',
-            border: '1px solid rgba(226, 232, 240, 0.95)',
-          }}
-        >
-          <Text type="secondary">项目名称：{projectName} · 更新时间：{generatedAt} · 当前工况：{currentCondition}</Text>
-        </div>
-        <div
-          style={{
-            marginTop: 16,
-            borderRadius: 16,
-            padding: '14px 16px',
-            border: '1px solid rgba(221, 214, 254, 0.95)',
-            background: 'linear-gradient(180deg, rgba(245, 243, 255, 0.96) 0%, rgba(255,255,255,1) 100%)',
-          }}
-        >
-          <Text strong style={{ display: 'block', color: '#6d28d9', marginBottom: 8 }}>
-            推荐结论
-          </Text>
-          <Paragraph style={{ margin: 0, color: '#334155', lineHeight: 1.8 }}>{leadSentence}</Paragraph>
-        </div>
       </Card>
 
-      <Row gutter={[16, 16]}>
-        <Col xs={24} xl={12}>
-          <Card size="small" title="计算输入参数" bodyStyle={{ padding: 18 }} style={{ height: '100%' }}>
-            {renderDetailMetricCards(optimizationInputCards, {
-              compact: true,
-              minHeight: 90,
-              valueFontSize: 'clamp(15px, 1.7vw, 20px)',
-            })}
-          </Card>
-        </Col>
-        <Col xs={24} xl={12}>
-          <Card size="small" title="计算输出结果" bodyStyle={{ padding: 18 }} style={{ height: '100%' }}>
-            <Space direction="vertical" size={16} style={{ width: '100%' }}>
-              {renderDetailMetricCards(optimizationOutputCards, {
-                compact: true,
-                minHeight: 90,
-                valueFontSize: 'clamp(15px, 1.7vw, 20px)',
-              })}
-              <div
-                style={{
-                  borderRadius: 14,
-                  padding: '12px 14px',
-                  border: '1px solid rgba(221, 214, 254, 0.95)',
-                  background: 'linear-gradient(180deg, rgba(245, 243, 255, 0.96) 0%, rgba(255,255,255,1) 100%)',
-                }}
-              >
-                <Text strong style={{ display: 'block', color: '#6d28d9', marginBottom: 8 }}>
-                  推荐说明
-                </Text>
-                <Paragraph style={{ margin: 0, color: '#334155', lineHeight: 1.8 }}>{recommendationText}</Paragraph>
-              </div>
-            </Space>
-          </Card>
-        </Col>
-      </Row>
+      <Card size="small" title="计算输出结果" bodyStyle={{ padding: 18 }}>
+        <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          <HydraulicMetricPanelGrid
+            items={optimizationOutputPanelItems}
+            minWidth={190}
+            columns={3}
+            valueFontSize="clamp(18px, 2vw, 32px)"
+          />
+          <div
+            style={{
+              borderRadius: 18,
+              padding: '16px 18px',
+              border: '1px solid rgba(226, 232, 240, 0.95)',
+              borderTop: '3px solid #7c6cff',
+              background: 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(124, 108, 255, 0.08) 100%)',
+              boxShadow: '0 10px 24px rgba(15, 23, 42, 0.05)',
+            }}
+          >
+            <Text strong style={{ display: 'block', color: '#64748b', marginBottom: 10, fontSize: 14 }}>
+              推荐说明
+            </Text>
+            <Paragraph style={{ margin: 0, color: '#334155', lineHeight: 1.8 }}>{recommendationText}</Paragraph>
+          </div>
+        </Space>
+      </Card>
 
       <Card size="small" title="图表分析区">
         <Row gutter={[16, 16]}>
-          <Col xs={24} xl={8}>
-            <Card size="small" title="泵组配置示意图" style={{ height: '100%' }}>
-              <Chart option={pumpSchemeChartOption} height={300} />
-            </Card>
-          </Col>
-          <Col xs={24} xl={8}>
-            <Card size="small" title="最推荐方案" style={{ height: '100%' }}>
+          <Col xs={24} xl={16}>
+            <Card size="small" title="推荐方案主卡" style={{ height: '100%' }}>
               <OptimizationRecommendedSchemeBoard
                 recommendedCombination={recommendedCombination}
                 pump480Num={pump480Num}
@@ -4473,8 +4578,12 @@ function renderOptimizationAiReportContentV2(
           </Col>
 
           <Col xs={24} xl={16}>
-            <Card size="small" title="扬程闭合图">
-              <Chart option={headClosureChartOption} height={300} />
+            <Card size="small" title="扬程分配图" bodyStyle={{ padding: 18 }}>
+              <OptimizationHeadAllocationBand
+                totalHead={totalHead}
+                totalPressureDrop={totalPressureDrop}
+                endStationInPressure={endStationInPressure}
+              />
             </Card>
           </Col>
           <Col xs={24} xl={8}>
@@ -4482,8 +4591,33 @@ function renderOptimizationAiReportContentV2(
           </Col>
 
           <Col xs={24} xl={16}>
-            <Card size="small" title="能耗与成本评价图">
-              <Chart option={energyCostChartOption} height={300} />
+            <Card size="small" title="双指标概览卡" bodyStyle={{ padding: 18 }}>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                  gap: 16,
+                }}
+              >
+                <OptimizationOverviewMetricCard
+                  title="年能耗"
+                  value={totalEnergyConsumption}
+                  unit="kWh"
+                  badgePrefix="能耗表现"
+                  status={energyOverviewStatus}
+                  description="反映方案年度运行电耗水平"
+                  theme={optimizationOverviewCardThemes.energy}
+                />
+                <OptimizationOverviewMetricCard
+                  title="总成本"
+                  value={totalCost}
+                  unit="元"
+                  badgePrefix="成本表现"
+                  status={costOverviewStatus}
+                  description="反映方案年度综合运行费用"
+                  theme={optimizationOverviewCardThemes.cost}
+                />
+              </div>
             </Card>
           </Col>
           <Col xs={24} xl={8}>
@@ -4973,6 +5107,7 @@ function renderSensitivityAiReportContentV2(
 ) {
   const inputPayload = snapshot.input;
   const inputBase = asRecord(getValueByPath(inputPayload, 'baseParams')) ?? inputPayload;
+  const inputSources = [inputBase, inputPayload] as unknown[];
   const outputPayload = snapshot.output;
   const baseResult = asRecord(getValueByPath(outputPayload, 'baseResult')) ?? outputPayload;
   const variableResults = asRecordArray(getValueByPath(outputPayload, 'variableResults'));
@@ -5035,13 +5170,12 @@ function renderSensitivityAiReportContentV2(
   });
   const sensitivityImpactLevel = classifySensitivityImpactLevel(sensitivityCoefficient);
   const projectName = snapshot.projectName || '当前项目';
-  const displayTitle =
-    report.title && report.title.includes('敏感')
-      ? report.title
-      : `${projectName}关键变量敏感性分析报告`;
-  const displayDescription = report.abstract || SENSITIVITY_REPORT_PAGE_COPY.defaultDescription;
   const baseCondition = buildSensitivityBaseCondition(inputPayload, inputBase);
   const variableTypeText = buildSensitiveVariableDisplay(inputPayload, inputBase);
+  const flowRateText = formatValue(pickFirstValue(inputSources, ['flowRate', 'throughput', 'flow']), 'm³/h');
+  const densityText = formatValue(pickFirstValue(inputSources, ['density']), 'kg/m³');
+  const diameterText = formatValue(pickFirstValue(inputSources, ['diameter', 'pipeDiameter']), 'mm');
+  const roughnessText = formatValue(pickFirstValue(inputSources, ['roughness']));
 
   const pressureTrendText =
     firstPoint && lastPoint
@@ -5154,8 +5288,11 @@ function renderSensitivityAiReportContentV2(
   const suggestionItems = getSensitivitySuggestionItems(report);
 
   const reportViewModel: SensitivitySmartReportPayload = {
-    title: displayTitle,
-    description: displayDescription,
+    title:
+      report.title && report.title.includes('敏感')
+        ? report.title
+        : `${projectName}关键变量敏感性分析报告`,
+    description: report.abstract || SENSITIVITY_REPORT_PAGE_COPY.defaultDescription,
     basicInfo: {
       projectName,
       analysisType: '敏感性分析',
@@ -5223,42 +5360,41 @@ function renderSensitivityAiReportContentV2(
     },
   };
 
-  const basicInfoCards = filterMetricCards([
-    { label: SENSITIVITY_REPORT_PAGE_COPY.labels.projectName, value: reportViewModel.basicInfo.projectName, tone: 'blue', span: 6 },
-    { label: SENSITIVITY_REPORT_PAGE_COPY.labels.analysisType, value: reportViewModel.basicInfo.analysisType, tone: 'purple', span: 6 },
-    {
-      label: SENSITIVITY_REPORT_PAGE_COPY.labels.sensitiveVariableType,
-      value: reportViewModel.basicInfo.sensitiveVariableType,
-      tone: 'cyan',
-      span: 6,
-    },
-    { label: SENSITIVITY_REPORT_PAGE_COPY.labels.baseCondition, value: reportViewModel.basicInfo.baseCondition, tone: 'green', span: 12 },
-    { label: SENSITIVITY_REPORT_PAGE_COPY.labels.generatedAt, value: reportViewModel.basicInfo.generatedAt, tone: 'amber', span: 6 },
-  ]);
+  const coreParameterItems: HydraulicMetricPanelItem[] = [
+    { label: '流量', value: flowRateText, accent: '#4e86f7' },
+    { label: '密度', value: densityText, accent: '#12b981' },
+    { label: '管径', value: diameterText, accent: '#7c6cff' },
+    { label: '粗糙度', value: roughnessText, accent: '#f59e0b' },
+  ];
 
-  const coreResultCards = filterMetricCards([
-    { label: SENSITIVITY_REPORT_PAGE_COPY.labels.baseResult, value: reportViewModel.resultCards.baseResult, tone: 'blue', span: 4 },
+  const coreResultItems: HydraulicMetricPanelItem[] = [
+    { label: SENSITIVITY_REPORT_PAGE_COPY.labels.baseResult, value: reportViewModel.resultCards.baseResult, accent: '#4e86f7' },
     {
       label: SENSITIVITY_REPORT_PAGE_COPY.labels.mostSensitiveVariable,
       value: reportViewModel.resultCards.mostSensitiveVariable,
-      tone: 'purple',
-      span: 4,
+      accent: '#7c6cff',
     },
     {
       label: SENSITIVITY_REPORT_PAGE_COPY.labels.sensitivityCoefficient,
       value: reportViewModel.resultCards.sensitivityCoefficient,
-      tone: 'cyan',
-      span: 4,
+      accent: '#06b6d4',
     },
     {
       label: SENSITIVITY_REPORT_PAGE_COPY.labels.maxImpactPercent,
       value: reportViewModel.resultCards.maxImpactPercent,
-      tone: 'amber',
-      span: 4,
+      accent: '#f59e0b',
     },
-    { label: SENSITIVITY_REPORT_PAGE_COPY.labels.impactRanking, value: reportViewModel.resultCards.impactRanking, tone: 'green', span: 4 },
-    { label: SENSITIVITY_REPORT_PAGE_COPY.labels.riskLevel, value: reportViewModel.resultCards.riskLevel, tone: 'purple', span: 4 },
-  ]);
+    {
+      label: SENSITIVITY_REPORT_PAGE_COPY.labels.impactRanking,
+      value: reportViewModel.resultCards.impactRanking,
+      accent: '#12b981',
+    },
+    {
+      label: SENSITIVITY_REPORT_PAGE_COPY.labels.riskLevel,
+      value: reportViewModel.resultCards.riskLevel,
+      accent: '#7c6cff',
+    },
+  ];
 
   const sensitivityGaugeMax = getSensitivityGaugeMax(reportViewModel.rankingData);
 
@@ -5356,34 +5492,17 @@ function renderSensitivityAiReportContentV2(
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <div>
-        <Title level={4} style={{ marginBottom: 8 }}>
-          {reportViewModel.title}
-        </Title>
-        <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-          {reportViewModel.description}
-        </Paragraph>
-      </div>
-
-      <Card size="small" title={SENSITIVITY_REPORT_PAGE_COPY.sectionTitles.basicInfo}>
-        {renderDetailMetricCards(basicInfoCards, {
-          singleLine: true,
-          compact: true,
-          minColumnWidth: 220,
-          minHeight: 88,
-          valueFontSize: 'clamp(14px, 1.8vw, 18px)',
-        })}
+      <Card size="small" title="参数区">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b', marginBottom: 12 }}>核心参数卡</div>
+            <HydraulicMetricPanelGrid items={coreParameterItems} minWidth={180} valueFontSize="clamp(20px, 2.3vw, 28px)" />
+          </div>
+        </div>
       </Card>
 
       <Card size="small" title={SENSITIVITY_REPORT_PAGE_COPY.sectionTitles.coreResults}>
-        {renderDetailMetricCards(coreResultCards, {
-          equalWidth: true,
-          singleLine: true,
-          compact: true,
-          minColumnWidth: 190,
-          minHeight: 88,
-          valueFontSize: 'clamp(14px, 1.8vw, 18px)',
-        })}
+        <HydraulicMetricPanelGrid items={coreResultItems} minWidth={190} valueFontSize="clamp(20px, 2.3vw, 28px)" />
       </Card>
 
       <Card size="small" title={SENSITIVITY_REPORT_PAGE_COPY.sectionTitles.chartAnalysis}>
@@ -5909,19 +6028,22 @@ function ReportHistoryDetailContent({ row }: { row: HistoryTableRow }) {
   const isHydraulicRecord = currentHistoryCalcType === 'HYDRAULIC' || row.calcTypeLabel.includes('水力');
   const isOptimizationRecord = currentHistoryCalcType === 'OPTIMIZATION' || row.calcTypeLabel.includes('优化');
   const isSensitivityRecord = currentHistoryCalcType === 'SENSITIVITY' || row.calcTypeLabel.includes('敏感');
+  const shouldHideDetailInfoCard = isAiReportRecord;
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <Card style={detailSectionStyle} bodyStyle={detailSectionBodyStyle} title="计算基本信息">
-        {renderDetailMetricCards(detailInfoCards, {
-          equalWidth: true,
-          singleLine: true,
-          compact: true,
-          minColumnWidth: 180,
-          minHeight: 88,
-          valueFontSize: 'clamp(14px, 1.8vw, 18px)',
-        })}
-      </Card>
+      {shouldHideDetailInfoCard ? null : (
+        <Card style={detailSectionStyle} bodyStyle={detailSectionBodyStyle} title="计算基本信息">
+          {renderDetailMetricCards(detailInfoCards, {
+            equalWidth: true,
+            singleLine: true,
+            compact: true,
+            minColumnWidth: 180,
+            minHeight: 88,
+            valueFontSize: 'clamp(14px, 1.8vw, 18px)',
+          })}
+        </Card>
+      )}
 
       {isAiReportRecord && detailReport ? (
         renderReportContent(detailReport)
@@ -6782,6 +6904,7 @@ export default function ReportPreview() {
   const isSensitivityRecord =
     detailPreview?.mode === 'history' &&
     (currentHistoryCalcType === 'SENSITIVITY' || detailPreview.row.calcTypeLabel.includes('敏感'));
+  const shouldHideDetailInfoCard = isAiReportRecord;
 
   const historyColumns = useMemo<ColumnsType<HistoryTableRow>>(
     () => [
@@ -7142,11 +7265,55 @@ export default function ReportPreview() {
       <div style={{ maxWidth: 1760, margin: '0 auto', padding: 24 }}>
         <style>{`
           .report-history-table .ant-table-thead .ant-table-selection-column {
-            background: #edf4ff !important;
+            background: linear-gradient(180deg, #edf4ff 0%, #eaf2ff 100%) !important;
           }
 
           .report-history-table .ant-table-thead .ant-table-selection-column::before {
             display: none !important;
+          }
+
+          .report-history-table .ant-table-thead .ant-table-selection-column,
+          .report-history-table .ant-table-tbody .ant-table-selection-column {
+            width: 112px !important;
+            min-width: 112px !important;
+            padding: 0 16px 0 24px !important;
+            text-align: left !important;
+            border-right: 1px solid #d8e6f8 !important;
+          }
+
+          .report-history-table .ant-table-tbody .ant-table-selection-column {
+            background: linear-gradient(180deg, #fcfdff 0%, #f7faff 100%) !important;
+          }
+
+          .report-history-table .ant-table-selection-column .ant-space {
+            width: 100%;
+            align-items: center;
+            justify-content: flex-start;
+          }
+
+          .report-history-table .ant-table-selection-column .ant-checkbox {
+            top: 0;
+          }
+
+          .report-history-table .ant-table-selection-column .ant-checkbox .ant-checkbox-inner {
+            width: 18px;
+            height: 18px;
+            border-radius: 6px;
+            border: 1.5px solid #bfd0ea !important;
+            background: #ffffff;
+            box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06);
+          }
+
+          .report-history-table .ant-table-selection-column .ant-checkbox:hover .ant-checkbox-inner,
+          .report-history-table .ant-table-selection-column .ant-checkbox-wrapper:hover .ant-checkbox-inner {
+            border-color: #78a4ff !important;
+          }
+
+          .report-history-table .ant-table-selection-column .ant-checkbox-checked .ant-checkbox-inner,
+          .report-history-table .ant-table-selection-column .ant-checkbox-indeterminate .ant-checkbox-inner {
+            border-color: #4e86f7 !important;
+            background: #4e86f7 !important;
+            box-shadow: 0 6px 14px rgba(78, 134, 247, 0.22);
           }
 
           .report-hero-title span + span {
@@ -7308,12 +7475,12 @@ export default function ReportPreview() {
                       selectedRowKeys: selectedHistoryKeys,
                       onChange: (keys) => setSelectedHistoryKeys(keys as number[]),
                       columnTitle: (checkboxNode) => (
-                        <Space size={6} style={{ whiteSpace: 'nowrap' }}>
+                        <Space size={6} style={{ width: '100%', whiteSpace: 'nowrap', justifyContent: 'flex-start' }}>
                           {checkboxNode}
                           <span style={{ color: '#7c8aa5', fontSize: 14, fontWeight: 600 }}>全选</span>
                         </Space>
                       ),
-                      columnWidth: 96,
+                      columnWidth: 112,
                     }}
                     loading={loading}
                     pagination={false}
@@ -7419,16 +7586,18 @@ export default function ReportPreview() {
           >
             {detailPreview?.mode === 'history' ? (
               <Space direction="vertical" size={16} style={{ width: '100%' }}>
-                <Card style={detailSectionStyle} bodyStyle={detailSectionBodyStyle} title="计算基本信息">
-                  {renderDetailMetricCards(detailInfoCards, {
-                    equalWidth: true,
-                    singleLine: true,
-                    compact: true,
-                    minColumnWidth: 180,
-                    minHeight: 88,
-                    valueFontSize: 'clamp(14px, 1.8vw, 18px)',
-                  })}
-                </Card>
+                {shouldHideDetailInfoCard ? null : (
+                  <Card style={detailSectionStyle} bodyStyle={detailSectionBodyStyle} title="计算基本信息">
+                    {renderDetailMetricCards(detailInfoCards, {
+                      equalWidth: true,
+                      singleLine: true,
+                      compact: true,
+                      minColumnWidth: 180,
+                      minHeight: 88,
+                      valueFontSize: 'clamp(14px, 1.8vw, 18px)',
+                    })}
+                  </Card>
+                )}
 
                 {isAiReportRecord && detailReport ? (
                   renderReportContent(detailReport)
