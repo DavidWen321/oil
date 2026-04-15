@@ -11,7 +11,7 @@ interface ChatMessageItemProps {
 }
 
 const markdownClassName = [
-  'max-w-[760px] text-[15px] leading-7 text-neutral-800',
+  'max-w-[720px] text-[15px] leading-7 text-neutral-800 xl:max-w-[760px]',
   '[&_p]:mb-4 [&_p]:leading-7',
   '[&_h1]:mb-4 [&_h1]:mt-6 [&_h1]:text-2xl [&_h1]:font-semibold [&_h1]:tracking-[-0.03em]',
   '[&_h2]:mb-3 [&_h2]:mt-6 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:tracking-[-0.02em]',
@@ -39,7 +39,7 @@ export function ChatMessageItem({
   if (message.role === 'user') {
     return (
       <article className="flex justify-end">
-        <div className="group max-w-[72%] rounded-[26px] bg-neutral-100 px-4 py-3 text-[15px] leading-7 text-neutral-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]">
+        <div className="group max-w-[70%] rounded-[26px] bg-neutral-100 px-4 py-3 text-[15px] leading-7 text-neutral-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] xl:max-w-[68%]">
           <div className="whitespace-pre-wrap">{message.content}</div>
           <div className="mt-2 flex justify-end opacity-0 transition group-hover:opacity-100">
             <button
@@ -75,13 +75,13 @@ export function ChatMessageItem({
         ) : null}
 
         {message.toolCalls && message.toolCalls.length > 0 ? (
-          <div className="mt-4 max-w-[760px]">
+          <div className="mt-4 max-w-[720px] xl:max-w-[760px]">
             <ToolCallAccordion tools={message.toolCalls} />
           </div>
         ) : null}
 
         {message.error ? (
-          <div className="mt-4 max-w-[760px] rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          <div className="mt-4 max-w-[720px] rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 xl:max-w-[760px]">
             <div className="font-medium">{message.error.title}</div>
             <div className="mt-1 text-rose-600">{message.error.description}</div>
             <div className="mt-3 flex flex-wrap gap-2">

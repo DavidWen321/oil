@@ -1,4 +1,4 @@
-﻿import { Circle, PanelRightOpen, Sparkles, Wifi, WifiOff } from 'lucide-react';
+import { Circle, PanelRightOpen, Sparkles, Wifi, WifiOff } from 'lucide-react';
 import type { ChatMode } from '../types';
 import { MODE_OPTIONS } from '../utils/chatUi';
 
@@ -29,51 +29,68 @@ export function ChatTopbar({
   const isLiveStream = connected || streaming;
   const indicatorText = isError ? '连接异常' : isLiveStream ? '实时连接中' : '服务就绪';
   const indicatorTone = isError ? 'text-amber-500' : isLiveStream ? 'text-emerald-500' : 'text-sky-500';
+  const activeMode = MODE_OPTIONS.find((option) => option.value === mode);
 
   return (
-    <header className="flex items-center justify-between gap-4 border-b border-neutral-200/80 bg-white/70 px-6 py-4 backdrop-blur-sm">
-      <div className="min-w-0">
-        <div className="truncate text-lg font-semibold text-neutral-900">{title}</div>
-        <div className="mt-1 flex items-center gap-2 text-xs text-neutral-500">
-          <Sparkles className="h-3.5 w-3.5" />
-          <span>智能分析助手</span>
+    <header className="border-b border-neutral-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.82)_0%,rgba(255,255,255,0.64)_100%)] px-5 py-4 backdrop-blur md:px-6">
+      <div className="flex items-center justify-between gap-4">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="truncate text-lg font-semibold tracking-[-0.02em] text-neutral-950">{title}</div>
+            {activeMode ? (
+              <span className="rounded-full border border-sky-200/80 bg-sky-50/80 px-2.5 py-1 text-[11px] font-medium text-sky-700">
+                {activeMode.label}
+              </span>
+            ) : null}
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-neutral-500">
+            <div className="inline-flex items-center gap-1.5 rounded-full bg-white/85 px-2.5 py-1 ring-1 ring-black/5">
+              <Sparkles className="h-3.5 w-3.5 text-sky-500" />
+              <span>智能分析助手</span>
+            </div>
+            {activeMode?.description ? (
+              <span className="line-clamp-1">{activeMode.description}</span>
+            ) : null}
+          </div>
         </div>
-      </div>
 
-      <div className="flex items-center gap-3">
-        <label className="relative block">
-          <span className="sr-only">选择模式</span>
-          <select
-            value={mode}
-            onChange={(event) => onModeChange(event.target.value as ChatMode)}
-            className="h-10 appearance-none rounded-full border border-neutral-200 bg-white pl-4 pr-10 text-sm text-neutral-700 outline-none transition focus:border-sky-300 focus:ring-4 focus:ring-sky-500/10"
+        <div className="flex items-center gap-3">
+          <div className="hidden items-center gap-2 rounded-full border border-white/70 bg-white/80 p-1 shadow-[0_10px_24px_rgba(15,23,42,0.05)] sm:flex">
+            <label className="relative block">
+              <span className="sr-only">选择模式</span>
+              <select
+                value={mode}
+                onChange={(event) => onModeChange(event.target.value as ChatMode)}
+                className="h-10 appearance-none rounded-full border border-neutral-200 bg-white pl-4 pr-10 text-sm text-neutral-700 outline-none transition focus:border-sky-300 focus:ring-4 focus:ring-sky-500/10"
+              >
+                {MODE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <div className="flex items-center gap-2 rounded-full bg-neutral-50 px-3 py-2 text-xs text-neutral-600 ring-1 ring-black/5">
+              {isError ? (
+                <WifiOff className="h-3.5 w-3.5 text-amber-500" />
+              ) : (
+                <Wifi className={['h-3.5 w-3.5', indicatorTone].join(' ')} />
+              )}
+              <Circle className={['h-2.5 w-2.5 fill-current', indicatorTone].join(' ')} />
+              {indicatorText}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/70 bg-white/80 text-neutral-500 shadow-[0_10px_24px_rgba(15,23,42,0.05)] transition hover:bg-white hover:text-neutral-900"
+            onClick={onToggleContext}
+            aria-label="切换上下文面板"
           >
-            {MODE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <div className="flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-600">
-          {isError ? (
-            <WifiOff className="h-3.5 w-3.5 text-amber-500" />
-          ) : (
-            <Wifi className={['h-3.5 w-3.5', indicatorTone].join(' ')} />
-          )}
-          <Circle className={['h-2.5 w-2.5 fill-current', indicatorTone].join(' ')} />
-          {indicatorText}
+            <PanelRightOpen className={['h-5 w-5 transition-transform', contextOpen ? 'rotate-180' : ''].join(' ')} />
+          </button>
         </div>
-
-        <button
-          type="button"
-          className="inline-flex h-10 w-10 items-center justify-center rounded-full text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900"
-          onClick={onToggleContext}
-          aria-label="切换上下文面板"
-        >
-          <PanelRightOpen className={['h-5 w-5 transition-transform', contextOpen ? 'rotate-180' : ''].join(' ')} />
-        </button>
       </div>
     </header>
   );

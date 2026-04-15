@@ -194,11 +194,11 @@ export default function AIChat() {
         <div className="flex min-h-0 flex-1">
           <section className="flex min-w-0 flex-1 flex-col">
             <div ref={messagesRef} className="min-h-0 flex-1 overflow-y-auto">
-              <div className="mx-auto flex min-h-full w-full max-w-[920px] flex-col px-4 pb-12 pt-6 md:px-6">
+              <div className="flex min-h-full w-full max-w-[1060px] flex-col px-4 pb-12 pt-6 md:px-6 xl:pl-8 xl:pr-10">
                 {messages.length === 0 ? (
                   <EmptyStateWelcome prompts={WELCOME_PROMPTS} onPromptSelect={sendMessage} />
                 ) : (
-                  <div className="mx-auto w-full max-w-[820px] space-y-6 pb-10">
+                  <div className="w-full max-w-[980px] space-y-6 pb-10 xl:max-w-[1020px]">
                     {messages.map((message) => (
                       <ChatMessageItem
                         key={message.id}
