@@ -8,6 +8,7 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 
 from src.models import KnowledgeDocumentMetadata, KnowledgeDocumentStatus
 from src.models.enums import KnowledgeCategory
@@ -267,6 +268,75 @@ def _to_rerank_debug_item(item: Any, match_type_lookup: dict[str, str]) -> Reran
     )
 
 
+def _search_knowledge_sync(request: SearchRequest) -> SearchResponse:
+    rag_response = get_rag_pipeline().retrieve(
+        query=request.query,
+        top_k=request.top_k,
+        category_filter=request.category,
+        skip_self_rag=False,
+    )
+    results = [
+        SearchItem(
+            doc_id=src.get("doc_id", ""),
+            doc_title=src.get("doc_title", ""),
+            content_preview=src.get("content_preview", "")[:300],
+            score=float(src.get("score", 0.0)),
+            category=src.get("category"),
+        )
+        for src in rag_response.sources
+    ]
+    return SearchResponse(
+        query=request.query,
+        results=results,
+        total=len(results),
+        route_trace=rag_response.metadata,
+    )
+
+
+def _debug_search_knowledge_sync(request: SearchRequest) -> SearchDebugResponse:
+    pipeline = get_rag_pipeline()
+    pipeline.sync_sparse_index_if_needed()
+    payload = get_retriever().retrieve_debug_bundle(
+        query=request.query,
+        top_k=request.top_k,
+        category_filter=request.category,
+        use_hybrid=True,
+    )
+    hybrid_results = list(payload.pop("hybrid_raw_results", []))
+    payload.pop("dense_raw_results", None)
+    payload.pop("sparse_raw_results", None)
+
+    match_type_lookup = {item.chunk_id: item.match_type for item in hybrid_results}
+    reranker = get_reranker()
+    rerank_started = time.perf_counter()
+    reranked = reranker.rerank(request.query, hybrid_results, top_k=request.top_k * 2)
+    reranked = pipeline._dedupe_rerank_results(reranked)[:request.top_k]
+    rerank_duration_ms = round((time.perf_counter() - rerank_started) * 1000, 2)
+
+    payload["rerank_results"] = [
+        _to_rerank_debug_item(item, match_type_lookup)
+        for item in reranked
+    ]
+    payload["rerank_debug"] = RerankDebugMetrics(
+        reranker_class=type(reranker).__name__,
+        reranker_threshold=float(getattr(reranker, "threshold", 0.0) or 0.0),
+        reranker_enabled=bool(getattr(reranker, "enabled", True)),
+        rerank_candidates_before=len(hybrid_results),
+        rerank_candidates_after=len(reranked),
+        rerank_duration_ms=rerank_duration_ms,
+        contextual_enabled=bool(getattr(pipeline.chunker, "use_contextual", False)),
+        contextual_results=sum(1 for item in reranked if _extract_context_preview(item.full_text or "", item.content or "")),
+    )
+    rag_response = pipeline.retrieve(
+        query=request.query,
+        top_k=request.top_k,
+        category_filter=request.category,
+        skip_self_rag=False,
+    )
+    payload["route_trace"] = rag_response.metadata
+    return SearchDebugResponse(**payload)
+
+
 @router.get("/baseline")
 async def get_knowledge_baseline():
     """Return resolved stage-0 baseline for the knowledge roadmap."""
@@ -321,7 +391,8 @@ async def upload_document(
             effective_at=effective_at.strip() if effective_at else None,
         )
         file_bytes = await file.read()
-        stored = registry.save_upload(
+        stored = await run_in_threadpool(
+            registry.save_upload,
             file_name=file.filename or metadata.title,
             file_bytes=file_bytes,
             metadata=metadata,
@@ -378,7 +449,10 @@ async def rebuild_index(request: ReindexRequest):
     """Rebuild vector index from current knowledge files."""
 
     try:
-        result = get_knowledge_registry().rebuild_index(recreate=request.recreate)
+        result = await run_in_threadpool(
+            get_knowledge_registry().rebuild_index,
+            recreate=request.recreate,
+        )
         return ReindexResponse(
             success=True,
             documents_indexed=int(result.get("documents_indexed", 0)),
@@ -396,28 +470,7 @@ async def search_knowledge(request: SearchRequest):
     """Search knowledge base documents."""
 
     try:
-        rag_response = get_rag_pipeline().retrieve(
-            query=request.query,
-            top_k=request.top_k,
-            category_filter=request.category,
-            skip_self_rag=False,
-        )
-        results = [
-            SearchItem(
-                doc_id=src.get("doc_id", ""),
-                doc_title=src.get("doc_title", ""),
-                content_preview=src.get("content_preview", "")[:300],
-                score=float(src.get("score", 0.0)),
-                category=src.get("category"),
-            )
-            for src in rag_response.sources
-        ]
-        return SearchResponse(
-            query=request.query,
-            results=results,
-            total=len(results),
-            route_trace=rag_response.metadata,
-        )
+        return await run_in_threadpool(_search_knowledge_sync, request)
     except Exception as exc:  # noqa: BLE001
         logger.error(f"Knowledge search failed: {exc}")
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -428,47 +481,7 @@ async def debug_search_knowledge(request: SearchRequest):
     """Return stage-3 retrieval debug data with reranker and contextual previews."""
 
     try:
-        pipeline = get_rag_pipeline()
-        pipeline.sync_sparse_index_if_needed()
-        payload = get_retriever().retrieve_debug_bundle(
-            query=request.query,
-            top_k=request.top_k,
-            category_filter=request.category,
-            use_hybrid=True,
-        )
-        hybrid_results = list(payload.pop("hybrid_raw_results", []))
-        payload.pop("dense_raw_results", None)
-        payload.pop("sparse_raw_results", None)
-
-        match_type_lookup = {item.chunk_id: item.match_type for item in hybrid_results}
-        reranker = get_reranker()
-        rerank_started = time.perf_counter()
-        reranked = reranker.rerank(request.query, hybrid_results, top_k=request.top_k * 2)
-        reranked = pipeline._dedupe_rerank_results(reranked)[:request.top_k]
-        rerank_duration_ms = round((time.perf_counter() - rerank_started) * 1000, 2)
-
-        payload["rerank_results"] = [
-            _to_rerank_debug_item(item, match_type_lookup)
-            for item in reranked
-        ]
-        payload["rerank_debug"] = RerankDebugMetrics(
-            reranker_class=type(reranker).__name__,
-            reranker_threshold=float(getattr(reranker, "threshold", 0.0) or 0.0),
-            reranker_enabled=bool(getattr(reranker, "enabled", True)),
-            rerank_candidates_before=len(hybrid_results),
-            rerank_candidates_after=len(reranked),
-            rerank_duration_ms=rerank_duration_ms,
-            contextual_enabled=bool(getattr(pipeline.chunker, "use_contextual", False)),
-            contextual_results=sum(1 for item in reranked if _extract_context_preview(item.full_text or "", item.content or "")),
-        )
-        rag_response = pipeline.retrieve(
-            query=request.query,
-            top_k=request.top_k,
-            category_filter=request.category,
-            skip_self_rag=False,
-        )
-        payload["route_trace"] = rag_response.metadata
-        return SearchDebugResponse(**payload)
+        return await run_in_threadpool(_debug_search_knowledge_sync, request)
     except Exception as exc:  # noqa: BLE001
         logger.error(f"Knowledge debug search failed: {exc}")
         raise HTTPException(status_code=500, detail=str(exc)) from exc

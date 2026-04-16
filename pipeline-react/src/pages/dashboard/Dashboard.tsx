@@ -173,6 +173,67 @@ function keepTooltipInChart(
   return [nextX, nextY]
 }
 
+function estimateLegendTextWidth(label: string, fontSize: number) {
+  return Array.from(label).reduce((totalWidth, char) => {
+    if (/[\u3400-\u9FFF]/u.test(char)) {
+      return totalWidth + fontSize
+    }
+
+    if (/[A-Z0-9]/.test(char)) {
+      return totalWidth + fontSize * 0.72
+    }
+
+    if (/[a-z]/.test(char)) {
+      return totalWidth + fontSize * 0.62
+    }
+
+    return totalWidth + fontSize * 0.58
+  }, 0)
+}
+
+function getLegendRowCount(
+  labels: string[],
+  containerWidth: number,
+  options: {
+    left: number
+    right: number
+    itemWidth: number
+    itemGap: number
+    fontSize: number
+  },
+) {
+  if (labels.length === 0) {
+    return 0
+  }
+
+  const availableWidth = Math.max(containerWidth - options.left - options.right, 220)
+  let rowCount = 1
+  let currentRowWidth = 0
+
+  for (const label of labels) {
+    const estimatedItemWidth = Math.min(
+      availableWidth,
+      Math.max(
+        52,
+        options.itemWidth +
+          options.itemGap +
+          estimateLegendTextWidth(label, options.fontSize) +
+          22,
+      ),
+    )
+
+    if (currentRowWidth > 0 && currentRowWidth + estimatedItemWidth > availableWidth) {
+      rowCount += 1
+      currentRowWidth = estimatedItemWidth
+      continue
+    }
+
+    currentRowWidth += estimatedItemWidth
+  }
+
+  return rowCount
+}
+
 async function fetchAllPagedList<T>(
   requestPage: (pageNum: number, pageSize: number) => Promise<R<PageResult<T>>>,
   pageSize = 200,
@@ -588,7 +649,7 @@ export default function Dashboard() {
       return '数据库中暂无项目主数据'
     }
 
-    return `共 ${projectDataProfiles.length} 个项目；横轴为项目名称/项目编号，纵轴为数量。项目数据记录总数 = 管道 + 计算记录；泵站和油品改为共享资源单独统计`
+    return `共 ${projectDataProfiles.length} 个项目；横轴显示项目编号，悬浮可查看完整项目名称，纵轴为数量。项目数据记录总数 = 管道 + 计算记录；泵站和油品改为共享资源单独统计`
   }, [
     masterDataLoading,
     masterDataWarning,
@@ -679,15 +740,14 @@ export default function Dashboard() {
               return ''
             }
 
-            const maxLength = flowChart.isCompact ? 4 : 8
-            const projectName =
-              profile.projectName.length > maxLength
-                ? `${profile.projectName.slice(0, maxLength)}…`
-                : profile.projectName
+            if (profile.projectNumber) {
+              return profile.projectNumber
+            }
 
-            return profile.projectNumber
-              ? `${profile.projectNumber}\n${projectName}`
-              : projectName
+            const maxLength = flowChart.isCompact ? 4 : 8
+            return profile.projectName.length > maxLength
+              ? `${profile.projectName.slice(0, maxLength)}…`
+              : profile.projectName
           },
         },
       },
@@ -886,23 +946,69 @@ export default function Dashboard() {
       },
     }))
 
+    const legendLabels = series.map((item) => item.name)
+    const legendLeft = pressureChart.isCompact ? 8 : 12
+    const legendRight = pressureChart.isCompact ? 8 : 12
+    const legendTop = pressureChart.isCompact ? 4 : 8
+    const legendItemGap = pressureChart.isCompact ? 10 : 14
+    const legendItemWidth = pressureChart.isCompact ? 12 : 14
+    const legendFontSize = pressureChart.isCompact ? 10 : 11
+    const legendRowHeight = pressureChart.isCompact ? 18 : 24
+    const estimatedLegendRows =
+      pressureChart.legend === false
+        ? 0
+        : getLegendRowCount(legendLabels, pressureChart.containerWidth, {
+            left: legendLeft,
+            right: legendRight,
+            itemWidth: legendItemWidth,
+            itemGap: legendItemGap,
+            fontSize: legendFontSize,
+          })
+    const maxVisibleLegendRows = pressureChart.isMedium ? 2 : 3
+    const useScrollableLegend = estimatedLegendRows > maxVisibleLegendRows
+    const visibleLegendRows =
+      pressureChart.legend === false
+        ? 0
+        : useScrollableLegend
+          ? 1
+          : Math.max(estimatedLegendRows, 1)
+    const legendBlockHeight =
+      visibleLegendRows > 0
+        ? visibleLegendRows * legendRowHeight + (visibleLegendRows - 1) * 4
+        : 0
+    const scatterGridTop = pressureChart.isCompact
+      ? 42
+      : pressureChart.legend === false
+        ? 24
+        : legendTop + legendBlockHeight + (pressureChart.isMedium ? 18 : 20)
+
     const scatterLegend =
       pressureChart.legend === false
         ? { show: false }
         : {
             ...chartTheme.legend,
-            data: series.map((item) => item.name),
+            type: useScrollableLegend ? 'scroll' as const : 'plain' as const,
+            data: legendLabels,
             orient: 'horizontal' as const,
-            left: pressureChart.isCompact ? 8 : 12,
-            right: pressureChart.isCompact ? 8 : 12,
-            top: pressureChart.isCompact ? 4 : 8,
-            itemGap: pressureChart.isCompact ? 10 : 14,
-            itemWidth: pressureChart.isCompact ? 12 : 14,
+            left: legendLeft,
+            right: legendRight,
+            top: legendTop,
+            width: Math.max(pressureChart.containerWidth - legendLeft - legendRight, 220),
+            itemGap: legendItemGap,
+            itemWidth: legendItemWidth,
             itemHeight: 4,
+            pageButtonPosition: 'end' as const,
+            pageButtonGap: 12,
+            pageIconColor: colors.primary,
+            pageIconInactiveColor: colors.border,
+            pageTextStyle: {
+              color: colors.textTertiary,
+              fontSize: legendFontSize,
+            },
             textStyle: {
               ...chartTheme.legend.textStyle,
               color: colors.textSecondary,
-              fontSize: pressureChart.isCompact ? 10 : 11,
+              fontSize: legendFontSize,
             },
           }
 
@@ -912,7 +1018,7 @@ export default function Dashboard() {
         ? { ...pressureChart.grid, top: 42, right: 16, bottom: 42, left: 56 }
         : {
             ...pressureChart.grid,
-            top: pressureChart.legend === false ? 24 : 54,
+            top: scatterGridTop,
             right: 18,
             bottom: 46,
             left: 76,
@@ -984,9 +1090,11 @@ export default function Dashboard() {
       series,
     }
   }, [
+    pressureChart.containerWidth,
     pipelineScatterPoints,
     pressureChart.grid,
     pressureChart.isCompact,
+    pressureChart.isMedium,
     pressureChart.legend,
     pressureChart.tooltipConf,
     pressureChart.xAxisLabel,

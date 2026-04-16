@@ -286,7 +286,7 @@ public class KnowledgeIngestAsyncService {
     private RestTemplate createRestTemplate() {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(defaultInt(properties.getConnectTimeoutMs(), 5000));
-        factory.setReadTimeout(defaultInt(properties.getReadTimeoutMs(), 120000));
+        factory.setReadTimeout(defaultInt(properties.getReadTimeoutMs(), 300000));
         return new RestTemplate(factory);
     }
 

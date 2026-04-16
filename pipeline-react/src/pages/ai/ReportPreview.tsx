@@ -1603,6 +1603,8 @@ function renderNarrativeLineList(lines: Array<string | null | undefined>, dotCol
   );
 }
 
+void renderNarrativeLineList;
+
 function getHydraulicRiskItems(report: DynamicReportResponsePayload) {
   const skillItems = report.aiAnalysis?.riskJudgement ?? [];
   return skillItems.length ? skillItems : report.risks;
@@ -2482,6 +2484,21 @@ function buildSensitivitySuggestionCards(context: SensitivityAnalysisContext): S
   return cards.slice(0, 3);
 }
 
+function getSensitivityRiskItems(report: DynamicReportResponsePayload) {
+  const skillItems = report.aiAnalysis?.riskJudgement ?? [];
+  if (skillItems.length) {
+    return skillItems;
+  }
+
+  const identifyItems = report.aiAnalysis?.riskIdentify ?? [];
+  return identifyItems.length ? identifyItems : report.risks;
+}
+
+function getSensitivitySuggestionItems(report: DynamicReportResponsePayload) {
+  const skillItems = report.aiAnalysis?.suggestions ?? [];
+  return skillItems.length ? skillItems : report.suggestions;
+}
+
 function getSensitivityLevelTagColor(level?: string | null) {
   const normalized = String(level ?? '').trim().toLowerCase();
   if (normalized === '高' || normalized === 'high' || normalized === '高风险') {
@@ -2973,25 +2990,6 @@ type OptimizationInsightBlockData = {
   content: string;
 };
 
-type OptimizationExpertTopic = 'recommendation' | 'risk' | 'economics' | 'operation' | 'scenario' | 'general';
-
-type OptimizationExpertReply = {
-  topic: OptimizationExpertTopic;
-  topicLabel: string;
-  headline: string;
-  paragraphs: string[];
-  evidence: string[];
-  caveat?: string;
-};
-
-const OPTIMIZATION_REPORT_QUICK_QUESTIONS = [
-  '为什么推荐这个方案',
-  '当前方案主要风险是什么',
-  '从能耗和成本看值不值得用',
-  '现场应该怎么执行这套方案',
-  '如果工况变化需要注意什么',
-];
-
 function renderOptimizationInsightCard(block: OptimizationInsightBlockData, accentColor: string) {
   return (
     <Card
@@ -3179,6 +3177,14 @@ function formatHeadAllocationPercent(value: number | null, total: number) {
   return `${((value / total) * 100).toFixed(1)}%`;
 }
 
+function normalizeHeadAllocationMagnitude(value: number | null) {
+  if (value === null || !Number.isFinite(value)) {
+    return null;
+  }
+
+  return Math.max(Math.abs(value), 0);
+}
+
 function OptimizationHeadAllocationBand({
   totalHead,
   totalPressureDrop,
@@ -3188,22 +3194,44 @@ function OptimizationHeadAllocationBand({
   totalPressureDrop: number | null;
   endStationInPressure: number | null;
 }) {
-  const resolvedPressureDrop =
-    totalPressureDrop ?? (totalHead !== null && endStationInPressure !== null ? Math.max(totalHead - endStationInPressure, 0) : null);
-  const resolvedEndStationPressure =
-    endStationInPressure ?? (totalHead !== null && totalPressureDrop !== null ? Math.max(totalHead - totalPressureDrop, 0) : null);
-  const segmentTotal =
-    Math.max(resolvedPressureDrop ?? 0, 0) + Math.max(resolvedEndStationPressure ?? 0, 0);
-  const displayTotal = totalHead ?? (segmentTotal > 0 ? Number(segmentTotal.toFixed(4)) : null);
+  const normalizedRawPressureDrop = normalizeHeadAllocationMagnitude(totalPressureDrop);
+  const normalizedRawEndStationPressure =
+    endStationInPressure !== null && Number.isFinite(endStationInPressure) ? Math.max(endStationInPressure, 0) : null;
+  const normalizedPressureDrop =
+    normalizedRawPressureDrop ??
+    (totalHead !== null && endStationInPressure !== null ? Math.max(totalHead - Math.max(endStationInPressure, 0), 0) : null);
+  const normalizedEndStationPressure =
+    normalizedRawEndStationPressure ??
+    (totalHead !== null && totalPressureDrop !== null
+      ? Math.max(totalHead - (normalizedRawPressureDrop ?? 0), 0)
+      : null);
+  const segmentTotal = (normalizedPressureDrop ?? 0) + (normalizedEndStationPressure ?? 0);
+  const shouldFallbackToSegmentTotal =
+    totalHead === null ||
+    !Number.isFinite(totalHead) ||
+    totalHead <= 0 ||
+    (segmentTotal > 0 &&
+      (totalHead < Math.max(normalizedPressureDrop ?? 0, normalizedEndStationPressure ?? 0) ||
+        Math.abs(totalHead - segmentTotal) > Math.max(1, segmentTotal * 0.05)));
+  const displayTotal =
+    segmentTotal > 0 ? Number((shouldFallbackToSegmentTotal ? segmentTotal : totalHead).toFixed(4)) : null;
 
   if (displayTotal === null || segmentTotal <= 0) {
     return <Text type="secondary">当前数据不足以支持进一步判断</Text>;
   }
 
-  const pressureDropWeight = Math.max(resolvedPressureDrop ?? 0, 0.0001);
-  const endStationWeight = Math.max(resolvedEndStationPressure ?? 0, 0.0001);
-  const pressureDropPercent = formatHeadAllocationPercent(resolvedPressureDrop, segmentTotal);
-  const endStationPercent = formatHeadAllocationPercent(resolvedEndStationPressure, segmentTotal);
+  const pressureDropWeight = Math.max(normalizedPressureDrop ?? 0, 0.0001);
+  const endStationWeight = Math.max(normalizedEndStationPressure ?? 0, 0.0001);
+  const pressureDropPercent = formatHeadAllocationPercent(normalizedPressureDrop, segmentTotal);
+  const endStationPercent = formatHeadAllocationPercent(normalizedEndStationPressure, segmentTotal);
+  const pressureDropShare = segmentTotal > 0 ? pressureDropWeight / segmentTotal : 0;
+  const endStationShare = segmentTotal > 0 ? endStationWeight / segmentTotal : 0;
+  const showPressureDropBandContent = pressureDropShare >= 0.18;
+  const showEndStationBandContent = endStationShare >= 0.18;
+  const hasVisualNormalization =
+    (totalPressureDrop !== null && totalPressureDrop < 0) ||
+    (endStationInPressure !== null && endStationInPressure < 0) ||
+    shouldFallbackToSegmentTotal;
   const visualScale = {
     containerMinHeight: 236,
     stackGap: 20,
@@ -3264,7 +3292,7 @@ function OptimizationHeadAllocationBand({
             style={{
               flex: pressureDropWeight,
               minWidth: 0,
-              padding: `0 ${visualScale.bandPaddingX}px`,
+              padding: `0 ${showPressureDropBandContent ? visualScale.bandPaddingX : 10}px`,
               display: 'flex',
               flexDirection: 'column',
               justifyContent: 'center',
@@ -3272,36 +3300,41 @@ function OptimizationHeadAllocationBand({
               gap: 4,
               background: 'linear-gradient(90deg, #ffb100 0%, #f59e0b 100%)',
               color: '#ffffff',
+              overflow: 'hidden',
             }}
           >
-            <span
-              style={{
-                fontSize: visualScale.bandLabelFontSize,
-                fontWeight: 600,
-                lineHeight: 1.15,
-                letterSpacing: '0.01em',
-                opacity: 0.92,
-              }}
-            >
-              总压降
-            </span>
-            <span
-              style={{
-                minWidth: 0,
-                fontSize: visualScale.bandValueFontSize,
-                fontWeight: 700,
-                lineHeight: 1.1,
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {formatHeadAllocationMetric(resolvedPressureDrop)} m
-            </span>
+            {showPressureDropBandContent ? (
+              <>
+                <span
+                  style={{
+                    fontSize: visualScale.bandLabelFontSize,
+                    fontWeight: 600,
+                    lineHeight: 1.15,
+                    letterSpacing: '0.01em',
+                    opacity: 0.92,
+                  }}
+                >
+                  总压降
+                </span>
+                <span
+                  style={{
+                    minWidth: 0,
+                    fontSize: visualScale.bandValueFontSize,
+                    fontWeight: 700,
+                    lineHeight: 1.1,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {formatHeadAllocationMetric(normalizedPressureDrop)} m
+                </span>
+              </>
+            ) : null}
           </div>
           <div
             style={{
               flex: endStationWeight,
               minWidth: 0,
-              padding: `0 ${visualScale.bandPaddingX}px`,
+              padding: `0 ${showEndStationBandContent ? visualScale.bandPaddingX : 10}px`,
               display: 'flex',
               flexDirection: 'column',
               justifyContent: 'center',
@@ -3309,442 +3342,116 @@ function OptimizationHeadAllocationBand({
               gap: 4,
               background: 'linear-gradient(90deg, #23c7a1 0%, #19b68d 100%)',
               color: '#ffffff',
+              overflow: 'hidden',
             }}
           >
-            <span
-              style={{
-                fontSize: visualScale.bandLabelFontSize,
-                fontWeight: 600,
-                lineHeight: 1.15,
-                letterSpacing: '0.01em',
-                opacity: 0.92,
-                wordBreak: 'break-all',
-              }}
-            >
-              末站进站压头
-            </span>
-            <span
+            {showEndStationBandContent ? (
+              <>
+                <span
+                  style={{
+                    fontSize: visualScale.bandLabelFontSize,
+                    fontWeight: 600,
+                    lineHeight: 1.15,
+                    letterSpacing: '0.01em',
+                    opacity: 0.92,
+                    wordBreak: 'break-all',
+                  }}
+                >
+                  末站进站压头
+                </span>
+                <span
+                  style={{
+                    minWidth: 0,
+                    fontSize: visualScale.bandValueFontSize,
+                    fontWeight: 700,
+                    lineHeight: 1.1,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {formatHeadAllocationMetric(normalizedEndStationPressure)} m
+                </span>
+              </>
+            ) : null}
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            gap: 12,
+          }}
+        >
+          {[
+            {
+              key: 'pressure-drop',
+              label: '总压降',
+              value: `${formatHeadAllocationMetric(normalizedPressureDrop)} m`,
+              percent: pressureDropPercent,
+              accentColor: '#f59e0b',
+              borderColor: 'rgba(245, 158, 11, 0.22)',
+              background: 'linear-gradient(180deg, rgba(255, 250, 235, 0.96) 0%, rgba(255, 243, 205, 0.72) 100%)',
+            },
+            {
+              key: 'end-station',
+              label: '末站进站压头',
+              value: `${formatHeadAllocationMetric(normalizedEndStationPressure)} m`,
+              percent: endStationPercent,
+              accentColor: '#19b68d',
+              borderColor: 'rgba(25, 182, 141, 0.2)',
+              background: 'linear-gradient(180deg, rgba(236, 253, 245, 0.96) 0%, rgba(209, 250, 229, 0.72) 100%)',
+            },
+          ].map((item) => (
+            <div
+              key={item.key}
               style={{
                 minWidth: 0,
-                fontSize: visualScale.bandValueFontSize,
-                fontWeight: 700,
-                lineHeight: 1.1,
-                whiteSpace: 'nowrap',
+                borderRadius: 18,
+                border: `1px solid ${item.borderColor}`,
+                background: item.background,
+                padding: '14px 16px',
+                boxShadow: '0 10px 24px rgba(15, 23, 42, 0.05)',
               }}
             >
-              {formatHeadAllocationMetric(resolvedEndStationPressure)} m
-            </span>
-          </div>
+              <div style={{ color: '#475569', fontSize: 14, fontWeight: 700, lineHeight: 1.3 }}>{item.label}</div>
+              <div
+                style={{
+                  marginTop: 10,
+                  color: item.accentColor,
+                  fontSize: visualScale.ratioValueFontSize,
+                  fontWeight: 700,
+                  lineHeight: 1.1,
+                  wordBreak: 'break-word',
+                }}
+              >
+                {item.value}
+              </div>
+              <div
+                style={{
+                  marginTop: 10,
+                  display: 'flex',
+                  alignItems: 'baseline',
+                  gap: 8,
+                  flexWrap: 'wrap',
+                  color: '#334155',
+                  fontSize: visualScale.ratioLabelFontSize,
+                  lineHeight: 1.35,
+                }}
+              >
+                <span>占比</span>
+                <span style={{ color: item.accentColor, fontSize: 'clamp(18px, 1.7vw, 26px)', fontWeight: 700 }}>{item.percent}</span>
+              </div>
+            </div>
+          ))}
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center' }}>
-          <div
-            style={{
-              flex: pressureDropWeight,
-              minWidth: 0,
-              paddingRight: 14,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12,
-            }}
-          >
-            <div style={{ whiteSpace: 'nowrap', color: '#0f172a', fontSize: visualScale.ratioLabelFontSize, lineHeight: 1.2 }}>
-              <span>占比 </span>
-              <span style={{ color: '#f59e0b', fontSize: visualScale.ratioValueFontSize, fontWeight: 700 }}>
-                {pressureDropPercent}
-              </span>
-            </div>
-            <div style={{ flex: 1, minWidth: 40, borderTop: '2px dotted rgba(245, 158, 11, 0.55)' }} />
-          </div>
-          <div
-            style={{
-              flex: endStationWeight,
-              minWidth: 0,
-              paddingLeft: 14,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12,
-            }}
-          >
-            <div style={{ whiteSpace: 'nowrap', color: '#0f172a', fontSize: visualScale.ratioLabelFontSize, lineHeight: 1.2 }}>
-              <span>占比 </span>
-              <span style={{ color: '#19b68d', fontSize: visualScale.ratioValueFontSize, fontWeight: 700 }}>
-                {endStationPercent}
-              </span>
-            </div>
-            <div style={{ flex: 1, minWidth: 40, borderTop: '2px dotted rgba(25, 182, 141, 0.45)' }} />
-          </div>
-        </div>
+        {hasVisualNormalization ? (
+          <Text type="secondary" style={{ fontSize: 12, lineHeight: 1.7 }}>
+            检测到原始结果存在负压降或总扬程不闭合，图中已按分配幅值进行规范化展示。
+          </Text>
+        ) : null}
       </div>
     </div>
-  );
-}
-
-function pickOptimizationExpertTopic(question: string): OptimizationExpertTopic {
-  const normalized = question.trim().toLowerCase();
-  if (!normalized) {
-    return 'recommendation';
-  }
-  if (
-    normalized.includes('风险') ||
-    normalized.includes('隐患') ||
-    normalized.includes('问题') ||
-    normalized.includes('约束')
-  ) {
-    return 'risk';
-  }
-  if (
-    normalized.includes('能耗') ||
-    normalized.includes('成本') ||
-    normalized.includes('经济') ||
-    normalized.includes('省电') ||
-    normalized.includes('费用')
-  ) {
-    return 'economics';
-  }
-  if (
-    normalized.includes('执行') ||
-    normalized.includes('操作') ||
-    normalized.includes('调度') ||
-    normalized.includes('怎么做') ||
-    normalized.includes('如何做')
-  ) {
-    return 'operation';
-  }
-  if (
-    normalized.includes('流量') ||
-    normalized.includes('工况') ||
-    normalized.includes('变化') ||
-    normalized.includes('波动') ||
-    normalized.includes('上涨') ||
-    normalized.includes('下降')
-  ) {
-    return 'scenario';
-  }
-  if (
-    normalized.includes('为什么') ||
-    normalized.includes('推荐') ||
-    normalized.includes('理由') ||
-    normalized.includes('依据')
-  ) {
-    return 'recommendation';
-  }
-  return 'general';
-}
-
-function buildOptimizationExpertReply(params: {
-  question: string;
-  projectName: string;
-  recommendedCombination: string;
-  feasibilityText: string;
-  isFeasible: boolean | null;
-  recommendationText: string;
-  currentCondition: string;
-  endStationInPressure: number | null;
-  totalHead: number | null;
-  totalPressureDrop: number | null;
-  totalEnergyConsumption: number | null;
-  totalCost: number | null;
-  riskItems: DynamicReportResponsePayload['risks'];
-  suggestionItems: DynamicReportResponsePayload['suggestions'];
-}): OptimizationExpertReply {
-  const {
-    question,
-    projectName,
-    recommendedCombination,
-    feasibilityText,
-    isFeasible,
-    recommendationText,
-    currentCondition,
-    endStationInPressure,
-    totalHead,
-    totalPressureDrop,
-    totalEnergyConsumption,
-    totalCost,
-    riskItems,
-    suggestionItems,
-  } = params;
-
-  const topRisk = riskItems[0];
-  const topSuggestion = suggestionItems[0];
-  const topEvidence = [
-    `推荐泵组：${recommendedCombination}`,
-    `末站进站压头：${formatValue(endStationInPressure, 'm')}`,
-    `总扬程：${formatValue(totalHead, 'm')}`,
-    `总压降：${formatValue(totalPressureDrop, 'm')}`,
-    `年能耗：${formatValue(totalEnergyConsumption, 'kWh')}`,
-    `总成本：${formatValue(totalCost, '元')}`,
-    `当前判定：${feasibilityText}`,
-  ];
-
-  const topic = pickOptimizationExpertTopic(question);
-
-  if (topic === 'risk') {
-    return {
-      topic,
-      topicLabel: '风险判断',
-      headline: `当前方案最需要关注的风险`,
-      paragraphs: [
-        topRisk
-          ? `对 ${projectName} 这套 ${recommendedCombination} 方案，当前最直接的风险点是“${topRisk.reason}”。这说明问题不在报告表达，而在当前返回结果本身已经暴露出边界。`
-          : `当前返回结果没有给出明显高风险项，但这不等于完全没有风险。对泵站优化来说，末站进站压头、总压降和长期能耗仍然是持续跟踪重点。`,
-        isFeasible === true
-          ? `从水力判定看，当前方案是可行的，所以风险更偏向“裕度够不够”和“长期运行代价高不高”，而不是立即不可用。`
-          : `当前方案没有形成稳定的可行性结论，说明风险已经从“优化空间”上升到了“是否能稳定执行”的层面。`,
-        topSuggestion
-          ? `优先动作建议直接看 ${topSuggestion.action}。这条建议最接近当前报告能给出的落地动作。`
-          : `如果现场需要先做一件事，优先复核末站压力边界和当前推荐泵组的稳定性。`,
-      ],
-      evidence: topRisk
-        ? [`风险对象：${topRisk.target || projectName}`, `风险等级：${topRisk.level || '中'}`, ...topEvidence]
-        : topEvidence,
-      caveat: '当前接口没有返回完整备选方案清单，所以这里判断的是“当前推荐方案的风险”，不是所有方案之间的全量风险排序。',
-    };
-  }
-
-  if (topic === 'economics') {
-    const economicJudgement =
-      totalEnergyConsumption !== null && totalEnergyConsumption >= 1000000
-        ? '年能耗已经偏高，说明这套方案在长期运行下的节能压力不小。'
-        : totalCost !== null && totalCost >= 800000
-          ? '总成本压力偏大，方案虽然可能可行，但未必是最舒服的经济解。'
-          : '从当前结果看，这套方案在满足运行要求的同时，经济性处于可接受区间。';
-
-    return {
-      topic,
-      topicLabel: '经济性判断',
-      headline: `这套方案从能耗和成本上值不值得用`,
-      paragraphs: [
-        `${recommendedCombination} 当前对应的年能耗是 ${formatValue(totalEnergyConsumption, 'kWh')}，总成本是 ${formatValue(totalCost, '元')}。${economicJudgement}`,
-        `如果你的目标更偏向“先保可行，再看经济性”，那现在这套方案是可以继续推进的；如果你的目标是“极致省电/极致省钱”，那还需要更多候选方案结果做横向比较。`,
-        recommendationText !== '当前数据不足以支持进一步判断'
-          ? `系统原始推荐说明也给出了依据：${recommendationText}`
-          : '当前接口返回了经济性结果，但没有给出与其他候选组合的差值。',
-      ],
-      evidence: topEvidence,
-      caveat: '当前接口只返回推荐方案本身，没有返回第二名、第三名方案，所以这里可以判断“贵不贵、耗不耗”，但不能严格证明“它一定最省”。',
-    };
-  }
-
-  if (topic === 'operation') {
-    return {
-      topic,
-      topicLabel: '执行建议',
-      headline: `现场执行这套方案时，优先盯住什么`,
-      paragraphs: [
-        `现场执行的核心不是重复“推荐 ${recommendedCombination}”，而是确认它在当前工况 ${currentCondition} 下能否稳定保持 ${feasibilityText}。`,
-        topSuggestion
-          ? `当前最直接的执行动作是：${topSuggestion.action}。这样做的目的，是 ${topSuggestion.expected}。`
-          : `建议先按当前推荐泵组组织运行，并持续跟踪末站进站压头、总压降和能耗三项关键指标。`,
-        endStationInPressure !== null && endStationInPressure < 10
-          ? '因为当前末站进站压头偏低，现场执行时要优先看压力余量，不要只盯能耗。'
-          : '因为当前末站压力还有一定空间，现场执行时可以同时兼顾压力和能耗两个方向。',
-      ],
-      evidence: topSuggestion
-        ? [`建议优先级：${topSuggestion.priority || 'medium'}`, `建议对象：${topSuggestion.target || projectName}`, ...topEvidence]
-        : topEvidence,
-      caveat: '当前报告能给的是“执行重点”和“复核顺序”，不是 DCS/PLC 层面的自动调度指令。',
-    };
-  }
-
-  if (topic === 'scenario') {
-    return {
-      topic,
-      topicLabel: '工况变化判断',
-      headline: `如果工况变化，当前方案最先受什么影响`,
-      paragraphs: [
-        `这套 ${recommendedCombination} 方案的结论，是建立在当前工况 ${currentCondition} 上的。工况一旦变化，最先要看的不是标题变没变，而是末站进站压头和总压降会不会把可行性边界顶穿。`,
-        endStationInPressure !== null && endStationInPressure < 10
-          ? `当前末站进站压头只有 ${formatValue(endStationInPressure, 'm')}，裕度不算宽。如果流量继续上升、入口条件变差或介质变黏，方案更容易从“可行”滑向“受限”。`
-          : `当前末站进站压头是 ${formatValue(endStationInPressure, 'm')}，还有一定缓冲空间。工况波动时，先观察压力是否明显回落，再决定要不要复核泵组。`,
-        `如果你真正关心“流量上升 10% 后该不该切方案”，需要重新跑一次优化计算；当前报告可以给你监控重点，但不能替代重新计算。`,
-      ],
-      evidence: topRisk ? [`当前最高风险：${topRisk.reason}`, ...topEvidence] : topEvidence,
-      caveat: '当前接口没有返回扰动工况下的新优化结果，所以这里给的是专家复核路径，不是新的优化结论。',
-    };
-  }
-
-  if (topic === 'general') {
-    return {
-      topic,
-      topicLabel: '综合判断',
-      headline: `当前报告能回答的核心问题`,
-      paragraphs: [
-        `基于当前优化结果，这份报告最能确定的是三件事：推荐泵组是 ${recommendedCombination}，当前水力判定是 ${feasibilityText}，以及这套方案对应的能耗和成本水平。`,
-        `如果你更关心“为什么推荐”“风险在哪”“现场怎么执行”“工况变化怎么办”，可以直接用上面的快捷追问继续聚焦。`,
-        `报告这里不会脱离当前优化结果单独编故事，所有回答都只围绕这份报告的真实数据展开。`,
-      ],
-      evidence: topEvidence,
-      caveat: '当前接口没有完整候选方案对比数据，所以智能报告更适合做“解释当前方案”，不适合硬编“所有方案全排序”。',
-    };
-  }
-
-  return {
-    topic: 'recommendation',
-    topicLabel: '推荐理由',
-    headline: `为什么当前推荐 ${recommendedCombination}`,
-    paragraphs: [
-      `${recommendedCombination} 被放在当前报告的首位，是因为这套方案在当前工况 ${currentCondition} 下拿到了可执行的优化结果。`,
-      recommendationText !== '当前数据不足以支持进一步判断'
-        ? `系统原始推荐说明是：${recommendationText}`
-        : `从返回结果看，当前方案对应末站进站压头 ${formatValue(endStationInPressure, 'm')}、总扬程 ${formatValue(totalHead, 'm')}、年能耗 ${formatValue(totalEnergyConsumption, 'kWh')}、总成本 ${formatValue(totalCost, '元')}。这些都是当前推荐成立的直接依据。`,
-      isFeasible === true
-        ? '更重要的是，当前方案的水力判定是可行，这意味着它不是纸面上好看，而是具备执行基础。'
-        : '不过当前方案的可行性并不稳，所以这个推荐更像“当前最接近目标的方案”，不是可以无条件直接执行的最终结论。',
-    ],
-    evidence: topEvidence,
-    caveat: '当前接口没有返回全部候选组合的明细排序，因此这里能说明“它为什么值得优先看”，但不能伪装成已经完成了所有备选方案的严格排名。',
-  };
-}
-
-function OptimizationReportFollowUpCard(props: {
-  projectName: string;
-  recommendedCombination: string;
-  feasibilityText: string;
-  isFeasible: boolean | null;
-  recommendationText: string;
-  currentCondition: string;
-  endStationInPressure: number | null;
-  totalHead: number | null;
-  totalPressureDrop: number | null;
-  totalEnergyConsumption: number | null;
-  totalCost: number | null;
-  riskItems: DynamicReportResponsePayload['risks'];
-  suggestionItems: DynamicReportResponsePayload['suggestions'];
-}) {
-  const [draftQuestion, setDraftQuestion] = useState('');
-  const [submittedQuestion, setSubmittedQuestion] = useState(OPTIMIZATION_REPORT_QUICK_QUESTIONS[0]);
-
-  const activeQuestion = submittedQuestion.trim() || OPTIMIZATION_REPORT_QUICK_QUESTIONS[0];
-  const reply = buildOptimizationExpertReply({
-    question: activeQuestion,
-    projectName: props.projectName,
-    recommendedCombination: props.recommendedCombination,
-    feasibilityText: props.feasibilityText,
-    isFeasible: props.isFeasible,
-    recommendationText: props.recommendationText,
-    currentCondition: props.currentCondition,
-    endStationInPressure: props.endStationInPressure,
-    totalHead: props.totalHead,
-    totalPressureDrop: props.totalPressureDrop,
-    totalEnergyConsumption: props.totalEnergyConsumption,
-    totalCost: props.totalCost,
-    riskItems: props.riskItems,
-    suggestionItems: props.suggestionItems,
-  });
-
-  return (
-    <Card size="small" title="报告追问" bodyStyle={{ padding: 20 }}>
-      <Space direction="vertical" size={16} style={{ width: '100%' }}>
-        <div
-          style={{
-            borderRadius: 16,
-            padding: '14px 16px',
-            border: '1px solid rgba(191, 219, 254, 0.95)',
-            background: 'linear-gradient(180deg, rgba(239, 246, 255, 0.96) 0%, rgba(255,255,255,1) 100%)',
-          }}
-        >
-          <Text strong style={{ color: '#1d4ed8' }}>
-            围绕当前泵站优化结果追问
-          </Text>
-          <Paragraph style={{ margin: '8px 0 0', color: '#334155', lineHeight: 1.8 }}>
-            这里只回答当前这份优化报告里的事实，不会跳成第二个聊天助手。你可以点快捷问题，也可以自己输入一句追问。
-          </Paragraph>
-        </div>
-
-        <Space wrap size={[8, 8]}>
-          {OPTIMIZATION_REPORT_QUICK_QUESTIONS.map((item) => (
-            <Button
-              key={item}
-              size="small"
-              type={activeQuestion === item ? 'primary' : 'default'}
-              onClick={() => {
-                setDraftQuestion(item);
-                setSubmittedQuestion(item);
-              }}
-            >
-              {item}
-            </Button>
-          ))}
-        </Space>
-
-        <Input.Search
-          value={draftQuestion}
-          placeholder="例如：如果流量继续上涨，当前方案还稳吗？"
-          enterButton="开始解读"
-          onChange={(event) => setDraftQuestion(event.target.value)}
-          onSearch={(value) => {
-            const normalized = value.trim();
-            if (!normalized) {
-              setSubmittedQuestion(OPTIMIZATION_REPORT_QUICK_QUESTIONS[0]);
-              setDraftQuestion('');
-              return;
-            }
-            setSubmittedQuestion(normalized);
-            setDraftQuestion(normalized);
-          }}
-        />
-
-        <div
-          style={{
-            borderRadius: 20,
-            padding: 18,
-            border: '1px solid rgba(226, 232, 240, 0.95)',
-            background: 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(248,250,252,1) 100%)',
-            boxShadow: '0 10px 24px rgba(15, 23, 42, 0.05)',
-          }}
-        >
-          <Space direction="vertical" size={12} style={{ width: '100%' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-              <div>
-                <Text type="secondary">当前追问</Text>
-                <div style={{ marginTop: 6, color: '#0f172a', fontSize: 20, fontWeight: 700, lineHeight: 1.35 }}>
-                  {reply.headline}
-                </div>
-              </div>
-              <Tag color="blue" style={{ marginInlineEnd: 0, alignSelf: 'flex-start' }}>
-                {reply.topicLabel}
-              </Tag>
-            </div>
-
-            {reply.paragraphs.map((item, index) => (
-              <Paragraph key={`${reply.topic}-${index}`} style={{ margin: 0, color: '#334155', lineHeight: 1.9 }}>
-                {item}
-              </Paragraph>
-            ))}
-
-            <div
-              style={{
-                borderRadius: 16,
-                padding: '12px 14px',
-                border: '1px solid rgba(226, 232, 240, 0.95)',
-                background: 'rgba(248, 250, 252, 0.92)',
-              }}
-            >
-              <Text strong style={{ display: 'block', color: '#0f172a', marginBottom: 10 }}>
-                判断依据
-              </Text>
-              <Space wrap size={[8, 8]}>
-                {reply.evidence.map((item) => (
-                  <Tag key={item} color="default" style={{ paddingInline: 10, paddingBlock: 4, borderRadius: 999 }}>
-                    {item}
-                  </Tag>
-                ))}
-              </Space>
-            </div>
-
-            {reply.caveat ? (
-              <Alert
-                type="info"
-                showIcon
-                message="说明"
-                description={reply.caveat}
-              />
-            ) : null}
-          </Space>
-        </div>
-      </Space>
-    </Card>
   );
 }
 
@@ -4913,7 +4620,6 @@ function renderOptimizationAiReportContentV2(
     isFeasible === null ? '当前数据不足以支持进一步判断' : isFeasible ? '可行' : '不可行';
   const recommendationText =
     formatValue(pickFirstValue(outputSources, ['description', 'recommendation', 'remark'])) || '当前数据不足以支持进一步判断';
-  const currentCondition = buildOptimizationCurrentCondition(snapshot.input);
   const startAltitudeText = formatValue(pickFirstValue(inputSources, ['startAltitude', 'startElevation']), 'm');
   const endAltitudeText = formatValue(pickFirstValue(inputSources, ['endAltitude', 'endElevation']), 'm');
   const schemeExplainFallbackItems = [
@@ -5207,22 +4913,6 @@ function renderOptimizationAiReportContentV2(
           </Col>
         </Row>
       </Card>
-
-      <OptimizationReportFollowUpCard
-        projectName={projectName}
-        recommendedCombination={recommendedCombination}
-        feasibilityText={feasibilityText}
-        isFeasible={isFeasible}
-        recommendationText={recommendationText}
-        currentCondition={currentCondition}
-        endStationInPressure={endStationInPressure}
-        totalHead={totalHead}
-        totalPressureDrop={totalPressureDrop}
-        totalEnergyConsumption={totalEnergyConsumption}
-        totalCost={totalCost}
-        riskItems={displayRiskItems}
-        suggestionItems={displaySuggestionItems}
-      />
 
       <Row gutter={[16, 16]}>
         <Col xs={24} xl={12}>
@@ -5689,25 +5379,16 @@ function renderSensitivityAiReportContentV2(
 ) {
   const context = buildSensitivityAnalysisContext(snapshot);
   const {
-    inputPayload,
-    inputBase,
-    inputSources,
-    outputPayload,
-    baseResult,
     variableResults,
     rankingRows,
     impactRankingRows,
-    primaryVariableResult,
     topVariableName,
     topRankNumber,
     sensitivityCoefficient,
     maxImpactPercent,
     pointRows,
-    firstPoint,
-    lastPoint,
     flowRegimeChanged,
     minEndStationPressure,
-    baseEndStationPressure,
     baseResultStatus,
     riskLevel,
     sensitivityImpactLevel,

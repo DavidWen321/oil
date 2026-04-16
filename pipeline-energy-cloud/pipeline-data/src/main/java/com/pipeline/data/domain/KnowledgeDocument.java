@@ -5,6 +5,7 @@ import java.io.Serializable;
 import java.time.LocalDateTime;
 
 import com.baomidou.mybatisplus.annotation.FieldFill;
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
@@ -71,6 +72,7 @@ public class KnowledgeDocument implements Serializable {
 
     private Integer progressPercent;
 
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String failureReason;
 
     private LocalDateTime lastIngestTime;

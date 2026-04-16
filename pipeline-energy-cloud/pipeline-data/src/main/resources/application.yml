@@ -43,7 +43,7 @@ knowledge:
     internal-token: ${PIPELINE_INTERNAL_SERVICE_TOKEN:}
     internal-key: ${PIPELINE_INTERNAL_API_KEY:}
     connect-timeout-ms: ${PIPELINE_KB_CONNECT_TIMEOUT_MS:5000}
-    read-timeout-ms: ${PIPELINE_KB_READ_TIMEOUT_MS:120000}
+    read-timeout-ms: ${PIPELINE_KB_READ_TIMEOUT_MS:300000}
     legacy-base-path: ${PIPELINE_KB_LEGACY_BASE_PATH:}
     minio:
       endpoint: ${PIPELINE_KB_MINIO_ENDPOINT:http://127.0.0.1:9000}
