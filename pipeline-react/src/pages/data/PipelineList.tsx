@@ -211,10 +211,10 @@ export default function PipelineList() {
     {
       title: nowrapTitle('所属项目'),
       dataIndex: 'proId',
-      width: 180,
+      width: 240,
       align: 'center',
       render: (proId?: number) => (
-        <span style={{ whiteSpace: 'nowrap', color: 'var(--text-secondary)' }}>
+        <span className={styles.tableWrapText}>
           {getProjectName(proId)}
         </span>
       ),
@@ -222,10 +222,10 @@ export default function PipelineList() {
     {
       title: nowrapTitle('管道名称'),
       dataIndex: 'name',
-      width: 220,
+      width: 260,
       align: 'center',
       render: (text: string) => (
-        <span style={{ fontWeight: 500, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+        <span className={`${styles.tableWrapText} ${styles.tableWrapTextStrong}`}>
           {text}
         </span>
       ),

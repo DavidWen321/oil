@@ -159,7 +159,7 @@ export default function ProjectList() {
       title: nowrapTitle('项目名称'),
       dataIndex: 'name',
       key: 'name',
-      width: 240,
+      width: 300,
       align: 'center',
       render: (text: string) => (
         <span
@@ -202,10 +202,10 @@ export default function ProjectList() {
     {
       title: nowrapTitle('操作'),
       key: 'action',
-      width: 240,
+      width: 300,
       align: 'center',
       render: (_, record) => (
-        <Space size="small" wrap>
+        <Space size="small" className={styles.projectActionGroup}>
           <Button
             type="text"
             size="small"

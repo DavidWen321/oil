@@ -119,7 +119,8 @@ export default function MainLayout() {
   }, [mobileMenuOpen]);
 
   const handleMenuClick: MenuProps['onClick'] = ({ key }) => {
-    navigate(key);
+    const targetPath = String(key).replace('/calculation/', '/analysis/');
+    navigate(targetPath);
     if (isMobile) {
       setMobileMenuOpen(false);
     }
@@ -157,13 +158,16 @@ export default function MainLayout() {
   const getSelectedKeys = () => {
     const { pathname } = location;
     if (pathname.startsWith('/ai/report')) return ['/ai/report'];
+    if (pathname.startsWith('/analysis/')) {
+      return [pathname.replace('/analysis/', '/calculation/')];
+    }
     return [pathname];
   };
 
   const getOpenKeys = () => {
     const { pathname } = location;
     if (pathname.startsWith('/data')) return ['data'];
-    if (pathname.startsWith('/calculation')) return ['calculation'];
+    if (pathname.startsWith('/analysis') || pathname.startsWith('/calculation')) return ['calculation'];
     if (pathname.startsWith('/ai')) return ['ai'];
     return [];
   };

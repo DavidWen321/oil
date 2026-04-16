@@ -19,6 +19,7 @@ import { calculationApi, oilPropertyApi, pipelineApi, projectApi, pumpStationApi
 import type { OilProperty, OptimizationParams, OptimizationResult, Pipeline, Project, PumpStation } from '../../types';
 import AnimatedPage from '../../components/common/AnimatedPage';
 import { useCalculationLinkStore } from '../../stores/calculationLinkStore';
+import { convertPressureMpaToHeadMeters, convertViscosityMm2PerSecToM2PerSec } from '../../utils/calculationUnits';
 import styles from './Optimization.module.css';
 
 const FORM_ITEM_SPAN = { xs: 24, md: 12, xl: 8 } as const;
@@ -50,6 +51,8 @@ const INITIAL_VALUES: OptimizationParams = {
 
 export default function Optimization() {
   const [form] = Form.useForm<OptimizationFormValues>();
+  const selectedStationId = Form.useWatch('pumpStationId', form);
+  const watchedDensity = Form.useWatch('density', form);
   const [loading, setLoading] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
@@ -109,6 +112,20 @@ export default function Optimization() {
     }
   }, [form, loadPipelines, selectedProjectId]);
 
+  useEffect(() => {
+    if (!selectedStationId) {
+      return;
+    }
+
+    const station = stations.find((item) => item.id === selectedStationId);
+    const nextInletPressure = convertPressureMpaToHeadMeters(station?.comePower, Number(watchedDensity));
+    if (nextInletPressure === undefined || nextInletPressure === form.getFieldValue('inletPressure')) {
+      return;
+    }
+
+    form.setFieldValue('inletPressure', nextInletPressure);
+  }, [form, selectedStationId, stations, watchedDensity]);
+
   const handlePipelineChange = (pipelineId: number) => {
     const pipeline = pipelines.find((item) => item.id === pipelineId);
     if (!pipeline) return;
@@ -132,7 +149,7 @@ export default function Optimization() {
     form.setFieldsValue({
       oilId,
       density: oil.density,
-      viscosity: oil.viscosity,
+      viscosity: convertViscosityMm2PerSecToM2PerSec(oil.viscosity) ?? oil.viscosity,
     });
     setResult(null);
   };
@@ -141,14 +158,19 @@ export default function Optimization() {
     const station = stations.find((item) => item.id === stationId);
     if (!station) return;
 
-    form.setFieldsValue({
+    const nextValues: Partial<OptimizationFormValues> = {
       pumpStationId: stationId,
-      inletPressure: station.comePower,
       pump480Head: station.zmi480Lift,
       pump375Head: station.zmi375Lift,
       pumpEfficiency: station.pumpEfficiency / 100,
       motorEfficiency: station.electricEfficiency / 100,
-    });
+    };
+    const nextInletPressure = convertPressureMpaToHeadMeters(station.comePower, Number(form.getFieldValue('density')));
+    if (nextInletPressure !== undefined) {
+      nextValues.inletPressure = nextInletPressure;
+    }
+
+    form.setFieldsValue(nextValues);
     setResult(null);
   };
 

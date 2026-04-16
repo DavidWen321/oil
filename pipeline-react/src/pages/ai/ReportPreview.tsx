@@ -1075,13 +1075,11 @@ function buildOptimizationComparisonSmartPrompt(snapshot: OptimizationComparison
 
 function buildSensitivityUserPrompt() {
   return [
-    '请基于真实敏感性分析数据生成敏感性分析智能报告，并严格按以下结构输出：',
-    '1. 报告标题。',
-    '2. 报告说明，说明本报告基于当前项目敏感性分析计算结果自动生成，重点评估不同变化比例下压力、摩阻损失及流态变化情况，并识别关键敏感变量。',
-    '3. 基本信息，包含项目名称、分析类型、敏感变量类型、基准工况、生成时间。',
-    '4. 核心结果卡片，包含基准结果、最敏感变量、敏感系数、最大影响幅度、影响排名第1名、是否存在明显波动风险。',
-    '5. 图表分析区，至少包含敏感系数仪表盘图（按变量分别展示并按影响强弱排序）、变化比例结果趋势图、最大影响幅度对比图。',
-    '6. 智能分析正文，固定输出结果摘要、关键变化分析、风险识别、运行建议四块内容。',
+    '请基于真实敏感性分析数据生成敏感性分析智能报告。',
+    '允许根据当前数据特点动态组织分析结构，不要写成固定模板，也不要只做参数拼接。',
+    '优先解释最敏感变量、基准工况、变化趋势、区间边界、末站压力极值、摩阻变化和流态切换。',
+    '当某类风险没有出现时，应明确说明“当前区间整体可控”，而不是硬凑风险条目。',
+    '如果存在明显高风险区间，要指出触发区间、触发指标和下一步最应该复核的内容。',
     '只能依据输入数据分析，不允许编造不存在的数据；若数据不足，请明确说明当前数据不足以支持进一步判断。',
     `最核心的一句话请围绕这层意思展开：${SENSITIVITY_REPORT_CORE_SENTENCE}`,
   ].join('');
@@ -1578,6 +1576,33 @@ function renderSummaryList(items: string[]) {
   );
 }
 
+function renderNarrativeLineList(lines: Array<string | null | undefined>, dotColor: string) {
+  const normalizedLines = lines.map((item) => String(item || '').trim()).filter(Boolean);
+  if (!normalizedLines.length) {
+    return null;
+  }
+
+  return (
+    <Space direction="vertical" size={10} style={{ width: '100%', marginTop: 14 }}>
+      {normalizedLines.map((line, index) => (
+        <div key={`${index}-${line}`} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+          <span
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: '50%',
+              background: dotColor,
+              marginTop: 8,
+              flex: '0 0 auto',
+            }}
+          />
+          <Text style={{ color: '#475569', lineHeight: 1.8 }}>{line}</Text>
+        </div>
+      ))}
+    </Space>
+  );
+}
+
 function getHydraulicRiskItems(report: DynamicReportResponsePayload) {
   const skillItems = report.aiAnalysis?.riskJudgement ?? [];
   return skillItems.length ? skillItems : report.risks;
@@ -1690,29 +1715,43 @@ function HydraulicCompactFieldTable({
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-        gap: 0,
-        borderRadius: 18,
-        overflow: 'hidden',
-        border: '1px solid rgba(226, 232, 240, 0.95)',
-        background: '#fff',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+        gap: 12,
       }}
     >
-      {visibleItems.map((item, index) => (
-        <div
-          key={`${item.label}-${item.value}`}
-          style={{
-            padding: '14px 16px',
-            borderBottom: '1px solid rgba(226, 232, 240, 0.9)',
-            background: index % 2 === 0 ? 'rgba(248, 250, 252, 0.88)' : 'rgba(255, 255, 255, 0.98)',
-          }}
-        >
-          <div style={{ color: '#64748b', fontSize: 12, fontWeight: 600, marginBottom: 8 }}>{item.label}</div>
-          <div style={{ color: '#0f172a', fontSize: 15, fontWeight: 600, lineHeight: 1.7, wordBreak: 'break-word' }}>
-            {item.value}
+      {visibleItems.map((item, index) => {
+        const accent = hydraulicMetricAccentPalette[index % hydraulicMetricAccentPalette.length];
+        return (
+          <div
+            key={`${item.label}-${item.value}`}
+            style={{
+              minWidth: 0,
+              borderRadius: 18,
+              padding: '16px 18px',
+              border: '1px solid rgba(226, 232, 240, 0.95)',
+              borderTop: `3px solid ${accent}`,
+              background: `linear-gradient(180deg, rgba(255,255,255,0.98) 0%, ${accent}08 100%)`,
+              boxShadow: '0 10px 24px rgba(15, 23, 42, 0.05)',
+            }}
+          >
+            <div style={{ color: '#64748b', fontSize: 12, fontWeight: 600, lineHeight: 1.5 }}>{item.label}</div>
+            <div
+              style={{
+                marginTop: 10,
+                color: '#0f172a',
+                fontSize: 'clamp(16px, 1.7vw, 22px)',
+                fontWeight: 700,
+                lineHeight: 1.45,
+                whiteSpace: 'normal',
+                wordBreak: 'break-word',
+                overflowWrap: 'anywhere',
+              }}
+            >
+              {item.value}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -1794,6 +1833,58 @@ function getHydraulicSuggestionPriorityLabel(priority?: string | null) {
   return String(priority ?? '中优先级') || '中优先级';
 }
 
+function buildHydraulicPressureDeltaText(fromLabel: string, toLabel: string, delta: number | null) {
+  if (delta === null) {
+    return null;
+  }
+
+  if (Math.abs(delta) < 1) {
+    return `${fromLabel}到${toLabel}基本持平`;
+  }
+
+  return delta > 0
+    ? `${toLabel}较${fromLabel}抬升 ${formatValue(Math.abs(delta), 'm')}`
+    : `${toLabel}较${fromLabel}回落 ${formatValue(Math.abs(delta), 'm')}`;
+}
+
+function buildHydraulicPressureProfileText(firstSegmentDelta: number | null, secondSegmentDelta: number | null) {
+  if (firstSegmentDelta === null || secondSegmentDelta === null) {
+    return '当前数据不足以支持完整的压头变化判断。';
+  }
+
+  if (Math.abs(firstSegmentDelta) < 1 && Math.abs(secondSegmentDelta) < 1) {
+    return '整体压头曲线接近平直，沿线变化不明显。';
+  }
+
+  if (firstSegmentDelta > 0 && secondSegmentDelta < 0) {
+    return Math.abs(secondSegmentDelta) > Math.abs(firstSegmentDelta) * 1.5
+      ? '整体压头曲线呈“先增压、后快速回落”的特征。'
+      : '整体压头曲线呈“先升后降”的特征。';
+  }
+
+  if (firstSegmentDelta < 0 && secondSegmentDelta > 0) {
+    return '整体压头曲线呈“先回落、后回升”的特征。';
+  }
+
+  if (firstSegmentDelta > 0 && secondSegmentDelta > 0) {
+    return '整体压头曲线呈连续抬升特征。';
+  }
+
+  if (firstSegmentDelta < 0 && secondSegmentDelta < 0) {
+    return '整体压头曲线呈连续回落特征。';
+  }
+
+  if (firstSegmentDelta > 0) {
+    return '整体压头曲线在首站出站后仍保持抬升趋势。';
+  }
+
+  if (secondSegmentDelta < 0) {
+    return '整体压头曲线在沿线输送段出现回落。';
+  }
+
+  return '当前压头曲线变化趋势较弱，需要结合更多工况进一步判断。';
+}
+
 function buildHydraulicPressureInsightSections(params: {
   firstStationOutPressure: number | null;
   endStationPressure: number | null;
@@ -1801,40 +1892,95 @@ function buildHydraulicPressureInsightSections(params: {
   frictionRatio: number | null;
 }) {
   const { firstStationOutPressure, endStationPressure, inletPressure, frictionRatio } = params;
-  const pressureProfileText =
-    inletPressure !== null && firstStationOutPressure !== null && endStationPressure !== null
-      ? firstStationOutPressure >= inletPressure && firstStationOutPressure >= endStationPressure
-        ? '整体压头曲线呈“先升后降”的变化特征。'
-        : endStationPressure >= firstStationOutPressure
-          ? '整体压头曲线呈持续抬升的变化特征。'
-          : '整体压头曲线呈逐步回落的变化特征。'
-      : '当前数据不足以支持进一步判断。';
+  const pressurePoints = [
+    inletPressure !== null ? { label: '首站进站压头', value: inletPressure } : null,
+    firstStationOutPressure !== null ? { label: '首站出站压头', value: firstStationOutPressure } : null,
+    endStationPressure !== null ? { label: '末站进站压头', value: endStationPressure } : null,
+  ].filter((item): item is { label: string; value: number } => Boolean(item));
+
+  const firstSegmentDelta =
+    inletPressure !== null && firstStationOutPressure !== null ? Number((firstStationOutPressure - inletPressure).toFixed(2)) : null;
+  const secondSegmentDelta =
+    firstStationOutPressure !== null && endStationPressure !== null ? Number((endStationPressure - firstStationOutPressure).toFixed(2)) : null;
+  const terminalDrop =
+    firstStationOutPressure !== null && endStationPressure !== null ? Number((firstStationOutPressure - endStationPressure).toFixed(2)) : null;
+  const totalSpan =
+    pressurePoints.length >= 2
+      ? Number((Math.max(...pressurePoints.map((item) => item.value)) - Math.min(...pressurePoints.map((item) => item.value))).toFixed(2))
+      : null;
+  const peakPoint = pressurePoints.length
+    ? pressurePoints.reduce((current, item) => (item.value > current.value ? item : current))
+    : null;
+  const troughPoint = pressurePoints.length
+    ? pressurePoints.reduce((current, item) => (item.value < current.value ? item : current))
+    : null;
+  const attenuationRatio =
+    terminalDrop !== null && firstStationOutPressure !== null && Math.abs(firstStationOutPressure) > 0
+      ? Number((terminalDrop / Math.abs(firstStationOutPressure)).toFixed(4))
+      : null;
+  const frictionShareText = frictionRatio !== null ? `${Number((frictionRatio * 100).toFixed(1))}%` : null;
+  const pressureProfileText = buildHydraulicPressureProfileText(firstSegmentDelta, secondSegmentDelta);
+  const firstSegmentText = buildHydraulicPressureDeltaText('首站进站压头', '首站出站压头', firstSegmentDelta);
+  const secondSegmentText = buildHydraulicPressureDeltaText('首站出站压头', '末站进站压头', secondSegmentDelta);
 
   const phenomenonParts = [
-    firstStationOutPressure !== null ? '首站出站压头达到峰值' : null,
-    endStationPressure !== null ? `末站进站压头为 ${formatValue(endStationPressure, 'm')}` : null,
+    peakPoint && troughPoint && totalSpan !== null
+      ? `压头峰值出现在${peakPoint.label}（${formatValue(peakPoint.value, 'm')}），谷值出现在${troughPoint.label}（${formatValue(troughPoint.value, 'm')}），全程波动幅度约 ${formatValue(totalSpan, 'm')}`
+      : null,
+    firstSegmentText,
+    secondSegmentText,
+    endStationPressure !== null && endStationPressure < 0 ? '末站进站压头已经跌破 0' : null,
     pressureProfileText,
   ].filter((item): item is string => Boolean(item));
 
-  const runningJudgement =
-    endStationPressure === null
-      ? '当前数据不足以支持进一步判断。'
-      : endStationPressure > 100
-        ? '当前工况下末站进站压头保持为正且数值较高，说明系统具备基本输送可行性，当前方案能够满足运行要求。'
-        : endStationPressure > 0
-          ? '当前工况下末站进站压头保持为正，说明系统具备基本输送可行性，但末端压力裕度仍需持续关注。'
-          : '当前工况下末站进站压头已经低于 0，说明系统存在明显输送风险，当前方案不能直接作为稳定运行依据。';
+  let runningJudgement = '当前数据不足以支持进一步判断。';
+  if (endStationPressure !== null) {
+    if (endStationPressure <= 0) {
+      runningJudgement =
+        firstSegmentDelta !== null && firstSegmentDelta > 0
+          ? '首站虽然形成了增压，但沿线压头消耗已经完全吞噬了这部分增益，末端压头跌破 0，当前工况不具备稳定输送边界。'
+          : '首站未形成有效增压且末端压头跌破 0，说明当前方案不仅末端失压，而且供压链路本身就偏弱，不能直接作为运行依据。';
+    } else if (endStationPressure <= 50) {
+      runningJudgement =
+        attenuationRatio !== null && attenuationRatio >= 0.8
+          ? '末站进站压头虽仍为正，但沿线衰减已经非常明显，系统只保留了很小的末端压力裕度，稍有流量或阻力波动就可能逼近失稳边界。'
+          : '末站进站压头保持为正，但安全余量偏小，当前方案只能算勉强可行，需要把它视为紧边界工况。';
+    } else if (endStationPressure <= 150) {
+      runningJudgement =
+        frictionRatio !== null && frictionRatio >= 0.25
+          ? '当前工况具备基本输送可行性，但末端压力裕度并不宽松，且摩阻消耗已经偏高，运行稳定性会明显受沿程阻力变化影响。'
+          : '当前工况具备基本输送可行性，末端仍保留一定压力裕度，但还没有到可以忽略工况波动影响的程度。';
+    } else if (terminalDrop !== null && terminalDrop <= 0) {
+      runningJudgement =
+        '末站进站压头没有出现常规意义上的回落，当前供压看起来比较充足，但这种结果更依赖高程和边界条件，仍应复核数据与工况的一致性。';
+    } else if (frictionRatio !== null && frictionRatio >= 0.3) {
+      runningJudgement =
+        `当前工况总体可行，末站进站压头仍保持为正，但压头主要消耗在线路上，问题更偏向“沿程损失偏大”而不是“供压不足”。当前摩阻占比约 ${frictionShareText}。`;
+    } else {
+      runningJudgement = '首站增压与末端留压之间的匹配关系整体正常，当前方案具备较好的输送可行性，主要风险来自后续工况扰动而不是当前压头失配。';
+    }
+  }
 
-  const focusText =
-    firstStationOutPressure !== null &&
-    endStationPressure !== null &&
-    firstStationOutPressure - endStationPressure > 50 &&
-    frictionRatio !== null &&
-    frictionRatio >= 0.25
-      ? '首站出站压头与末站进站压头之间仍存在较明显衰减，说明沿程损失较大，当前更值得关注的是压力利用效率，而不是单纯供压能力。'
-      : firstStationOutPressure !== null && endStationPressure !== null && firstStationOutPressure - endStationPressure > 0
-        ? '当前首末站压头之间仍存在一定衰减，建议继续关注工况波动下的末端压力裕度与压力利用效率。'
-        : '当前首末站压头变化相对平稳，后续可重点关注流量变化时的末端响应。';
+  let focusText = '当前首末站压头变化相对平稳，后续可重点关注流量变化时的末端响应。';
+  if (endStationPressure !== null && endStationPressure <= 0) {
+    focusText =
+      frictionRatio !== null && frictionRatio >= 0.25
+        ? `当前最该优先处理的是同时压低末端失压和沿程损失。建议先复核流量设定、粗糙度/粘度参数以及泵组配置，当前摩阻占比约 ${frictionShareText}。`
+        : '当前最需要优先处理的是恢复末端正压，建议先复核首站增压能力、泵组配置和入口边界条件，再判断是否需要调整目标流量。';
+  } else if (firstSegmentDelta !== null && firstSegmentDelta <= 0) {
+    focusText = '首站进出站段没有形成有效增压，后续应优先检查泵站出力、机组组合和入口压力设定，而不是只盯着末端数值。';
+  } else if (attenuationRatio !== null && attenuationRatio >= 0.8) {
+    focusText =
+      frictionRatio !== null && frictionRatio >= 0.25
+        ? `首站出站压头到末站进站压头的衰减已经非常大，说明当前限制项主要在线路损失侧。后续应重点跟踪粗糙度、粘度、流量和泵效率对压头回落的放大作用，摩阻占比约 ${frictionShareText}。`
+        : '首末站之间的压头衰减已经非常显著，即使末端仍保有正压，也要重点关注末端裕度在工况波动下是否会被快速吃掉。';
+  } else if (frictionRatio !== null && frictionRatio >= 0.25) {
+    focusText = `当前更值得关注的是压力利用效率，而不是继续堆高供压。沿程损失已经吃掉了较大比例的扬程，摩阻占比约 ${frictionShareText}。`;
+  } else if (endStationPressure !== null && endStationPressure <= 150) {
+    focusText = '末端压力虽然还在安全线以上，但裕度并不算宽松，后续更应该盯住末端压力回落速度，而不是只看当前是否为正。';
+  } else if (terminalDrop !== null && terminalDrop <= 0) {
+    focusText = '末端压头未出现常规回落时，后续应同步复核高程差、边界条件和数据口径，确认这类结果是工况特征而不是数据异常。';
+  }
 
   return [
     { label: '图表现象', content: phenomenonParts.join('，') },
@@ -1881,24 +2027,460 @@ function buildHydraulicHeadCompositionInsightSections(params: {
   ] satisfies HydraulicInsightSection[];
 }
 
-function getSensitivityRiskItems(report: DynamicReportResponsePayload) {
-  const skillItems = report.aiAnalysis?.riskIdentify ?? [];
-  if (skillItems.length) {
-    return skillItems;
-  }
-  const legacySkillItems = report.aiAnalysis?.riskJudgement ?? [];
-  return legacySkillItems.length ? legacySkillItems : report.risks;
-}
-
-function getSensitivitySuggestionItems(report: DynamicReportResponsePayload) {
-  const skillItems = report.aiAnalysis?.suggestions ?? [];
-  return skillItems.length ? skillItems : report.suggestions;
-}
-
 type SensitivityInsightBlockData = {
   title: string;
   content: string;
 };
+
+type SensitivityRiskCardData = {
+  title: string;
+  target: string;
+  level: string;
+  summary: string;
+  details: string[];
+};
+
+type SensitivitySuggestionCardData = {
+  title: string;
+  target: string;
+  priority: string;
+  summary: string;
+  details: string[];
+};
+
+type SensitivityAnalysisContext = {
+  inputPayload: Record<string, unknown>;
+  inputBase: Record<string, unknown>;
+  inputSources: unknown[];
+  outputPayload: Record<string, unknown>;
+  baseResult: Record<string, unknown>;
+  variableResults: Record<string, unknown>[];
+  rankingRows: Record<string, unknown>[];
+  impactRankingRows: Record<string, unknown>[];
+  primaryVariableResult: Record<string, unknown> | null;
+  topVariableName: string;
+  topRankNumber: number;
+  sensitivityCoefficient: number | null;
+  maxImpactPercent: number | null;
+  pointRows: Record<string, unknown>[];
+  firstPoint: Record<string, unknown> | null;
+  lastPoint: Record<string, unknown> | null;
+  flowRegimeChanged: boolean;
+  flowRegimeSegments: string[];
+  minEndStationPressure: number | null;
+  maxPressurePoint: Record<string, unknown> | null;
+  minPressurePoint: Record<string, unknown> | null;
+  maxFrictionPoint: Record<string, unknown> | null;
+  minFrictionPoint: Record<string, unknown> | null;
+  baseEndStationPressure: number | null;
+  baseResultStatus: string;
+  riskLevel: string;
+  sensitivityImpactLevel: string;
+  projectName: string;
+  baseCondition: string;
+  variableTypeText: string;
+  flowRateText: string;
+  densityText: string;
+  diameterText: string;
+  roughnessText: string;
+  pressureTrendText: string;
+  frictionTrendText: string;
+};
+
+function formatSignedPercent(value: unknown, digits = 0) {
+  const numeric = toFiniteNumber(value);
+  if (numeric === null) {
+    return '-';
+  }
+  const sign = numeric > 0 ? '+' : '';
+  const fixed = numeric.toFixed(digits).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
+  return `${sign}${fixed}%`;
+}
+
+function resolveSensitivityTrendText(firstValue: unknown, lastValue: unknown) {
+  const first = toFiniteNumber(firstValue);
+  const last = toFiniteNumber(lastValue);
+  if (first === null || last === null) {
+    return '当前数据不足以支持进一步判断';
+  }
+  if (last > first) {
+    return '整体上升';
+  }
+  if (last < first) {
+    return '整体下降';
+  }
+  return '变化不明显';
+}
+
+function getSensitivityChangeLabel(row?: Record<string, unknown> | null) {
+  return row ? formatSignedPercent(row.changePercent) : '-';
+}
+
+function buildSensitivityFlowRegimeSegments(rows: Record<string, unknown>[]) {
+  if (!rows.length) {
+    return [];
+  }
+
+  const segments: string[] = [];
+  let currentRegime = formatValue(rows[0]?.flowRegime);
+  let startLabel = getSensitivityChangeLabel(rows[0]);
+  let endLabel = startLabel;
+
+  rows.slice(1).forEach((row) => {
+    const nextRegime = formatValue(row.flowRegime);
+    const nextLabel = getSensitivityChangeLabel(row);
+    if (nextRegime === currentRegime) {
+      endLabel = nextLabel;
+      return;
+    }
+    segments.push(`${startLabel} 至 ${endLabel} 保持 ${currentRegime}`);
+    currentRegime = nextRegime;
+    startLabel = nextLabel;
+    endLabel = nextLabel;
+  });
+
+  segments.push(`${startLabel} 至 ${endLabel} 保持 ${currentRegime}`);
+  return segments;
+}
+
+function pickSensitivityExtremePoint(
+  rows: Record<string, unknown>[],
+  key: string,
+  mode: 'min' | 'max',
+) {
+  const validRows = rows.filter((row) => toFiniteNumber(row[key]) !== null);
+  if (!validRows.length) {
+    return null;
+  }
+  return validRows.reduce<Record<string, unknown> | null>((current, row) => {
+    if (!current) {
+      return row;
+    }
+    const currentValue = toFiniteNumber(current[key]);
+    const nextValue = toFiniteNumber(row[key]);
+    if (currentValue === null) {
+      return row;
+    }
+    if (nextValue === null) {
+      return current;
+    }
+    return mode === 'max' ? (nextValue > currentValue ? row : current) : nextValue < currentValue ? row : current;
+  }, null);
+}
+
+function buildSensitivityAnalysisContext(snapshot: SensitivityReportSnapshot): SensitivityAnalysisContext {
+  const inputPayload = snapshot.input;
+  const inputBase = asRecord(getValueByPath(inputPayload, 'baseParams')) ?? inputPayload;
+  const inputSources = [inputBase, inputPayload] as unknown[];
+  const outputPayload = snapshot.output;
+  const baseResult = asRecord(getValueByPath(outputPayload, 'baseResult')) ?? outputPayload;
+  const variableResults = asRecordArray(getValueByPath(outputPayload, 'variableResults'));
+  const rankingRows = toSortedSensitivityRankingRows(outputPayload);
+  const impactRankingRows = [...variableResults].sort((a, b) => {
+    const impactA = toFiniteNumber(a.maxImpactPercent) ?? Number.NEGATIVE_INFINITY;
+    const impactB = toFiniteNumber(b.maxImpactPercent) ?? Number.NEGATIVE_INFINITY;
+    return impactB - impactA;
+  });
+  const primaryVariableResult = getSensitivityPrimaryVariableResult(outputPayload);
+  const topRank = rankingRows[0];
+  const topVariableName = String(
+    topRank?.variableName ??
+      primaryVariableResult?.variableName ??
+      primaryVariableResult?.variableType ??
+      buildSensitiveVariableDisplay(inputPayload, inputBase),
+  );
+  const topRankNumber = toFiniteNumber(topRank?.rank) ?? 1;
+  const sensitivityCoefficient = toFiniteNumber(
+    topRank?.sensitivityCoefficient ?? primaryVariableResult?.sensitivityCoefficient,
+  );
+  const maxImpactPercent =
+    toFiniteNumber(primaryVariableResult?.maxImpactPercent) ??
+    variableResults.reduce<number | null>((current, item) => {
+      const next = toFiniteNumber(item.maxImpactPercent);
+      if (next === null) {
+        return current;
+      }
+      if (current === null) {
+        return next;
+      }
+      return Math.max(current, next);
+    }, null);
+  const pointRows = asRecordArray(primaryVariableResult?.dataPoints).sort((a, b) => {
+    const changeA = toFiniteNumber(a.changePercent) ?? 0;
+    const changeB = toFiniteNumber(b.changePercent) ?? 0;
+    return changeA - changeB;
+  });
+  const firstPoint = pointRows[0] ?? null;
+  const lastPoint = pointRows[pointRows.length - 1] ?? null;
+  const flowRegimeValues = pointRows.map((item) => formatValue(item.flowRegime)).filter((item) => item && item !== '-');
+  const flowRegimeChanged = new Set(flowRegimeValues).size > 1;
+  const minEndStationPressure = pointRows.reduce<number | null>((current, item) => {
+    const next = toFiniteNumber(item.endStationPressure);
+    if (next === null) {
+      return current;
+    }
+    if (current === null) {
+      return next;
+    }
+    return Math.min(current, next);
+  }, null);
+  const baseEndStationPressure = toFiniteNumber(
+    pickFirstValue([baseResult], ['endStationInPressure', 'endStationPressure', 'terminalInPressure']),
+  );
+  const baseResultStatus =
+    baseEndStationPressure === null ? '当前数据不足以支持进一步判断' : baseEndStationPressure >= 0 ? '正常' : '存在压力风险';
+  const riskLevel = evaluateSensitivityRiskLevel({
+    sensitivityCoefficient,
+    maxImpactPercent,
+    minEndStationPressure,
+    flowRegimeChanged,
+  });
+  const sensitivityImpactLevel = classifySensitivityImpactLevel(sensitivityCoefficient);
+  const projectName = snapshot.projectName || '当前项目';
+  const baseCondition = buildSensitivityBaseCondition(inputPayload, inputBase);
+  const variableTypeText = buildSensitiveVariableDisplay(inputPayload, inputBase);
+  const flowRateText = formatValue(pickFirstValue(inputSources, ['flowRate', 'throughput', 'flow']), 'm³/h');
+  const densityText = formatValue(pickFirstValue(inputSources, ['density']), 'kg/m³');
+  const diameterText = formatValue(pickFirstValue(inputSources, ['diameter', 'pipeDiameter']), 'mm');
+  const roughnessText = formatValue(pickFirstValue(inputSources, ['roughness']));
+  const pressureTrendText = resolveSensitivityTrendText(firstPoint?.endStationPressure, lastPoint?.endStationPressure);
+  const frictionTrendText = resolveSensitivityTrendText(firstPoint?.frictionHeadLoss, lastPoint?.frictionHeadLoss);
+
+  return {
+    inputPayload,
+    inputBase,
+    inputSources,
+    outputPayload,
+    baseResult,
+    variableResults,
+    rankingRows,
+    impactRankingRows,
+    primaryVariableResult,
+    topVariableName,
+    topRankNumber,
+    sensitivityCoefficient,
+    maxImpactPercent,
+    pointRows,
+    firstPoint,
+    lastPoint,
+    flowRegimeChanged,
+    flowRegimeSegments: buildSensitivityFlowRegimeSegments(pointRows),
+    minEndStationPressure,
+    maxPressurePoint: pickSensitivityExtremePoint(pointRows, 'endStationPressure', 'max'),
+    minPressurePoint: pickSensitivityExtremePoint(pointRows, 'endStationPressure', 'min'),
+    maxFrictionPoint: pickSensitivityExtremePoint(pointRows, 'frictionHeadLoss', 'max'),
+    minFrictionPoint: pickSensitivityExtremePoint(pointRows, 'frictionHeadLoss', 'min'),
+    baseEndStationPressure,
+    baseResultStatus,
+    riskLevel,
+    sensitivityImpactLevel,
+    projectName,
+    baseCondition,
+    variableTypeText,
+    flowRateText,
+    densityText,
+    diameterText,
+    roughnessText,
+    pressureTrendText,
+    frictionTrendText,
+  };
+}
+
+function buildSensitivityRiskCards(context: SensitivityAnalysisContext): SensitivityRiskCardData[] {
+  const cards: SensitivityRiskCardData[] = [];
+  const secondRank = context.rankingRows[1];
+  const secondVariableName = secondRank ? String(secondRank.variableName ?? secondRank.variableType ?? '').trim() : '';
+  const secondCoefficient = toFiniteNumber(secondRank?.sensitivityCoefficient);
+  const minPressureLabel = getSensitivityChangeLabel(context.minPressurePoint);
+  const maxFrictionLabel = getSensitivityChangeLabel(context.maxFrictionPoint);
+
+  if (context.sensitivityCoefficient !== null) {
+    const level = context.sensitivityCoefficient >= 0.8 ? '高' : context.sensitivityCoefficient >= 0.4 ? '中' : '低';
+    const summary =
+      level === '高'
+        ? `${context.topVariableName} 的敏感系数为 ${formatValue(context.sensitivityCoefficient)}，在当前样本中排名第 ${context.topRankNumber}，已经是主导性的敏感变量。`
+        : level === '中'
+          ? `${context.topVariableName} 的敏感系数为 ${formatValue(context.sensitivityCoefficient)}，对结果已经形成可感知影响，需要作为重点跟踪变量。`
+          : `${context.topVariableName} 的敏感系数为 ${formatValue(context.sensitivityCoefficient)}，当前样本下整体仍处于可控范围。`;
+    const details = [
+      secondVariableName
+        ? `与 ${secondVariableName}${secondCoefficient !== null ? `（敏感系数 ${formatValue(secondCoefficient)}）` : ''}相比，${context.topVariableName} 对结果的牵引作用更强。`
+        : null,
+      context.maxImpactPercent !== null
+        ? `该变量的最大影响幅度达到 ${formatValue(context.maxImpactPercent, '%')}，说明参数扰动已经会被明显放大到结果侧。`
+        : null,
+      context.pressureTrendText !== '当前数据不足以支持进一步判断'
+        ? `在测试区间内，末站压力${context.pressureTrendText}，摩阻损失${context.frictionTrendText}。`
+        : null,
+    ].filter((item): item is string => Boolean(item));
+    cards.push({
+      title: '主导敏感变量',
+      target: context.topVariableName,
+      level,
+      summary,
+      details,
+    });
+  }
+
+  if (context.minEndStationPressure !== null && context.minEndStationPressure < 0) {
+    cards.push({
+      title: '压力边界',
+      target: context.projectName,
+      level: '高',
+      summary: `${minPressureLabel !== '-' ? `${minPressureLabel} 区间` : '当前测试区间'}已出现末站进站压力 ${formatValue(context.minEndStationPressure)}，运行边界已经被触发。`,
+      details: [
+        context.minPressurePoint
+          ? `最低压力点出现在 ${minPressureLabel}，对应的末站压力为 ${formatValue(context.minPressurePoint.endStationPressure)}。`
+          : null,
+        `相对于基准工况“${context.baseCondition}”，当前参数窗口已经不能完全覆盖最不利工况。`,
+      ].filter((item): item is string => Boolean(item)),
+    });
+  } else if (context.maxImpactPercent !== null && context.maxImpactPercent >= 10) {
+    cards.push({
+      title: '区间放大效应',
+      target: context.projectName,
+      level: context.maxImpactPercent >= 20 ? '高' : '中',
+      summary: `虽然当前区间还没有出现负压边界，但最大影响幅度已达到 ${formatValue(context.maxImpactPercent, '%')}，说明结果对变量波动并不迟钝。`,
+      details: [
+        context.maxPressurePoint
+          ? `最高末站压力出现在 ${getSensitivityChangeLabel(context.maxPressurePoint)}，说明参数上调时会同步推高关键结果。`
+          : null,
+        '这意味着后续再扩大扰动范围时，系统可能很快从“可控”转入“边界敏感”。',
+      ].filter((item): item is string => Boolean(item)),
+    });
+  }
+
+  if (context.flowRegimeChanged) {
+    cards.push({
+      title: '流态切换',
+      target: context.projectName,
+      level: '中',
+      summary: '不同变化比例下已经出现流态切换，说明这组样本不能再按单一流动特征理解。',
+      details: [
+        context.flowRegimeSegments.length ? `区间表现为：${context.flowRegimeSegments.join('；')}。` : null,
+        context.maxFrictionPoint
+          ? `最高摩阻损失出现在 ${maxFrictionLabel}，达到 ${formatValue(context.maxFrictionPoint.frictionHeadLoss)}。`
+          : null,
+      ].filter((item): item is string => Boolean(item)),
+    });
+  } else if (context.frictionTrendText === '整体上升') {
+    cards.push({
+      title: '阻力抬升',
+      target: context.projectName,
+      level: context.maxImpactPercent !== null && context.maxImpactPercent >= 20 ? '高' : '中',
+      summary: `随着 ${context.topVariableName} 变化，摩阻损失持续上升，阻力项正在压缩当前运行裕度。`,
+      details: [
+        context.maxFrictionPoint
+          ? `最高摩阻损失出现在 ${maxFrictionLabel}，达到 ${formatValue(context.maxFrictionPoint.frictionHeadLoss)}。`
+          : null,
+        '如果后续继续放大该变量扰动，摩阻项会先于其他指标成为边界收紧的主要来源。',
+      ].filter((item): item is string => Boolean(item)),
+    });
+  }
+
+  if (!cards.length) {
+    cards.push({
+      title: '整体可控',
+      target: context.projectName,
+      level: '低',
+      summary: '当前样本中没有出现明显的压力失稳或流态切换迹象，测试区间整体仍处于可控状态。',
+      details: [
+        `基准工况为 ${context.baseCondition}。`,
+        context.pressureTrendText !== '当前数据不足以支持进一步判断'
+          ? `末站压力${context.pressureTrendText}，摩阻损失${context.frictionTrendText}。`
+          : null,
+      ].filter((item): item is string => Boolean(item)),
+    });
+  }
+
+  return cards.slice(0, 3);
+}
+
+function buildSensitivitySuggestionCards(context: SensitivityAnalysisContext): SensitivitySuggestionCardData[] {
+  const cards: SensitivitySuggestionCardData[] = [];
+  const minPressureLabel = getSensitivityChangeLabel(context.minPressurePoint);
+  const maxFrictionLabel = getSensitivityChangeLabel(context.maxFrictionPoint);
+
+  if (context.sensitivityCoefficient !== null && context.sensitivityCoefficient >= 0.4) {
+    cards.push({
+      title: '控制窗口',
+      target: context.topVariableName,
+      priority: context.sensitivityCoefficient >= 0.8 ? 'high' : 'medium',
+      summary: `优先把 ${context.topVariableName} 纳入运行控制窗口，不要与其他普通参数等权处理。`,
+      details: [
+        `当前它在敏感性排序中位列第 ${context.topRankNumber}，对结果的影响等级属于${context.sensitivityImpactLevel}。`,
+        context.maxImpactPercent !== null
+          ? `建议先围绕最大影响幅度 ${formatValue(context.maxImpactPercent, '%')} 对应的工况做上限校核。`
+          : null,
+      ].filter((item): item is string => Boolean(item)),
+    });
+  }
+
+  if (context.minEndStationPressure !== null && context.minEndStationPressure < 0) {
+    cards.push({
+      title: '边界复核',
+      target: context.projectName,
+      priority: 'high',
+      summary: `优先复核 ${minPressureLabel !== '-' ? `${minPressureLabel} 区间` : '最不利区间'}的压力边界，并重新确认该工况下的调度参数。`,
+      details: [
+        `当前最低末站压力为 ${formatValue(context.minEndStationPressure)}。`,
+        '建议将该区间作为下一轮报警阈值、参数上限和工况切换校核的基准点。',
+      ],
+    });
+  } else if (context.maxImpactPercent !== null && context.maxImpactPercent >= 20) {
+    cards.push({
+      title: '区间复算',
+      target: context.projectName,
+      priority: 'high',
+      summary: '补做高影响区间的复算和边界校核，避免一次样本放大后直接带来运行误判。',
+      details: [
+        `当前最大影响幅度已经达到 ${formatValue(context.maxImpactPercent, '%')}。`,
+        '建议把高影响区间单独抽出来，复核压力、摩阻和安全裕度是否同时满足要求。',
+      ],
+    });
+  }
+
+  if (context.flowRegimeChanged) {
+    cards.push({
+      title: '流态校核',
+      target: context.projectName,
+      priority: 'medium',
+      summary: '把发生流态切换的区间单独复核，不要与稳定区间混在一起解释和调度。',
+      details: [
+        context.flowRegimeSegments.length ? `建议重点复核这些区间：${context.flowRegimeSegments.join('；')}。` : null,
+        '必要时补充更密的变化比例采样，确认流态切换点附近的真实运行窗口。',
+      ].filter((item): item is string => Boolean(item)),
+    });
+  } else if (context.frictionTrendText === '整体上升') {
+    cards.push({
+      title: '阻力参数复核',
+      target: context.projectName,
+      priority: 'medium',
+      summary: '继续复核粗糙度、流量设定和摩阻参数，防止阻力项继续抬升并侵蚀压力裕度。',
+      details: [
+        context.maxFrictionPoint
+          ? `最高摩阻损失出现在 ${maxFrictionLabel}，达到 ${formatValue(context.maxFrictionPoint.frictionHeadLoss)}。`
+          : null,
+        `建议结合当前粗糙度 ${context.roughnessText} 与基准工况一起校核沿程阻力参数。`,
+      ].filter((item): item is string => Boolean(item)),
+    });
+  }
+
+  if (!cards.length) {
+    cards.push({
+      title: '持续监测',
+      target: context.projectName,
+      priority: 'low',
+      summary: '当前区间整体可控，后续以持续监测和小步校核为主，不需要立即调整运行策略。',
+      details: [
+        `建议继续跟踪 ${context.topVariableName} 在常用工况下对压力和摩阻的影响。`,
+        '当样本范围扩大或新增异常点后，再重新评估是否需要升级控制优先级。',
+      ],
+    });
+  }
+
+  return cards.slice(0, 3);
+}
 
 function getSensitivityLevelTagColor(level?: string | null) {
   const normalized = String(level ?? '').trim().toLowerCase();
@@ -5105,129 +5687,46 @@ function renderSensitivityAiReportContentV2(
   report: DynamicReportResponsePayload,
   snapshot: SensitivityReportSnapshot,
 ) {
-  const inputPayload = snapshot.input;
-  const inputBase = asRecord(getValueByPath(inputPayload, 'baseParams')) ?? inputPayload;
-  const inputSources = [inputBase, inputPayload] as unknown[];
-  const outputPayload = snapshot.output;
-  const baseResult = asRecord(getValueByPath(outputPayload, 'baseResult')) ?? outputPayload;
-  const variableResults = asRecordArray(getValueByPath(outputPayload, 'variableResults'));
-  const rankingRows = toSortedSensitivityRankingRows(outputPayload);
-  const primaryVariableResult = getSensitivityPrimaryVariableResult(outputPayload);
-  const topRank = rankingRows[0];
-  const topVariableName = String(
-    topRank?.variableName ??
-      primaryVariableResult?.variableName ??
-      primaryVariableResult?.variableType ??
-      buildSensitiveVariableDisplay(inputPayload, inputBase),
-  );
-  const topRankNumber = toFiniteNumber(topRank?.rank) ?? 1;
-  const sensitivityCoefficient = toFiniteNumber(
-    topRank?.sensitivityCoefficient ?? primaryVariableResult?.sensitivityCoefficient,
-  );
-  const maxImpactPercent =
-    toFiniteNumber(primaryVariableResult?.maxImpactPercent) ??
-    variableResults.reduce<number | null>((current, item) => {
-      const next = toFiniteNumber(item.maxImpactPercent);
-      if (next === null) {
-        return current;
-      }
-      if (current === null) {
-        return next;
-      }
-      return Math.max(current, next);
-    }, null);
-  const pointRows = asRecordArray(primaryVariableResult?.dataPoints).sort((a, b) => {
-    const changeA = toFiniteNumber(a.changePercent) ?? 0;
-    const changeB = toFiniteNumber(b.changePercent) ?? 0;
-    return changeA - changeB;
-  });
-  const firstPoint = pointRows[0];
-  const lastPoint = pointRows[pointRows.length - 1];
-  const flowRegimeValues = pointRows
-    .map((item) => formatValue(item.flowRegime))
-    .filter((item) => item && item !== '-');
-  const flowRegimeChanged = new Set(flowRegimeValues).size > 1;
-  const minEndStationPressure = pointRows.reduce<number | null>((current, item) => {
-    const next = toFiniteNumber(item.endStationPressure);
-    if (next === null) {
-      return current;
-    }
-    if (current === null) {
-      return next;
-    }
-    return Math.min(current, next);
-  }, null);
-  const baseEndStationPressure = toFiniteNumber(
-    pickFirstValue([baseResult], ['endStationInPressure', 'endStationPressure', 'terminalInPressure']),
-  );
-  const baseResultStatus =
-    baseEndStationPressure === null ? '当前数据不足以支持进一步判断' : baseEndStationPressure >= 0 ? '正常' : '存在压力风险';
-  const riskLevel = evaluateSensitivityRiskLevel({
+  const context = buildSensitivityAnalysisContext(snapshot);
+  const {
+    inputPayload,
+    inputBase,
+    inputSources,
+    outputPayload,
+    baseResult,
+    variableResults,
+    rankingRows,
+    impactRankingRows,
+    primaryVariableResult,
+    topVariableName,
+    topRankNumber,
     sensitivityCoefficient,
     maxImpactPercent,
-    minEndStationPressure,
+    pointRows,
+    firstPoint,
+    lastPoint,
     flowRegimeChanged,
-  });
-  const sensitivityImpactLevel = classifySensitivityImpactLevel(sensitivityCoefficient);
-  const projectName = snapshot.projectName || '当前项目';
-  const baseCondition = buildSensitivityBaseCondition(inputPayload, inputBase);
-  const variableTypeText = buildSensitiveVariableDisplay(inputPayload, inputBase);
-  const flowRateText = formatValue(pickFirstValue(inputSources, ['flowRate', 'throughput', 'flow']), 'm³/h');
-  const densityText = formatValue(pickFirstValue(inputSources, ['density']), 'kg/m³');
-  const diameterText = formatValue(pickFirstValue(inputSources, ['diameter', 'pipeDiameter']), 'mm');
-  const roughnessText = formatValue(pickFirstValue(inputSources, ['roughness']));
-
-  const pressureTrendText =
-    firstPoint && lastPoint
-      ? toFiniteNumber(lastPoint.endStationPressure) !== null && toFiniteNumber(firstPoint.endStationPressure) !== null
-        ? (toFiniteNumber(lastPoint.endStationPressure) ?? 0) > (toFiniteNumber(firstPoint.endStationPressure) ?? 0)
-          ? '整体上升'
-          : (toFiniteNumber(lastPoint.endStationPressure) ?? 0) < (toFiniteNumber(firstPoint.endStationPressure) ?? 0)
-            ? '整体下降'
-            : '变化不明显'
-        : '当前数据不足以支持进一步判断'
-      : '当前数据不足以支持进一步判断';
-  const frictionTrendText =
-    firstPoint && lastPoint
-      ? toFiniteNumber(lastPoint.frictionHeadLoss) !== null && toFiniteNumber(firstPoint.frictionHeadLoss) !== null
-        ? (toFiniteNumber(lastPoint.frictionHeadLoss) ?? 0) > (toFiniteNumber(firstPoint.frictionHeadLoss) ?? 0)
-          ? '整体上升'
-          : (toFiniteNumber(lastPoint.frictionHeadLoss) ?? 0) < (toFiniteNumber(firstPoint.frictionHeadLoss) ?? 0)
-            ? '整体下降'
-            : '变化不明显'
-        : '当前数据不足以支持进一步判断'
-      : '当前数据不足以支持进一步判断';
+    minEndStationPressure,
+    baseEndStationPressure,
+    baseResultStatus,
+    riskLevel,
+    sensitivityImpactLevel,
+    projectName,
+    baseCondition,
+    variableTypeText,
+    flowRateText,
+    densityText,
+    diameterText,
+    roughnessText,
+    pressureTrendText,
+    frictionTrendText,
+  } = context;
 
   const rankingSecondRow = rankingRows[1];
-  const impactRankingRows = [...variableResults].sort((a, b) => {
-    const impactA = toFiniteNumber(a.maxImpactPercent) ?? Number.NEGATIVE_INFINITY;
-    const impactB = toFiniteNumber(b.maxImpactPercent) ?? Number.NEGATIVE_INFINITY;
-    return impactB - impactA;
-  });
   const topImpactRow = impactRankingRows[0];
   const secondImpactRow = impactRankingRows[1];
-  const riskFallbackItems = [
-    sensitivityCoefficient !== null && sensitivityCoefficient >= 0.8
-      ? '当前变量敏感系数较高，系统对该变量变化反应明显，应重点加强监测与控制。'
-      : null,
-    maxImpactPercent !== null && maxImpactPercent >= 20
-      ? '当前变量带来的最大影响幅度较大，说明在设定波动范围内系统结果变化明显，存在较高的不稳定风险。'
-      : null,
-    minEndStationPressure !== null && minEndStationPressure < 0
-      ? '部分变化比例下末站进站压力低于 0，说明系统压力稳定性存在明显风险。'
-      : null,
-    flowRegimeChanged ? '不同变化比例下流态发生变化，变量波动可能改变系统流动特征，应重点关注临界区间。' : null,
-  ].filter((item): item is string => Boolean(item));
-  const suggestionFallbackItems = [
-    `建议将 ${topVariableName} 作为运行控制中的重点监测对象，在实际调度和参数管理中优先保证该变量稳定。`,
-    pressureTrendText !== '变化不明显' && pressureTrendText !== '当前数据不足以支持进一步判断'
-      ? '建议进一步校核不同工况下的压力分布情况，确保关键节点压力满足运行要求。'
-      : null,
-    frictionTrendText !== '变化不明显' && frictionTrendText !== '当前数据不足以支持进一步判断'
-      ? '建议结合流量、管径、粘度等参数进一步评估阻力增长原因，为优化运行方案提供依据。'
-      : null,
-    flowRegimeChanged ? '建议在后续分析中增加流态临界区间校核，避免系统在运行波动中进入不稳定状态。' : null,
-  ].filter((item): item is string => Boolean(item));
+  const riskCards = buildSensitivityRiskCards(context);
+  const suggestionCards = buildSensitivitySuggestionCards(context);
   const skillInsightBlocks = report.aiAnalysis?.sensitivityInsights;
   const rankingInsightBlock: SensitivityInsightBlockData = {
     title: skillInsightBlocks?.rankingInsight?.title || '排名解读',
@@ -5353,9 +5852,9 @@ function renderSensitivityAiReportContentV2(
     analysis: {
       resultSummary: [],
       keyChangeAnalysis: [],
-      riskRecognition: riskFallbackItems.length ? riskFallbackItems : ['当前数据不足以支持进一步判断。'],
-      optimizationSuggestions: suggestionFallbackItems.length
-        ? suggestionFallbackItems
+      riskRecognition: riskCards.length ? riskCards.map((item) => item.summary) : ['当前数据不足以支持进一步判断。'],
+      optimizationSuggestions: suggestionCards.length
+        ? suggestionCards.map((item) => item.summary)
         : ['当前数据不足以支持进一步判断。'],
     },
   };
@@ -6665,11 +7164,11 @@ export default function ReportPreview() {
     try {
       await calculationHistoryApi.delete(targetId);
 
-      setHistories((current) => current.filter((item) => Number(item.id) !== targetId));
       setSelectedHistoryKeys((current) => current.filter((key) => Number(key) !== targetId));
       setDetailPreview((current) =>
         current?.mode === 'history' && Number(current.row.id) === targetId ? null : current,
       );
+      await loadData();
 
       message.success('删除成功。');
     } catch {
@@ -6677,7 +7176,7 @@ export default function ReportPreview() {
     } finally {
       setDeletingHistoryIds((current) => current.filter((item) => item !== targetId));
     }
-  }, []);
+  }, [loadData]);
 
   const detailPayload = useMemo(() => {
     if (!detailPreview || detailPreview.mode !== 'history') {
@@ -7265,7 +7764,7 @@ export default function ReportPreview() {
       <div style={{ maxWidth: 1760, margin: '0 auto', padding: 24 }}>
         <style>{`
           .report-history-table .ant-table-thead .ant-table-selection-column {
-            background: linear-gradient(180deg, #edf4ff 0%, #eaf2ff 100%) !important;
+            background: #edf4ff !important;
           }
 
           .report-history-table .ant-table-thead .ant-table-selection-column::before {
@@ -7279,10 +7778,6 @@ export default function ReportPreview() {
             padding: 0 16px 0 24px !important;
             text-align: left !important;
             border-right: 1px solid #d8e6f8 !important;
-          }
-
-          .report-history-table .ant-table-tbody .ant-table-selection-column {
-            background: linear-gradient(180deg, #fcfdff 0%, #f7faff 100%) !important;
           }
 
           .report-history-table .ant-table-selection-column .ant-space {
@@ -7299,21 +7794,21 @@ export default function ReportPreview() {
             width: 18px;
             height: 18px;
             border-radius: 6px;
-            border: 1.5px solid #bfd0ea !important;
+            border: 1.5px solid #111111 !important;
             background: #ffffff;
-            box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06);
+            box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
           }
 
           .report-history-table .ant-table-selection-column .ant-checkbox:hover .ant-checkbox-inner,
           .report-history-table .ant-table-selection-column .ant-checkbox-wrapper:hover .ant-checkbox-inner {
-            border-color: #78a4ff !important;
+            border-color: #111111 !important;
           }
 
           .report-history-table .ant-table-selection-column .ant-checkbox-checked .ant-checkbox-inner,
           .report-history-table .ant-table-selection-column .ant-checkbox-indeterminate .ant-checkbox-inner {
-            border-color: #4e86f7 !important;
-            background: #4e86f7 !important;
-            box-shadow: 0 6px 14px rgba(78, 134, 247, 0.22);
+            border-color: #111111 !important;
+            background: #111111 !important;
+            box-shadow: 0 6px 14px rgba(15, 23, 42, 0.18);
           }
 
           .report-hero-title span + span {

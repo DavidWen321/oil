@@ -56,6 +56,6 @@ public class PipelineController {
      */
     @DeleteMapping("/{ids}")
     public Result<Boolean> remove(@PathVariable List<Long> ids) {
-        return Result.ok(pipelineService.removeBatchByIds(ids));
+        return Result.ok(pipelineService.removePipelinesCascade(ids));
     }
 }

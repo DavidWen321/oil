@@ -108,6 +108,18 @@ export const router = createBrowserRouter([
       },
       {
         path: 'calculation/hydraulic',
+        element: <Navigate to="/analysis/hydraulic" replace />,
+      },
+      {
+        path: 'calculation/optimization',
+        element: <Navigate to="/analysis/optimization" replace />,
+      },
+      {
+        path: 'calculation/sensitivity',
+        element: <Navigate to="/analysis/sensitivity" replace />,
+      },
+      {
+        path: 'analysis/hydraulic',
         element: (
           <Suspense fallback={<Loading />}>
             <HydraulicAnalysis />
@@ -115,7 +127,7 @@ export const router = createBrowserRouter([
         ),
       },
       {
-        path: 'calculation/optimization',
+        path: 'analysis/optimization',
         element: (
           <Suspense fallback={<Loading />}>
             <Optimization />
@@ -123,7 +135,7 @@ export const router = createBrowserRouter([
         ),
       },
       {
-        path: 'calculation/sensitivity',
+        path: 'analysis/sensitivity',
         element: (
           <Suspense fallback={<Loading />}>
             <SensitivityAnalysis />

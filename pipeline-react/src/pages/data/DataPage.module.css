@@ -389,6 +389,14 @@
   gap: var(--space-2);
 }
 
+.projectActionGroup {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+
 .actionBtn {
   height: 32px;
   padding-inline: 12px !important;
@@ -421,6 +429,22 @@
 .secondaryText {
   color: var(--text-tertiary);
   font-size: 12px;
+}
+
+.tableWrapText {
+  display: block;
+  max-width: 100%;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  text-align: center;
+}
+
+.tableWrapTextStrong {
+  color: var(--text-primary);
+  font-weight: 500;
 }
 
 .numberBadge {

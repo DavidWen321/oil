@@ -19,6 +19,7 @@ import AnimatedPage from '../../components/common/AnimatedPage';
 import styles from './SensitivityAnalysis.module.css';
 import { calculationApi, oilPropertyApi, pipelineApi, projectApi, pumpStationApi } from '../../api';
 import { useCalculationLinkStore } from '../../stores/calculationLinkStore';
+import { convertPressureMpaToHeadMeters, convertViscosityMm2PerSecToM2PerSec } from '../../utils/calculationUnits';
 import type {
   HydraulicAnalysisParams,
   OilProperty,
@@ -34,6 +35,9 @@ import type {
 const FORM_ITEM_SPAN = { xs: 24, md: 12, xl: 8 } as const;
 
 type SensitivityFormValues = HydraulicAnalysisParams & {
+  pipelineId?: number;
+  oilId?: number;
+  pumpStationId?: number;
   variableType: string;
 };
 
@@ -59,12 +63,14 @@ export default function SensitivityAnalysis() {
   const [form] = Form.useForm<SensitivityFormValues>();
   const [loading, setLoading] = useState(false);
   const selectedVariableType = Form.useWatch('variableType', form);
+  const watchedDensity = Form.useWatch('density', form);
   const [projects, setProjects] = useState<Project[]>([]);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [oils, setOils] = useState<OilProperty[]>([]);
   const [stations, setStations] = useState<PumpStation[]>([]);
   const [variables, setVariables] = useState<SensitivityVariableInfo[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
+  const [selectedStationId, setSelectedStationId] = useState<number | null>(null);
   const [result, setResult] = useState<SensitivityResult | null>(null);
 
   const loadBaseData = useCallback(async () => {
@@ -124,6 +130,20 @@ export default function SensitivityAnalysis() {
     }
   }, [loadPipelines, selectedProjectId]);
 
+  useEffect(() => {
+    if (!selectedStationId) {
+      return;
+    }
+
+    const station = stations.find((item) => item.id === selectedStationId);
+    const nextInletPressure = convertPressureMpaToHeadMeters(station?.comePower, Number(watchedDensity));
+    if (nextInletPressure === undefined || nextInletPressure === form.getFieldValue('inletPressure')) {
+      return;
+    }
+
+    form.setFieldValue('inletPressure', nextInletPressure);
+  }, [form, selectedStationId, stations, watchedDensity]);
+
   const handlePipelineChange = (pipelineId: number) => {
     const pipeline = pipelines.find((item) => item.id === pipelineId);
     if (!pipeline) {
@@ -151,7 +171,7 @@ export default function SensitivityAnalysis() {
     form.setFieldsValue({
       oilId,
       density: oil.density,
-      viscosity: oil.viscosity,
+      viscosity: convertViscosityMm2PerSecToM2PerSec(oil.viscosity) ?? oil.viscosity,
     });
     setResult(null);
   };
@@ -162,11 +182,18 @@ export default function SensitivityAnalysis() {
       return;
     }
 
-    form.setFieldsValue({
-      inletPressure: station.comePower,
+    setSelectedStationId(stationId);
+    const nextValues: Partial<SensitivityFormValues> = {
+      pumpStationId: stationId,
       pump480Head: station.zmi480Lift,
       pump375Head: station.zmi375Lift,
-    });
+    };
+    const nextInletPressure = convertPressureMpaToHeadMeters(station.comePower, Number(form.getFieldValue('density')));
+    if (nextInletPressure !== undefined) {
+      nextValues.inletPressure = nextInletPressure;
+    }
+
+    form.setFieldsValue(nextValues);
     setResult(null);
   };
 
@@ -343,7 +370,7 @@ export default function SensitivityAnalysis() {
                   </Form.Item>
                 </Col>
                 <Col span={12}>
-                  <Form.Item label="油品参数">
+                  <Form.Item name="oilId" label="油品参数">
                     <Select<number>
                       allowClear
                       placeholder="带入油品参数"
@@ -353,11 +380,19 @@ export default function SensitivityAnalysis() {
                   </Form.Item>
                 </Col>
                 <Col span={24}>
-                  <Form.Item label="泵站参数">
+                  <Form.Item name="pumpStationId" label="泵站参数">
                     <Select<number>
                       allowClear
                       placeholder="带入泵站参数"
-                      onChange={(value) => value && handleStationChange(value)}
+                      onChange={(value) => {
+                        if (value) {
+                          handleStationChange(value);
+                          return;
+                        }
+                        setSelectedStationId(null);
+                        form.setFieldValue('pumpStationId', undefined);
+                        setResult(null);
+                      }}
                       options={stations.map((station) => ({ value: station.id, label: station.name }))}
                     />
                   </Form.Item>

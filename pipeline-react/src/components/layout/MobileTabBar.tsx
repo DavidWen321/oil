@@ -21,7 +21,8 @@ export default function MobileTabBar() {
   const location = useLocation();
 
   const activeTab =
-    tabs.find((tab) => location.pathname.startsWith(tab.matchPrefix))?.key || 'dashboard';
+    tabs.find((tab) => location.pathname.startsWith(tab.matchPrefix))?.key ||
+    (location.pathname.startsWith('/analysis') || location.pathname.startsWith('/calculation') ? 'calculation' : 'dashboard');
 
   return (
     <nav className={styles.tabBar} aria-label="主导航">
@@ -29,7 +30,7 @@ export default function MobileTabBar() {
         <button
           key={tab.key}
           className={`${styles.tabItem} ${activeTab === tab.key ? styles.tabItemActive : ''}`}
-          onClick={() => navigate(tab.path)}
+          onClick={() => navigate(tab.path.replace('/calculation/', '/analysis/'))}
           aria-label={tab.label}
         >
           <span className={styles.tabIcon}>{tab.icon}</span>

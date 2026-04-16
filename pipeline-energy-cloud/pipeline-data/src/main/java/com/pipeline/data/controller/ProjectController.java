@@ -55,6 +55,6 @@ public class ProjectController {
      */
     @DeleteMapping("/{proIds}")
     public Result<Boolean> remove(@PathVariable List<Long> proIds) {
-        return Result.ok(projectService.removeBatchByIds(proIds));
+        return Result.ok(projectService.removeProjectsCascade(proIds));
     }
 }
