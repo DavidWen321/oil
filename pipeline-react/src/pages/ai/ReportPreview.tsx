@@ -1318,6 +1318,10 @@ function getDisplayCalcTypeLabel(record: Pick<CalculationHistory, 'calcType' | '
   return getCalcTypeLabel(record);
 }
 
+function isCompletedHistoryRecord(record: Pick<CalculationHistory, 'status' | 'errorMessage'>) {
+  return (record.status ?? 1) === 1 || !record.errorMessage;
+}
+
 function dedupeProjectNames(names: Array<string | null | undefined>) {
   return [...new Set(names.map((item) => String(item || '').trim()).filter(Boolean))];
 }
@@ -6593,16 +6597,6 @@ export default function ReportPreview() {
     });
   }, [dateRange, histories, projectLookup, searchKeyword, selectedCalcType, selectedProjectIds]);
 
-  const completedCount = useMemo(
-    () => filteredHistories.filter((item) => (item.status ?? 1) === 1 || !item.errorMessage).length,
-    [filteredHistories],
-  );
-
-  const aiCount = useMemo(
-    () => filteredHistories.filter((item) => item.calcType === 'AI_REPORT').length,
-    [filteredHistories],
-  );
-
   const allProjectIds = useMemo(() => projects.map((project) => project.proId), [projects]);
 
   const projectOptions = useMemo(
@@ -6723,6 +6717,20 @@ export default function ReportPreview() {
         }),
     [reportHistoryRows],
   );
+
+  const visibleHistoryCount = useMemo(
+    () => calculationRecords.length + aiReportRecords.length,
+    [aiReportRecords.length, calculationRecords.length],
+  );
+
+  const completedCount = useMemo(
+    () =>
+      calculationRecords.filter(isCompletedHistoryRecord).length +
+      aiReportRecords.filter(isCompletedHistoryRecord).length,
+    [aiReportRecords, calculationRecords],
+  );
+
+  const aiCount = useMemo(() => aiReportRecords.length, [aiReportRecords.length]);
 
   const latestRecords = calculationRecords;
 
@@ -7537,7 +7545,7 @@ export default function ReportPreview() {
               <MetricCard
                 icon={<HistoryOutlined />}
                 tone={metricCardTones[1]}
-                statistic={<Statistic title="历史记录" value={filteredHistories.length} />}
+                statistic={<Statistic title="历史记录" value={visibleHistoryCount} />}
               />
             </Col>
             <Col xs={24} sm={12} lg={6}>
