@@ -54,7 +54,13 @@ export function ToolCallAccordion({ tools }: ToolCallAccordionProps) {
                   : TriangleAlert;
 
             return (
-              <div key={tool.call_id ?? `${tool.tool}-${index}`} className="rounded-2xl bg-white px-4 py-3 ring-1 ring-black/5">
+              <div
+                key={tool.call_id ?? `${tool.tool}-${index}`}
+                className={[
+                  'rounded-2xl bg-white px-4 py-3 ring-1',
+                  displayStatus === 'failed' ? 'ring-amber-200/80' : 'ring-black/5',
+                ].join(' ')}
+              >
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2 text-sm font-medium text-neutral-800">
                     <Icon
@@ -90,21 +96,45 @@ export function ToolCallAccordion({ tools }: ToolCallAccordionProps) {
                 <div
                   className={[
                     'mt-3 rounded-2xl px-3 py-3 text-xs leading-6',
-                    displayStatus === 'failed' ? 'bg-amber-50 text-amber-800' : 'bg-neutral-50 text-neutral-600',
+                    displayStatus === 'failed' ? 'bg-amber-50 text-amber-900' : 'bg-neutral-50 text-neutral-600',
                   ].join(' ')}
                 >
                   <div className="font-medium">{presentation.summary}</div>
                   {presentation.detail && presentation.detail !== presentation.summary ? (
-                    <div className="mt-1 text-[12px] leading-5 text-neutral-500">{presentation.detail}</div>
+                    <div
+                      className={[
+                        'mt-1 text-[12px] leading-5',
+                        displayStatus === 'failed' ? 'text-amber-700/90' : 'text-neutral-500',
+                      ].join(' ')}
+                    >
+                      {presentation.detail}
+                    </div>
                   ) : null}
                 </div>
 
                 {presentation.rawDetail ? (
-                  <details className="mt-2 rounded-2xl bg-neutral-50/80 px-3 py-2 text-xs text-neutral-500">
-                    <summary className="cursor-pointer list-none font-medium text-neutral-600">
+                  <details
+                    className={[
+                      'mt-2 rounded-2xl px-3 py-2 text-xs',
+                      displayStatus === 'failed'
+                        ? 'bg-amber-50/60 text-amber-700'
+                        : 'bg-neutral-50/80 text-neutral-500',
+                    ].join(' ')}
+                  >
+                    <summary
+                      className={[
+                        'cursor-pointer list-none font-medium',
+                        displayStatus === 'failed' ? 'text-amber-700' : 'text-neutral-600',
+                      ].join(' ')}
+                    >
                       {'\u67e5\u770b\u539f\u59cb\u8fd4\u56de'}
                     </summary>
-                    <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all leading-5 text-neutral-500">
+                    <pre
+                      className={[
+                        'mt-2 overflow-x-auto whitespace-pre-wrap break-all leading-5',
+                        displayStatus === 'failed' ? 'text-amber-700/90' : 'text-neutral-500',
+                      ].join(' ')}
+                    >
                       {presentation.rawDetail}
                     </pre>
                   </details>

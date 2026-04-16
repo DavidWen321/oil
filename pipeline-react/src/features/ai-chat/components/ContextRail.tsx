@@ -12,6 +12,46 @@ interface ContextRailProps {
   currentStep: number;
 }
 
+const LOG_TYPE_LABELS: Record<string, string> = {
+  trace_init: '开始分析',
+  tool_search: '工具选择',
+  tool_use_start: '调用工具',
+  tool_use_done: '工具完成',
+  tool_start: '调用工具',
+  tool_end: '工具完成',
+  plan_created: '已生成计划',
+  plan_updated: '更新计划',
+  plan_step_start: '开始步骤',
+  plan_step_done: '步骤完成',
+  step_started: '开始步骤',
+  step_completed: '步骤完成',
+  step_failed: '步骤失败',
+  hitl_waiting: '等待确认',
+  hitl_request: '等待确认',
+  hitl_resumed: '继续执行',
+  thinking_done: '思考完成',
+  final_response: '生成完成',
+  done: '执行完成',
+  error: '执行异常',
+};
+
+function getLogTypeLabel(type: string) {
+  return LOG_TYPE_LABELS[type] ?? type;
+}
+
+function getLogTone(type: string) {
+  if (type === 'error' || type === 'step_failed') {
+    return 'bg-rose-100 text-rose-600';
+  }
+  if (type === 'tool_use_start' || type === 'tool_start') {
+    return 'bg-sky-100 text-sky-600';
+  }
+  if (type === 'tool_use_done' || type === 'tool_end' || type === 'done' || type === 'final_response') {
+    return 'bg-emerald-100 text-emerald-600';
+  }
+  return 'bg-neutral-200 text-neutral-500';
+}
+
 function Section({
   title,
   icon: Icon,
@@ -124,11 +164,16 @@ export function ContextRail({ plan, logs, metrics, activeTools, currentStep }: C
       <Section title={'\u5b9e\u65f6\u65e5\u5fd7'} icon={Activity} defaultOpen={false}>
         <div className="space-y-2">
           {logs.length === 0 ? <div className="text-sm text-neutral-500">{'\u6682\u65e0\u65e5\u5fd7'}</div> : null}
-          {logs.slice(-8).reverse().map((log, index) => (
+          {logs.slice(-8).map((log, index) => (
             <div key={`${log.timestamp}-${index}`} className="rounded-2xl bg-neutral-50 px-3 py-3 text-xs leading-6 text-neutral-600">
-              <div className="mb-1 flex items-center justify-between gap-2 text-[11px] uppercase tracking-[0.12em] text-neutral-400">
-                <span>{log.type}</span>
-                <span>{new Date(log.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</span>
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <span className="inline-flex items-center gap-2 text-[11px] font-medium text-neutral-500">
+                  <span className={['inline-block h-2 w-2 rounded-full', getLogTone(log.type)].join(' ')} />
+                  {getLogTypeLabel(log.type)}
+                </span>
+                <span className="text-[11px] text-neutral-400">
+                  {new Date(log.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+                </span>
               </div>
               {log.text}
             </div>

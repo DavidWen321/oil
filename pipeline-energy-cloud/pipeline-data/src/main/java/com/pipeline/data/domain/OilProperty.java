@@ -36,7 +36,7 @@ public class OilProperty implements Serializable {
     private BigDecimal density;
 
     /**
-     * 运动粘度(m2/s)
+     * 运动粘度(m²/s)
      */
     private BigDecimal viscosity;
 

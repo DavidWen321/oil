@@ -66,7 +66,7 @@ let memoryStore: DemoStore | null = null;
 
 const SENSITIVITY_VARIABLES: SensitivityVariableInfo[] = [
   { code: 'FLOW_RATE', name: '流量', unit: 'm3/h', minChangePercent: -20, maxChangePercent: 20 },
-  { code: 'VISCOSITY', name: '运动粘度', unit: 'm2/s', minChangePercent: -20, maxChangePercent: 20 },
+  { code: 'VISCOSITY', name: '运动粘度', unit: 'm²/s', minChangePercent: -20, maxChangePercent: 20 },
   { code: 'ROUGHNESS', name: '粗糙度', unit: 'm', minChangePercent: -20, maxChangePercent: 20 },
   { code: 'DIAMETER', name: '管径', unit: 'mm', minChangePercent: -15, maxChangePercent: 15 },
   { code: 'INLET_PRESSURE', name: '首站进站压头', unit: 'm', minChangePercent: -15, maxChangePercent: 15 },

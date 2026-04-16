@@ -8,6 +8,7 @@ interface ChatTopbarProps {
   connected: boolean;
   streaming: boolean;
   status: string;
+  compact?: boolean;
   contextOpen: boolean;
   onToggleSidebar: () => void;
   onToggleContext: () => void;
@@ -20,6 +21,7 @@ export function ChatTopbar({
   connected,
   streaming,
   status,
+  compact = false,
   contextOpen,
   onToggleSidebar: _onToggleSidebar,
   onToggleContext,
@@ -32,7 +34,7 @@ export function ChatTopbar({
   const activeMode = MODE_OPTIONS.find((option) => option.value === mode);
 
   return (
-    <header className="border-b border-neutral-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.82)_0%,rgba(255,255,255,0.64)_100%)] px-5 py-4 backdrop-blur md:px-6">
+    <header className={['border-b border-neutral-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.82)_0%,rgba(255,255,255,0.64)_100%)] px-5 backdrop-blur md:px-6', compact ? 'py-3' : 'py-4'].join(' ')}>
       <div className="flex items-center justify-between gap-4">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -43,19 +45,19 @@ export function ChatTopbar({
               </span>
             ) : null}
           </div>
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-neutral-500">
+          <div className={['flex flex-wrap items-center gap-2 text-xs text-neutral-500', compact ? 'mt-1.5' : 'mt-2'].join(' ')}>
             <div className="inline-flex items-center gap-1.5 rounded-full bg-white/85 px-2.5 py-1 ring-1 ring-black/5">
               <Sparkles className="h-3.5 w-3.5 text-sky-500" />
               <span>智能分析助手</span>
             </div>
-            {activeMode?.description ? (
+            {!compact && activeMode?.description ? (
               <span className="line-clamp-1">{activeMode.description}</span>
             ) : null}
           </div>
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="hidden items-center gap-2 rounded-full border border-white/70 bg-white/80 p-1 shadow-[0_10px_24px_rgba(15,23,42,0.05)] sm:flex">
+          <div className={['hidden items-center gap-2 rounded-full border border-white/70 bg-white/80 shadow-[0_10px_24px_rgba(15,23,42,0.05)] sm:flex', compact ? 'p-0.5' : 'p-1'].join(' ')}>
             <label className="relative block">
               <span className="sr-only">选择模式</span>
               <select

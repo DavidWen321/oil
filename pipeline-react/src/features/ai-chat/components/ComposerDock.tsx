@@ -6,6 +6,7 @@ interface ComposerDockProps {
   draft: string;
   mode: ChatMode;
   busy: boolean;
+  compact?: boolean;
   onDraftChange: (value: string) => void;
   onModeChange: (mode: ChatMode) => void;
   onSubmit: () => void;
@@ -16,6 +17,7 @@ export function ComposerDock({
   draft,
   mode,
   busy,
+  compact = false,
   onDraftChange,
   onModeChange,
   onSubmit,
@@ -24,15 +26,15 @@ export function ComposerDock({
   const activeMode = MODE_OPTIONS.find((option) => option.value === mode);
 
   return (
-    <div className="px-4 pb-5 pt-3 md:px-6">
+    <div className={['px-4 md:px-6', compact ? 'pb-3 pt-1.5' : 'pb-4 pt-2'].join(' ')}>
       <div className="w-full max-w-[980px]">
         <div className="rounded-[32px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(248,250,252,0.96)_100%)] shadow-[0_24px_54px_rgba(15,23,42,0.10)] ring-1 ring-black/5 backdrop-blur focus-within:border-sky-300 focus-within:ring-4 focus-within:ring-sky-500/10">
-          <div className="flex items-center justify-between gap-3 border-b border-neutral-200/70 px-5 py-3">
+          <div className={['flex items-center justify-between gap-3 border-b border-neutral-200/70 px-5', compact ? 'py-2' : 'py-2.5'].join(' ')}>
             <div className="min-w-0">
               <div className="text-sm font-medium text-neutral-800">
                 {busy ? '正在生成分析结果' : '开始一段新的分析'}
               </div>
-              <div className="mt-1 line-clamp-1 text-xs text-neutral-500">
+              <div className={['line-clamp-1 text-xs text-neutral-500', compact ? 'mt-0.5' : 'mt-1'].join(' ')}>
                 {activeMode?.description ?? '输入业务场景、问题线索或优化目标，助手会按当前模式组织输出。'}
               </div>
             </div>
@@ -45,8 +47,8 @@ export function ComposerDock({
             value={draft}
             onChange={(event) => onDraftChange(event.target.value)}
             placeholder="描述你的业务场景、诊断问题或优化目标"
-            rows={3}
-            className="min-h-[108px] w-full resize-none bg-transparent px-5 pt-4 text-[15px] leading-7 text-neutral-900 outline-none placeholder:text-neutral-400"
+            rows={compact ? 1 : 2}
+            className={['w-full resize-none bg-transparent px-5 text-[15px] text-neutral-900 outline-none placeholder:text-neutral-400', compact ? 'min-h-[72px] pt-2.5 leading-6.5' : 'min-h-[88px] pt-3 leading-7'].join(' ')}
             onKeyDown={(event) => {
               if (event.key === 'Enter' && !event.shiftKey) {
                 event.preventDefault();
@@ -55,7 +57,7 @@ export function ComposerDock({
             }}
           />
 
-          <div className="flex flex-col gap-3 px-3 pb-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className={['flex flex-col px-3 sm:flex-row sm:items-center sm:justify-between', compact ? 'gap-2.5 pb-2.5 pt-1' : 'gap-3 pb-3 pt-1'].join(' ')}>
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
