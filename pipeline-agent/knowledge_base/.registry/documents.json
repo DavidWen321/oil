@@ -1113,6 +1113,32 @@
       "progress_percent": 100,
       "created_at": "2026-04-12T19:11:18",
       "updated_at": "2026-04-12T19:11:18"
+    },
+    "ef8c4a1d3ad9": {
+      "doc_id": "ef8c4a1d3ad9",
+      "title": "石油管道运行与操作手册",
+      "source": "手动录入",
+      "category": "operations",
+      "tags": [
+        "知识库"
+      ],
+      "author": null,
+      "summary": null,
+      "language": "zh-CN",
+      "version": null,
+      "external_id": null,
+      "effective_at": null,
+      "file_name": "石油管道运行与操作手册-20260415221013567910.docx",
+      "relative_path": "operations\\石油管道运行与操作手册-20260415221013567910.docx",
+      "file_type": "docx",
+      "file_size_bytes": 55836,
+      "source_type": "upload",
+      "status": "indexed",
+      "chunk_count": 32,
+      "ingest_stage": "DONE",
+      "progress_percent": 100,
+      "created_at": "2026-04-15T22:10:24",
+      "updated_at": "2026-04-15T22:10:24"
     }
   }
 }

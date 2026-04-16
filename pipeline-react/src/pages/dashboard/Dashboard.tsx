@@ -102,7 +102,7 @@ const OIL_HEATMAP_OPTIONS: Array<{
   unit: string
 }> = [
   { key: 'density', label: '密度', unit: 'kg/m3' },
-  { key: 'viscosity', label: '运动粘度', unit: 'm2/s' },
+  { key: 'viscosity', label: '运动粘度', unit: 'm²/s' },
 ]
 
 function toFiniteNumber(value: unknown): number | null {

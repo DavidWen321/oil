@@ -2,7 +2,7 @@
 import { agentApi } from '../api/agent';
 import { useSSE } from './useSSE';
 import { useUserStore } from '../stores/userStore';
-import { getToolDisplayStatus } from '../features/ai-chat/utils/toolOutput';
+import { getToolDisplayStatus, getToolTitle } from '../features/ai-chat/utils/toolOutput';
 import type {
   AgentTraceState,
   HITLRequest,
@@ -68,6 +68,50 @@ function resolveToolStatus(
   return preferredStatus ?? baseTool.status;
 }
 
+function stringifyToolOutput(value: unknown): string {
+  if (value == null) return '';
+  if (typeof value === 'string') return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function normalizeEventTimestamp(value: unknown) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const ms = value < 1e12 ? value * 1000 : value;
+    return new Date(ms).toISOString();
+  }
+
+  if (typeof value === 'string' && value.trim()) {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric)) {
+      const ms = numeric < 1e12 ? numeric * 1000 : numeric;
+      return new Date(ms).toISOString();
+    }
+
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toISOString();
+    }
+  }
+
+  return new Date().toISOString();
+}
+
+function resetDerivedMetricRefs(
+  traceStartedAtRef: { current: number | null },
+  toolCallKeysRef: { current: Set<string> },
+  toolCallCountRef: { current: number },
+  llmCallCountRef: { current: number },
+) {
+  traceStartedAtRef.current = null;
+  toolCallKeysRef.current = new Set();
+  toolCallCountRef.current = 0;
+  llmCallCountRef.current = 0;
+}
+
 const V2_BASE_URL = toV2BaseUrl(agentApi.baseUrl);
 
 function initialState(sessionId: string): AgentTraceState {
@@ -100,6 +144,24 @@ export function useAgentTrace(sessionId: string) {
   const chunkBufferRef = useRef('');
   const smoothQueueRef = useRef('');
   const rafIdRef = useRef<number | null>(null);
+  const traceStartedAtRef = useRef<number | null>(null);
+  const toolCallKeysRef = useRef<Set<string>>(new Set());
+  const toolCallCountRef = useRef(0);
+  const llmCallCountRef = useRef(0);
+
+  const mergeDerivedMetrics = useCallback((metrics: TraceMetrics): TraceMetrics => {
+    const elapsed =
+      traceStartedAtRef.current != null
+        ? Math.max(0, Date.now() - traceStartedAtRef.current)
+        : metrics.total_duration_ms;
+
+    return {
+      ...metrics,
+      total_duration_ms: Math.max(metrics.total_duration_ms, elapsed),
+      llm_calls: Math.max(metrics.llm_calls, llmCallCountRef.current),
+      tool_calls: Math.max(metrics.tool_calls, toolCallCountRef.current),
+    };
+  }, []);
 
   const flushBuffer = useCallback(() => {
     rafIdRef.current = null;
@@ -138,8 +200,41 @@ export function useAgentTrace(sessionId: string) {
   }, []);
 
   const onEvent = useCallback((event: TraceEvent) => {
+    if (event.event === 'trace_init') {
+      traceStartedAtRef.current = Date.now();
+      toolCallKeysRef.current = new Set();
+      toolCallCountRef.current = 0;
+      llmCallCountRef.current = 0;
+    }
+
+    if (event.event === 'tool_start' || event.event === 'tool_use_start') {
+      const toolName = String(event.data.name ?? event.data.tool ?? '');
+      const callId =
+        event.data.tool_id != null
+          ? String(event.data.tool_id)
+          : event.data.call_id != null
+            ? String(event.data.call_id)
+            : '';
+      const metricKey = callId || `${toolName}-${toolCallKeysRef.current.size + 1}`;
+      if (!toolCallKeysRef.current.has(metricKey)) {
+        toolCallKeysRef.current.add(metricKey);
+        toolCallCountRef.current += 1;
+      }
+    }
+
+    if (
+      event.event === 'thinking_delta' ||
+      event.event === 'content_delta' ||
+      event.event === 'response_chunk' ||
+      event.event === 'content_done' ||
+      event.event === 'final_response' ||
+      event.event === 'done'
+    ) {
+      llmCallCountRef.current = Math.max(llmCallCountRef.current, 1);
+    }
+
     setState((prev) => {
-      const timestamp = String(event.data.timestamp ?? new Date().toISOString());
+      const timestamp = normalizeEventTimestamp(event.data.timestamp);
       const stepNumber = typeof event.data.step_number === 'number' ? event.data.step_number : undefined;
       const agent = typeof event.data.agent === 'string' ? event.data.agent : undefined;
       const eventTraceId = event.data.trace_id != null ? String(event.data.trace_id) : undefined;
@@ -154,10 +249,11 @@ export function useAgentTrace(sessionId: string) {
             traceId,
             sessionId: newSessionId,
             status: 'planning',
+            metrics: { ...EMPTY_METRICS },
             logs: appendLog(prev.logs, {
               timestamp,
               type: event.event,
-              text: `trace started: ${traceId}`,
+              text: '开始分析问题',
             }),
           };
         }
@@ -172,7 +268,7 @@ export function useAgentTrace(sessionId: string) {
               logs: appendLog(prev.logs, {
                 timestamp,
                 type: event.event,
-                text: `trace started: ${eventTraceId ?? prev.traceId ?? ''}`,
+                text: '开始建立分析链路',
               }),
             };
           }
@@ -234,7 +330,9 @@ export function useAgentTrace(sessionId: string) {
             selectedTools.length > 0
               ? selectedTools
                   .map((name) =>
-                    scoreByName.has(name) ? `${name}(${scoreByName.get(name)!.toFixed(2)})` : name,
+                    scoreByName.has(name)
+                      ? `${getToolTitle(name)}(${scoreByName.get(name)!.toFixed(2)})`
+                      : getToolTitle(name),
                   )
                   .join(', ')
               : 'none';
@@ -244,10 +342,14 @@ export function useAgentTrace(sessionId: string) {
             traceId: eventTraceId ?? prev.traceId,
             sessionId: eventSessionId ?? prev.sessionId,
             lastToolSearch: toolSearchSnapshot,
+            metrics: mergeDerivedMetrics(prev.metrics),
             logs: appendLog(prev.logs, {
               timestamp,
               type: event.event,
-              text: `tool search: [${selectedLabel}] for "${String(event.data.query ?? event.data.message ?? '')}"`,
+              text:
+                selectedTools.length > 0
+                  ? `已选择工具：${selectedLabel}`
+                  : '未命中可用工具，准备直接生成回复',
             }),
           };
         }
@@ -259,6 +361,7 @@ export function useAgentTrace(sessionId: string) {
             traceId: eventTraceId ?? prev.traceId,
             sessionId: eventSessionId ?? prev.sessionId,
             plan,
+            metrics: mergeDerivedMetrics(prev.metrics),
             status: 'executing',
             logs: appendLog(prev.logs, {
               timestamp,
@@ -277,6 +380,7 @@ export function useAgentTrace(sessionId: string) {
             sessionId: eventSessionId ?? prev.sessionId,
             plan: nextPlan,
             currentStep: stepNumber ?? prev.currentStep,
+            metrics: mergeDerivedMetrics(prev.metrics),
             status: 'executing',
             logs: appendLog(prev.logs, {
               timestamp,
@@ -300,6 +404,10 @@ export function useAgentTrace(sessionId: string) {
             traceId: eventTraceId ?? prev.traceId,
             sessionId: eventSessionId ?? prev.sessionId,
             plan: nextPlan,
+            metrics: mergeDerivedMetrics({
+              ...prev.metrics,
+              steps_completed: prev.metrics.steps_completed + 1,
+            }),
             logs: appendLog(prev.logs, {
               timestamp,
               type: event.event,
@@ -319,6 +427,7 @@ export function useAgentTrace(sessionId: string) {
             sessionId: eventSessionId ?? prev.sessionId,
             plan: nextPlan,
             currentStep: stepNumber ?? prev.currentStep,
+            metrics: mergeDerivedMetrics(prev.metrics),
             status: 'executing',
             logs: appendLog(prev.logs, {
               timestamp,
@@ -343,6 +452,10 @@ export function useAgentTrace(sessionId: string) {
             traceId: eventTraceId ?? prev.traceId,
             sessionId: eventSessionId ?? prev.sessionId,
             plan: nextPlan,
+            metrics: mergeDerivedMetrics({
+              ...prev.metrics,
+              steps_completed: prev.metrics.steps_completed + 1,
+            }),
             logs: appendLog(prev.logs, {
               timestamp,
               type: event.event,
@@ -364,6 +477,10 @@ export function useAgentTrace(sessionId: string) {
             traceId: eventTraceId ?? prev.traceId,
             sessionId: eventSessionId ?? prev.sessionId,
             plan: nextPlan,
+            metrics: mergeDerivedMetrics({
+              ...prev.metrics,
+              steps_failed: prev.metrics.steps_failed + 1,
+            }),
             status: 'error',
             errorMessage: String(event.data.error ?? 'failed'),
             logs: appendLog(prev.logs, {
@@ -381,6 +498,7 @@ export function useAgentTrace(sessionId: string) {
             traceId: eventTraceId ?? prev.traceId,
             sessionId: eventSessionId ?? prev.sessionId,
             status: 'waiting_hitl',
+            metrics: mergeDerivedMetrics(prev.metrics),
             hitlRequest: event.data as unknown as HITLRequest,
             logs: appendLog(prev.logs, {
               timestamp,
@@ -395,6 +513,7 @@ export function useAgentTrace(sessionId: string) {
             traceId: eventTraceId ?? prev.traceId,
             sessionId: eventSessionId ?? prev.sessionId,
             status: 'executing',
+            metrics: mergeDerivedMetrics(prev.metrics),
             errorMessage: null,
             hitlRequest: null,
             logs: appendLog(prev.logs, {
@@ -410,6 +529,7 @@ export function useAgentTrace(sessionId: string) {
             traceId: eventTraceId ?? prev.traceId,
             sessionId: eventSessionId ?? prev.sessionId,
             status: 'waiting_hitl',
+            metrics: mergeDerivedMetrics(prev.metrics),
             errorMessage: null,
             hitlRequest: event.data as unknown as HITLRequest,
             logs: appendLog(prev.logs, {
@@ -435,18 +555,19 @@ export function useAgentTrace(sessionId: string) {
             traceId: eventTraceId ?? prev.traceId,
             sessionId: eventSessionId ?? prev.sessionId,
             status: 'executing',
+            metrics: mergeDerivedMetrics(prev.metrics),
             errorMessage: null,
             activeTools: [...prev.activeTools, newTool],
             logs: appendLog(prev.logs, {
               timestamp,
               type: 'tool_start',
-              text: `🔧 调用工具: ${toolName}`,
+              text: `🔧 调用工具: ${getToolTitle(toolName)}`,
             }),
           };
         }
         case 'tool_end': {
           const toolName = String(event.data.tool ?? '');
-          const toolOutput = String(event.data.output ?? '');
+          const toolOutput = stringifyToolOutput(event.data.output);
           const callId = event.data.call_id != null ? String(event.data.call_id) : undefined;
           const targetIndex = findRunningToolIndex(prev.activeTools, callId, toolName);
           const updatedTools = [...prev.activeTools];
@@ -466,11 +587,12 @@ export function useAgentTrace(sessionId: string) {
             ...prev,
             traceId: eventTraceId ?? prev.traceId,
             sessionId: eventSessionId ?? prev.sessionId,
+            metrics: mergeDerivedMetrics(prev.metrics),
             activeTools: updatedTools,
             logs: appendLog(prev.logs, {
               timestamp,
               type: 'tool_end',
-              text: `✅ 工具完成: ${toolName}`,
+              text: `✅ 工具完成: ${getToolTitle(toolName)}`,
             }),
           };
         }
@@ -501,18 +623,19 @@ export function useAgentTrace(sessionId: string) {
             traceId: eventTraceId ?? prev.traceId,
             sessionId: eventSessionId ?? prev.sessionId,
             status: 'executing',
+            metrics: mergeDerivedMetrics(prev.metrics),
             errorMessage: null,
             activeTools: duplicated ? prev.activeTools : [...prev.activeTools, newTool],
             logs: appendLog(prev.logs, {
               timestamp,
               type: event.event,
-              text: `🔧 调用工具: ${toolName}`,
+              text: `🔧 调用工具: ${getToolTitle(toolName)}`,
             }),
           };
         }
         case 'tool_result': {
           const toolName = String(event.data.name ?? event.data.tool ?? '');
-          const toolOutput = String(event.data.output ?? '');
+          const toolOutput = stringifyToolOutput(event.data.output);
           const callId =
             event.data.tool_id != null
               ? String(event.data.tool_id)
@@ -537,12 +660,9 @@ export function useAgentTrace(sessionId: string) {
             ...prev,
             traceId: eventTraceId ?? prev.traceId,
             sessionId: eventSessionId ?? prev.sessionId,
+            metrics: mergeDerivedMetrics(prev.metrics),
             activeTools: updatedTools,
-            logs: appendLog(prev.logs, {
-              timestamp,
-              type: event.event,
-              text: `📦 工具结果: ${toolName}`,
-            }),
+            logs: prev.logs,
           };
         }
         case 'tool_use_done': {
@@ -570,11 +690,12 @@ export function useAgentTrace(sessionId: string) {
             ...prev,
             traceId: eventTraceId ?? prev.traceId,
             sessionId: eventSessionId ?? prev.sessionId,
+            metrics: mergeDerivedMetrics(prev.metrics),
             activeTools: updatedTools,
             logs: appendLog(prev.logs, {
               timestamp,
               type: event.event,
-              text: `✅ 工具完成: ${toolName}`,
+              text: `✅ 工具完成: ${getToolTitle(toolName)}`,
             }),
           };
         }
@@ -586,6 +707,7 @@ export function useAgentTrace(sessionId: string) {
             traceId: eventTraceId ?? prev.traceId,
             sessionId: eventSessionId ?? prev.sessionId,
             thinking: prev.thinking + chunk,
+            metrics: mergeDerivedMetrics(prev.metrics),
             status: prev.status === 'idle' ? 'planning' : prev.status,
           };
         }
@@ -594,6 +716,7 @@ export function useAgentTrace(sessionId: string) {
             ...prev,
             traceId: eventTraceId ?? prev.traceId,
             sessionId: eventSessionId ?? prev.sessionId,
+            metrics: mergeDerivedMetrics(prev.metrics),
             logs: appendLog(prev.logs, {
               timestamp,
               type: event.event,
@@ -627,13 +750,10 @@ export function useAgentTrace(sessionId: string) {
             traceId: eventTraceId ?? prev.traceId,
             sessionId: eventSessionId ?? prev.sessionId,
             status: 'completed',
+            metrics: mergeDerivedMetrics(prev.metrics),
             errorMessage: null,
             finalResponse: response || streamedResponse,
-            logs: appendLog(prev.logs, {
-              timestamp,
-              type: event.event,
-              text: 'content stream completed',
-            }),
+            logs: prev.logs,
           };
         }
         case 'completed': {
@@ -641,7 +761,7 @@ export function useAgentTrace(sessionId: string) {
           const metrics =
             event.data.metrics && typeof event.data.metrics === 'object'
               ? (event.data.metrics as TraceMetrics)
-              : prev.metrics;
+              : mergeDerivedMetrics(prev.metrics);
           return {
             ...prev,
             traceId: eventTraceId ?? prev.traceId,
@@ -649,11 +769,11 @@ export function useAgentTrace(sessionId: string) {
             status: 'completed',
             errorMessage: null,
             finalResponse: prev.finalResponse + buffered,
-            metrics,
+            metrics: mergeDerivedMetrics(metrics),
             logs: appendLog(prev.logs, {
               timestamp,
               type: event.event,
-              text: 'workflow completed',
+              text: '分析完成',
             }),
           };
         }
@@ -671,6 +791,7 @@ export function useAgentTrace(sessionId: string) {
             traceId: eventTraceId ?? prev.traceId,
             sessionId: eventSessionId ?? prev.sessionId,
             status: 'completed',
+            metrics: mergeDerivedMetrics(prev.metrics),
             errorMessage: null,
             finalResponse: response || streamedResponse,
             logs: appendLog(prev.logs, {
@@ -685,7 +806,7 @@ export function useAgentTrace(sessionId: string) {
           const metrics =
             event.data.metrics && typeof event.data.metrics === 'object'
               ? (event.data.metrics as TraceMetrics)
-              : prev.metrics;
+              : mergeDerivedMetrics(prev.metrics);
           return {
             ...prev,
             traceId: eventTraceId ?? prev.traceId,
@@ -693,11 +814,11 @@ export function useAgentTrace(sessionId: string) {
             status: 'completed',
             errorMessage: null,
             finalResponse: prev.finalResponse + buffered,
-            metrics,
+            metrics: mergeDerivedMetrics(metrics),
             logs: appendLog(prev.logs, {
               timestamp,
               type: event.event,
-              text: 'workflow completed',
+              text: '分析完成',
             }),
           };
         }
@@ -708,6 +829,7 @@ export function useAgentTrace(sessionId: string) {
             traceId: eventTraceId ?? prev.traceId,
             sessionId: eventSessionId ?? prev.sessionId,
             status: 'error',
+            metrics: mergeDerivedMetrics(prev.metrics),
             errorMessage: String(event.data.error ?? event.data.raw ?? ''),
             finalResponse: prev.finalResponse + buffered,
             logs: appendLog(prev.logs, {
@@ -722,6 +844,7 @@ export function useAgentTrace(sessionId: string) {
             ...prev,
             traceId: eventTraceId ?? prev.traceId,
             sessionId: eventSessionId ?? prev.sessionId,
+            metrics: mergeDerivedMetrics(prev.metrics),
             logs: appendLog(prev.logs, {
               timestamp,
               type: event.event,
@@ -732,7 +855,7 @@ export function useAgentTrace(sessionId: string) {
           };
       }
     });
-  }, [drainBufferedChunks, flushBuffer]);
+  }, [drainBufferedChunks, flushBuffer, mergeDerivedMetrics]);
 
   const onError = useCallback((error: Error) => {
     setState((prev) => ({
@@ -764,6 +887,7 @@ export function useAgentTrace(sessionId: string) {
       }
 
       const token = useUserStore.getState().token;
+      resetDerivedMetricRefs(traceStartedAtRef, toolCallKeysRef, toolCallCountRef, llmCallCountRef);
       setState(initialState(sessionId));
       connect({
         method: 'POST',
@@ -899,6 +1023,7 @@ export function useAgentTrace(sessionId: string) {
       cancelAnimationFrame(rafIdRef.current);
       rafIdRef.current = null;
     }
+    resetDerivedMetricRefs(traceStartedAtRef, toolCallKeysRef, toolCallCountRef, llmCallCountRef);
     setState(initialState(sessionId));
   }, [disconnect, sessionId]);
 
@@ -910,6 +1035,7 @@ export function useAgentTrace(sessionId: string) {
       cancelAnimationFrame(rafIdRef.current);
       rafIdRef.current = null;
     }
+    resetDerivedMetricRefs(traceStartedAtRef, toolCallKeysRef, toolCallCountRef, llmCallCountRef);
     setState(initialState(sessionId));
   }, [disconnect, sessionId]);
 
@@ -921,6 +1047,7 @@ export function useAgentTrace(sessionId: string) {
       }
       chunkBufferRef.current = '';
       smoothQueueRef.current = '';
+      resetDerivedMetricRefs(traceStartedAtRef, toolCallKeysRef, toolCallCountRef, llmCallCountRef);
     };
   }, []);
 

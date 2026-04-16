@@ -75,6 +75,9 @@ export function useSSE({ url, onEvent, onError }: UseSSEOptions) {
         onmessage(msg) {
           const eventName = msg.event || 'message';
           const raw = msg.data;
+          if (!raw?.trim()) {
+            return;
+          }
           let payload: Record<string, unknown>;
           try {
             payload = JSON.parse(raw) as Record<string, unknown>;

@@ -76,7 +76,7 @@ CREATE TABLE `t_oil_property` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '涓婚敭ID',
   `name` varchar(50) DEFAULT NULL COMMENT '娌瑰搧鍚嶇О',
   `density` decimal(10, 2) DEFAULT NULL COMMENT '瀵嗗害(kg/m3)',
-  `viscosity` decimal(10, 6) DEFAULT NULL COMMENT '杩愬姩绮樺害(m2/s)',
+  `viscosity` decimal(10, 6) DEFAULT NULL COMMENT '杩愬姩绮樺害(m²/s)',
   `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '鍒涘缓鏃堕棿',
   `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '鏇存柊鏃堕棿',
   PRIMARY KEY (`id`)
