@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import Any
 
 from langchain_openai import ChatOpenAI
@@ -11,7 +12,20 @@ from src.utils import logger
 
 
 def explain_report(payload: dict[str, Any], request: DynamicReportRequest) -> dict[str, Any]:
+    started_at = time.perf_counter()
+
     try:
+        timeout_seconds = max(int(settings.LLM_TIMEOUT_SECONDS or 20), 5)
+        payload_text = json.dumps(payload, ensure_ascii=False, default=str)
+        payload_size_kb = len(payload_text.encode("utf-8")) / 1024
+
+        logger.info(
+            "Dynamic report LLM start | model={} timeout={}s payload_kb={:.1f}",
+            settings.LLM_MODEL,
+            timeout_seconds,
+            payload_size_kb,
+        )
+
         llm = ChatOpenAI(
             api_key=settings.OPENAI_API_KEY,
             base_url=settings.OPENAI_API_BASE,
@@ -19,6 +33,8 @@ def explain_report(payload: dict[str, Any], request: DynamicReportRequest) -> di
             temperature=0.1,
             max_tokens=min(settings.LLM_MAX_TOKENS, 1800),
             streaming=False,
+            timeout=timeout_seconds,
+            max_retries=0,
         )
         prompt = "\n".join(
             [
@@ -28,10 +44,18 @@ def explain_report(payload: dict[str, Any], request: DynamicReportRequest) -> di
                 "你只能输出 JSON，字段仅允许包含 title、abstract、summary、highlights、conclusion、section_summaries。",
                 "summary 和 highlights 必须是字符串数组。",
                 "section_summaries 必须是对象，key 为 section id，value 为一句中文摘要。",
-                json.dumps(payload, ensure_ascii=False),
+                payload_text,
             ]
         )
         response = llm.invoke(prompt)
+
+        elapsed_ms = (time.perf_counter() - started_at) * 1000
+        logger.info(
+            "Dynamic report LLM finished | model={} elapsed_ms={:.0f}",
+            settings.LLM_MODEL,
+            elapsed_ms,
+        )
+
         text = getattr(response, "content", "") if response is not None else ""
         cleaned = str(text).replace("```json", "").replace("```", "").strip()
         start = cleaned.find("{")
@@ -41,5 +65,10 @@ def explain_report(payload: dict[str, Any], request: DynamicReportRequest) -> di
         parsed = json.loads(cleaned)
         return parsed if isinstance(parsed, dict) else {}
     except Exception as exc:  # noqa: BLE001
-        logger.warning("LLM explanation skipped for dynamic report: %s", exc)
+        elapsed_ms = (time.perf_counter() - started_at) * 1000
+        logger.warning(
+            "LLM explanation skipped for dynamic report after {:.0f}ms: {}",
+            elapsed_ms,
+            exc,
+        )
         return {}

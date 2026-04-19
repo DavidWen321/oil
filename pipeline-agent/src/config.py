@@ -56,6 +56,7 @@ class Settings(BaseSettings):
     )
     LLM_TEMPERATURE: float = Field(default=0.1)
     LLM_MAX_TOKENS: int = Field(default=4096)
+    LLM_TIMEOUT_SECONDS: int = Field(default=20)
 
     # ===== 分层模型路由配置 =====
     LLM_LIGHT_MODEL: str = Field(default="claude-haiku-3-5")

@@ -17,6 +17,10 @@ from .suggestion_skill import suggestion_skill
 from .summary_skill import summary_skill
 
 
+def build_empty_report_ai_sections(ctx: dict[str, Any]) -> DynamicReportAiAnalysis:
+    return DynamicReportAiAnalysis()
+
+
 def build_report_ai_sections(ctx: dict[str, Any]) -> DynamicReportAiAnalysis:
     return build_hydraulic_report_ai_sections(ctx)
 
@@ -32,4 +36,9 @@ def build_sensitivity_report_ai_sections(ctx: dict[str, Any]) -> DynamicReportAi
     )
 
 
-__all__ = ["build_report_ai_sections", "build_sensitivity_report_ai_sections", "build_optimization_report_ai_sections"]
+__all__ = [
+    "build_empty_report_ai_sections",
+    "build_report_ai_sections",
+    "build_sensitivity_report_ai_sections",
+    "build_optimization_report_ai_sections",
+]

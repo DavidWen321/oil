@@ -102,7 +102,7 @@ const OIL_HEATMAP_OPTIONS: Array<{
   unit: string
 }> = [
   { key: 'density', label: '密度', unit: 'kg/m3' },
-  { key: 'viscosity', label: '运动粘度', unit: 'm²/s' },
+  { key: 'viscosity', label: '运动粘度', unit: 'mm²/s' },
 ]
 
 function toFiniteNumber(value: unknown): number | null {
@@ -1047,7 +1047,7 @@ export default function Dashboard() {
             `<div>长度：${typeof data.length === 'number' ? `${formatMetricValue(data.length)} km` : '暂无数据'}</div>`,
             `<div>设计输量：${throughput === null ? '暂无数据' : `${formatMetricValue(throughput)}`}</div>`,
             `<div>壁厚：${thickness === null ? '暂无数据' : `${formatMetricValue(thickness)} mm`}</div>`,
-            `<div>粗糙度：${roughness === null ? '暂无数据' : `${formatMetricValue(roughness)} m`}</div>`,
+            `<div>粗糙度：${roughness === null ? '暂无数据' : `${formatPreciseMetricValue(roughness)} m`}</div>`,
             `<div>高程差：${altitudeSpan === null ? '暂无数据' : `${formatMetricValue(altitudeSpan)} m`}</div>`,
           ].join('')
         },
@@ -1197,20 +1197,14 @@ export default function Dashboard() {
         ...chartTheme.xAxis.axisLabel,
         ...energyChart.xAxisLabel,
         interval: 0,
-        lineHeight: energyChart.isCompact ? 14 : 16,
+        margin: energyChart.isCompact ? 10 : 14,
         formatter: (_value: string | number, index: number) => {
           const profile = pumpStationLineProfilesWithData[index]
           if (!profile) {
             return ''
           }
 
-          const maxLength = energyChart.isCompact ? 4 : 8
-          const stationName =
-            profile.name.length > maxLength
-              ? `${profile.name.slice(0, maxLength)}…`
-              : profile.name
-
-          return `#${profile.id}\n${stationName}`
+          return `#${profile.id}`
         },
       },
     },

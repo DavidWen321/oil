@@ -178,7 +178,7 @@ export default function OilPropertyList() {
       },
     },
     {
-      title: nowrapTitle('运动粘度(m²/s)'),
+      title: nowrapTitle('运动粘度(mm²/s)'),
       dataIndex: 'viscosity',
       width: 260,
       align: 'center',
@@ -334,7 +334,7 @@ export default function OilPropertyList() {
                         borderRadius: 'var(--radius-md)',
                       }}
                     >
-                      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>运动粘度</div>
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>运动粘度(mm²/s)</div>
                       <div
                         style={{
                           color: 'var(--text-primary)',
@@ -386,10 +386,10 @@ export default function OilPropertyList() {
               <Col span={12}>
                 <Form.Item
                   name="viscosity"
-                  label="运动粘度(m²/s)"
+                  label="运动粘度(mm²/s)"
                   rules={[{ required: true, message: '请输入粘度' }]}
                 >
-                  <InputNumber min={0} precision={8} style={{ width: '100%' }} placeholder="0.00002000" />
+                  <InputNumber min={0} precision={8} style={{ width: '100%' }} placeholder="0.700000" />
                 </Form.Item>
               </Col>
             </Row>

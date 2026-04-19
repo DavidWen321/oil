@@ -463,6 +463,10 @@ function formatTime(value?: string) {
   return parsed.isValid() ? parsed.format('YYYY-MM-DD HH:mm:ss') : value;
 }
 
+function getHistoryResponsible(project: Project | undefined, item: Pick<CalculationHistory, 'userName'>) {
+  return project?.responsible || item.userName || '-';
+}
+
 function toHistoryTableRow(item: CalculationHistory, projectLookup: Map<number, Project>): HistoryTableRow {
   const project = projectLookup.get(Number(item.projectId));
 
@@ -470,7 +474,7 @@ function toHistoryTableRow(item: CalculationHistory, projectLookup: Map<number, 
     ...item,
     key: item.id,
     projectNumber: project?.number || (item.projectId ? String(item.projectId) : '-'),
-    responsible: project?.responsible || item.userName || '-',
+    responsible: getHistoryResponsible(project, item),
     calcTypeLabel: getDisplayCalcTypeLabel(item),
     updateTimeText: formatTime(item.createTime),
   };
@@ -541,7 +545,13 @@ function formatValue(value: unknown, unit?: string) {
   }
 
   if (typeof value === 'number') {
-    const normalized = Number.isInteger(value) ? String(value) : String(Number(value.toFixed(4)));
+    const absoluteValue = Math.abs(value);
+    const maximumFractionDigits =
+      absoluteValue !== 0 && absoluteValue < 1 ? 6 : 4;
+    const normalized = new Intl.NumberFormat('zh-CN', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits,
+    }).format(value);
     return unit ? `${normalized} ${unit}` : normalized;
   }
 
@@ -1075,12 +1085,14 @@ function buildOptimizationComparisonSmartPrompt(snapshot: OptimizationComparison
 
 function buildSensitivityUserPrompt() {
   return [
-    '请基于真实敏感性分析数据生成敏感性分析智能报告。',
-    '允许根据当前数据特点动态组织分析结构，不要写成固定模板，也不要只做参数拼接。',
-    '优先解释最敏感变量、基准工况、变化趋势、区间边界、末站压力极值、摩阻变化和流态切换。',
-    '当某类风险没有出现时，应明确说明“当前区间整体可控”，而不是硬凑风险条目。',
-    '如果存在明显高风险区间，要指出触发区间、触发指标和下一步最应该复核的内容。',
-    '只能依据输入数据分析，不允许编造不存在的数据；若数据不足，请明确说明当前数据不足以支持进一步判断。',
+    '你是“长输管道能耗与运行优化分析助手”，负责根据系统计算结果生成专业、准确、可执行的敏感性分析智能报告。',
+    '你的目标不是重复页面上的基础参数、结果卡片和图表，而是帮助用户快速判断当前系统是否存在运行风险、风险主要来自哪些因素、哪个变量最值得优先关注、应采取哪些优化措施，以及优化后可能带来什么收益。',
+    '必须严格基于给定数据分析，不得脱离数据臆测；语言要专业、清晰、简洁，避免空话套话。',
+    '请先给总体结论，再给分项分析；对关键变量必须说明影响方向和影响程度。',
+    '对风险项必须写明“风险原因 + 对结果的影响”；对建议必须写明“建议内容 + 适用原因 + 预期效果”。',
+    '如果数据表明系统总体稳定，也要明确指出潜在敏感点；如果数据不足，请明确说明“当前数据不足以支持进一步判断”。',
+    '输出时只保留以下 6 个部分，并且必须按这个顺序组织：【总体结论】【关键发现】【趋势分析】【风险识别】【运行建议】【预期收益】。',
+    '不要重复抄写页面已有的参数表、结果卡片和图表说明，不要生成“图表分析区”式的固定模板文字。',
     `最核心的一句话请围绕这层意思展开：${SENSITIVITY_REPORT_CORE_SENTENCE}`,
   ].join('');
 }
@@ -2042,16 +2054,17 @@ type SensitivityRiskCardData = {
   title: string;
   target: string;
   level: string;
-  summary: string;
-  details: string[];
+  reason: string;
+  impact: string;
 };
 
 type SensitivitySuggestionCardData = {
   title: string;
   target: string;
   priority: string;
-  summary: string;
-  details: string[];
+  action: string;
+  reason: string;
+  expected: string;
 };
 
 type SensitivityAnalysisContext = {
@@ -2302,13 +2315,13 @@ function buildSensitivityRiskCards(context: SensitivityAnalysisContext): Sensiti
 
   if (context.sensitivityCoefficient !== null) {
     const level = context.sensitivityCoefficient >= 0.8 ? '高' : context.sensitivityCoefficient >= 0.4 ? '中' : '低';
-    const summary =
+    const reason =
       level === '高'
         ? `${context.topVariableName} 的敏感系数为 ${formatValue(context.sensitivityCoefficient)}，在当前样本中排名第 ${context.topRankNumber}，已经是主导性的敏感变量。`
         : level === '中'
           ? `${context.topVariableName} 的敏感系数为 ${formatValue(context.sensitivityCoefficient)}，对结果已经形成可感知影响，需要作为重点跟踪变量。`
           : `${context.topVariableName} 的敏感系数为 ${formatValue(context.sensitivityCoefficient)}，当前样本下整体仍处于可控范围。`;
-    const details = [
+    const impact = [
       secondVariableName
         ? `与 ${secondVariableName}${secondCoefficient !== null ? `（敏感系数 ${formatValue(secondCoefficient)}）` : ''}相比，${context.topVariableName} 对结果的牵引作用更强。`
         : null,
@@ -2323,8 +2336,8 @@ function buildSensitivityRiskCards(context: SensitivityAnalysisContext): Sensiti
       title: '主导敏感变量',
       target: context.topVariableName,
       level,
-      summary,
-      details,
+      reason,
+      impact: impact.join('') || '该变量会直接放大关键结果的波动幅度。',
     });
   }
 
@@ -2333,26 +2346,30 @@ function buildSensitivityRiskCards(context: SensitivityAnalysisContext): Sensiti
       title: '压力边界',
       target: context.projectName,
       level: '高',
-      summary: `${minPressureLabel !== '-' ? `${minPressureLabel} 区间` : '当前测试区间'}已出现末站进站压力 ${formatValue(context.minEndStationPressure)}，运行边界已经被触发。`,
-      details: [
+      reason: `${minPressureLabel !== '-' ? `${minPressureLabel} 区间` : '当前测试区间'}已出现末站进站压力 ${formatValue(context.minEndStationPressure)}，运行边界已经被触发。`,
+      impact: [
         context.minPressurePoint
           ? `最低压力点出现在 ${minPressureLabel}，对应的末站压力为 ${formatValue(context.minPressurePoint.endStationPressure)}。`
           : null,
         `相对于基准工况“${context.baseCondition}”，当前参数窗口已经不能完全覆盖最不利工况。`,
-      ].filter((item): item is string => Boolean(item)),
+      ]
+        .filter((item): item is string => Boolean(item))
+        .join(''),
     });
   } else if (context.maxImpactPercent !== null && context.maxImpactPercent >= 10) {
     cards.push({
       title: '区间放大效应',
       target: context.projectName,
       level: context.maxImpactPercent >= 20 ? '高' : '中',
-      summary: `虽然当前区间还没有出现负压边界，但最大影响幅度已达到 ${formatValue(context.maxImpactPercent, '%')}，说明结果对变量波动并不迟钝。`,
-      details: [
+      reason: `虽然当前区间还没有出现负压边界，但最大影响幅度已达到 ${formatValue(context.maxImpactPercent, '%')}，说明结果对变量波动并不迟钝。`,
+      impact: [
         context.maxPressurePoint
           ? `最高末站压力出现在 ${getSensitivityChangeLabel(context.maxPressurePoint)}，说明参数上调时会同步推高关键结果。`
           : null,
         '这意味着后续再扩大扰动范围时，系统可能很快从“可控”转入“边界敏感”。',
-      ].filter((item): item is string => Boolean(item)),
+      ]
+        .filter((item): item is string => Boolean(item))
+        .join(''),
     });
   }
 
@@ -2361,26 +2378,30 @@ function buildSensitivityRiskCards(context: SensitivityAnalysisContext): Sensiti
       title: '流态切换',
       target: context.projectName,
       level: '中',
-      summary: '不同变化比例下已经出现流态切换，说明这组样本不能再按单一流动特征理解。',
-      details: [
+      reason: '不同变化比例下已经出现流态切换，说明这组样本不能再按单一流动特征理解。',
+      impact: [
         context.flowRegimeSegments.length ? `区间表现为：${context.flowRegimeSegments.join('；')}。` : null,
         context.maxFrictionPoint
           ? `最高摩阻损失出现在 ${maxFrictionLabel}，达到 ${formatValue(context.maxFrictionPoint.frictionHeadLoss)}。`
           : null,
-      ].filter((item): item is string => Boolean(item)),
+      ]
+        .filter((item): item is string => Boolean(item))
+        .join(''),
     });
   } else if (context.frictionTrendText === '整体上升') {
     cards.push({
       title: '阻力抬升',
       target: context.projectName,
       level: context.maxImpactPercent !== null && context.maxImpactPercent >= 20 ? '高' : '中',
-      summary: `随着 ${context.topVariableName} 变化，摩阻损失持续上升，阻力项正在压缩当前运行裕度。`,
-      details: [
+      reason: `随着 ${context.topVariableName} 变化，摩阻损失持续上升，阻力项正在压缩当前运行裕度。`,
+      impact: [
         context.maxFrictionPoint
           ? `最高摩阻损失出现在 ${maxFrictionLabel}，达到 ${formatValue(context.maxFrictionPoint.frictionHeadLoss)}。`
           : null,
         '如果后续继续放大该变量扰动，摩阻项会先于其他指标成为边界收紧的主要来源。',
-      ].filter((item): item is string => Boolean(item)),
+      ]
+        .filter((item): item is string => Boolean(item))
+        .join(''),
     });
   }
 
@@ -2389,13 +2410,15 @@ function buildSensitivityRiskCards(context: SensitivityAnalysisContext): Sensiti
       title: '整体可控',
       target: context.projectName,
       level: '低',
-      summary: '当前样本中没有出现明显的压力失稳或流态切换迹象，测试区间整体仍处于可控状态。',
-      details: [
+      reason: '当前样本中没有出现明显的压力失稳或流态切换迹象，测试区间整体仍处于可控状态。',
+      impact: [
         `基准工况为 ${context.baseCondition}。`,
         context.pressureTrendText !== '当前数据不足以支持进一步判断'
           ? `末站压力${context.pressureTrendText}，摩阻损失${context.frictionTrendText}。`
           : null,
-      ].filter((item): item is string => Boolean(item)),
+      ]
+        .filter((item): item is string => Boolean(item))
+        .join(''),
     });
   }
 
@@ -2412,13 +2435,16 @@ function buildSensitivitySuggestionCards(context: SensitivityAnalysisContext): S
       title: '控制窗口',
       target: context.topVariableName,
       priority: context.sensitivityCoefficient >= 0.8 ? 'high' : 'medium',
-      summary: `优先把 ${context.topVariableName} 纳入运行控制窗口，不要与其他普通参数等权处理。`,
-      details: [
+      action: `优先把 ${context.topVariableName} 纳入运行控制窗口，不要与其他普通参数等权处理。`,
+      reason: [
         `当前它在敏感性排序中位列第 ${context.topRankNumber}，对结果的影响等级属于${context.sensitivityImpactLevel}。`,
         context.maxImpactPercent !== null
           ? `建议先围绕最大影响幅度 ${formatValue(context.maxImpactPercent, '%')} 对应的工况做上限校核。`
           : null,
-      ].filter((item): item is string => Boolean(item)),
+      ]
+        .filter((item): item is string => Boolean(item))
+        .join(''),
+      expected: '有助于优先锁定主要扰动源，降低关键结果被单一变量放大的概率。',
     });
   }
 
@@ -2427,22 +2453,24 @@ function buildSensitivitySuggestionCards(context: SensitivityAnalysisContext): S
       title: '边界复核',
       target: context.projectName,
       priority: 'high',
-      summary: `优先复核 ${minPressureLabel !== '-' ? `${minPressureLabel} 区间` : '最不利区间'}的压力边界，并重新确认该工况下的调度参数。`,
-      details: [
+      action: `优先复核 ${minPressureLabel !== '-' ? `${minPressureLabel} 区间` : '最不利区间'}的压力边界，并重新确认该工况下的调度参数。`,
+      reason: [
         `当前最低末站压力为 ${formatValue(context.minEndStationPressure)}。`,
         '建议将该区间作为下一轮报警阈值、参数上限和工况切换校核的基准点。',
-      ],
+      ].join(''),
+      expected: '有助于恢复末站压力裕度，降低运行越界和误判风险。',
     });
   } else if (context.maxImpactPercent !== null && context.maxImpactPercent >= 20) {
     cards.push({
       title: '区间复算',
       target: context.projectName,
       priority: 'high',
-      summary: '补做高影响区间的复算和边界校核，避免一次样本放大后直接带来运行误判。',
-      details: [
+      action: '补做高影响区间的复算和边界校核，避免一次样本放大后直接带来运行误判。',
+      reason: [
         `当前最大影响幅度已经达到 ${formatValue(context.maxImpactPercent, '%')}。`,
         '建议把高影响区间单独抽出来，复核压力、摩阻和安全裕度是否同时满足要求。',
-      ],
+      ].join(''),
+      expected: '有助于提前识别高风险窗口，避免将高敏感区间误判为常规工况。',
     });
   }
 
@@ -2451,24 +2479,30 @@ function buildSensitivitySuggestionCards(context: SensitivityAnalysisContext): S
       title: '流态校核',
       target: context.projectName,
       priority: 'medium',
-      summary: '把发生流态切换的区间单独复核，不要与稳定区间混在一起解释和调度。',
-      details: [
+      action: '把发生流态切换的区间单独复核，不要与稳定区间混在一起解释和调度。',
+      reason: [
         context.flowRegimeSegments.length ? `建议重点复核这些区间：${context.flowRegimeSegments.join('；')}。` : null,
         '必要时补充更密的变化比例采样，确认流态切换点附近的真实运行窗口。',
-      ].filter((item): item is string => Boolean(item)),
+      ]
+        .filter((item): item is string => Boolean(item))
+        .join(''),
+      expected: '有助于缩小临界区间的不确定性，避免不同流动态势共用同一套调度结论。',
     });
   } else if (context.frictionTrendText === '整体上升') {
     cards.push({
       title: '阻力参数复核',
       target: context.projectName,
       priority: 'medium',
-      summary: '继续复核粗糙度、流量设定和摩阻参数，防止阻力项继续抬升并侵蚀压力裕度。',
-      details: [
+      action: '继续复核粗糙度、流量设定和摩阻参数，防止阻力项继续抬升并侵蚀压力裕度。',
+      reason: [
         context.maxFrictionPoint
           ? `最高摩阻损失出现在 ${maxFrictionLabel}，达到 ${formatValue(context.maxFrictionPoint.frictionHeadLoss)}。`
           : null,
         `建议结合当前粗糙度 ${context.roughnessText} 与基准工况一起校核沿程阻力参数。`,
-      ].filter((item): item is string => Boolean(item)),
+      ]
+        .filter((item): item is string => Boolean(item))
+        .join(''),
+      expected: '有助于识别阻力抬升来源，为压降控制和后续能耗优化提供更可靠依据。',
     });
   }
 
@@ -2477,15 +2511,164 @@ function buildSensitivitySuggestionCards(context: SensitivityAnalysisContext): S
       title: '持续监测',
       target: context.projectName,
       priority: 'low',
-      summary: '当前区间整体可控，后续以持续监测和小步校核为主，不需要立即调整运行策略。',
-      details: [
-        `建议继续跟踪 ${context.topVariableName} 在常用工况下对压力和摩阻的影响。`,
-        '当样本范围扩大或新增异常点后，再重新评估是否需要升级控制优先级。',
-      ],
+      action: '当前区间整体可控，后续以持续监测和小步校核为主，不需要立即调整运行策略。',
+      reason: `建议继续跟踪 ${context.topVariableName} 在常用工况下对压力和摩阻的影响，当样本范围扩大或新增异常点后再重新评估控制优先级。`,
+      expected: '有助于在保持当前稳定状态的同时，尽早识别潜在敏感点的放大趋势。',
     });
   }
 
   return cards.slice(0, 3);
+}
+
+function getSensitivityOverallRiskText(riskLevel: string) {
+  if (riskLevel.includes('较高')) {
+    return '较高运行风险';
+  }
+  if (riskLevel.includes('中等')) {
+    return '中等运行风险';
+  }
+  return '总体可控';
+}
+
+function buildSensitivityOverallConclusionItems(context: SensitivityAnalysisContext) {
+  const items: string[] = [];
+  const overallRiskText = getSensitivityOverallRiskText(context.riskLevel);
+  const minPressureLabel = getSensitivityChangeLabel(context.minPressurePoint);
+
+  if (overallRiskText === '总体可控') {
+    items.push(
+      `当前系统在已测试的${context.variableTypeText}变化区间内总体可控，基准工况为${context.baseCondition}，基准结果判定为${context.baseResultStatus}。`,
+    );
+  } else {
+    items.push(
+      `当前系统在已测试的${context.variableTypeText}变化区间内存在${overallRiskText}，风险重点集中在${context.topVariableName}对关键结果的放大作用。`,
+    );
+  }
+
+  if (context.sensitivityCoefficient !== null || context.maxImpactPercent !== null) {
+    items.push(
+      `${context.topVariableName} 当前排名第 ${context.topRankNumber}，敏感系数为 ${formatValue(context.sensitivityCoefficient)}，最大影响幅度为 ${formatValue(context.maxImpactPercent, '%')}，是最值得优先关注的变量。`,
+    );
+  }
+
+  if (context.minEndStationPressure !== null && context.minEndStationPressure < 0) {
+    items.push(
+      `${minPressureLabel !== '-' ? `${minPressureLabel} 区间` : '最不利区间'}的末站进站压力已降至 ${formatValue(context.minEndStationPressure)}，当前测试区间已经触及压力边界。`,
+    );
+  } else if (context.flowRegimeChanged) {
+    items.push('当前虽未出现负压边界，但样本内已发生流态切换，系统对参数扰动并非平缓响应。');
+  } else {
+    items.push(`当前未发现明显压力越界，但${context.topVariableName}仍应作为后续调度中的潜在敏感点持续跟踪。`);
+  }
+
+  return items;
+}
+
+function buildSensitivityKeyFindingItems(context: SensitivityAnalysisContext) {
+  const items: string[] = [];
+  const secondRank = context.rankingRows[1];
+  const secondVariableName = secondRank ? String(secondRank.variableName ?? secondRank.variableType ?? '-').trim() : '';
+  const secondCoefficient = toFiniteNumber(secondRank?.sensitivityCoefficient);
+  const coefficientGap =
+    context.sensitivityCoefficient !== null && secondCoefficient !== null
+      ? context.sensitivityCoefficient - secondCoefficient
+      : null;
+
+  items.push(
+    `${context.topVariableName} 为当前头部敏感变量，影响程度属于${context.sensitivityImpactLevel}，在敏感性排序中位列第 ${context.topRankNumber}。`,
+  );
+
+  if (context.firstPoint && context.lastPoint) {
+    items.push(
+      `影响方向上，随着 ${context.topVariableName} 从 ${getSensitivityChangeLabel(context.firstPoint)} 变化到 ${getSensitivityChangeLabel(context.lastPoint)}，末站进站压力${context.pressureTrendText}，摩阻损失${context.frictionTrendText}。`,
+    );
+  }
+
+  if (secondVariableName) {
+    items.push(
+      `第二敏感变量为 ${secondVariableName}${secondCoefficient !== null ? `，敏感系数为 ${formatValue(secondCoefficient)}` : ''}；${coefficientGap !== null && coefficientGap >= 0.2 ? '头部变量影响集中明显' : '头部变量与第二位差距不大，需要联动关注'}。`,
+    );
+  }
+
+  if (context.maxImpactPercent !== null) {
+    items.push(
+      `结果侧的最大影响幅度达到 ${formatValue(context.maxImpactPercent, '%')}，说明该变量变化已经会被明显传导到系统关键指标。`,
+    );
+  }
+
+  return items;
+}
+
+function buildSensitivityTrendAnalysisItems(context: SensitivityAnalysisContext) {
+  const items: string[] = [];
+
+  if (context.minPressurePoint || context.maxPressurePoint) {
+    items.push(
+      [
+        context.minPressurePoint
+          ? `末站进站压力最低出现在 ${getSensitivityChangeLabel(context.minPressurePoint)}，为 ${formatValue(context.minPressurePoint.endStationPressure)}`
+          : null,
+        context.maxPressurePoint
+          ? `最高出现在 ${getSensitivityChangeLabel(context.maxPressurePoint)}，为 ${formatValue(context.maxPressurePoint.endStationPressure)}`
+          : null,
+      ]
+        .filter((item): item is string => Boolean(item))
+        .join('；'),
+    );
+  }
+
+  if (context.minFrictionPoint || context.maxFrictionPoint) {
+    items.push(
+      [
+        context.minFrictionPoint
+          ? `摩阻损失最低出现在 ${getSensitivityChangeLabel(context.minFrictionPoint)}，为 ${formatValue(context.minFrictionPoint.frictionHeadLoss)}`
+          : null,
+        context.maxFrictionPoint
+          ? `最高出现在 ${getSensitivityChangeLabel(context.maxFrictionPoint)}，为 ${formatValue(context.maxFrictionPoint.frictionHeadLoss)}`
+          : null,
+      ]
+        .filter((item): item is string => Boolean(item))
+        .join('；'),
+    );
+  }
+
+  if (context.flowRegimeChanged) {
+    items.push(
+      context.flowRegimeSegments.length
+        ? `流态在测试区间内发生切换，区间表现为：${context.flowRegimeSegments.join('；')}。`
+        : '流态在测试区间内发生切换，应重点复核临界区间。',
+    );
+  } else if (context.firstPoint) {
+    items.push(`流态在测试区间内保持 ${formatValue(context.firstPoint.flowRegime)}，当前样本下未出现流动特征切换。`);
+  }
+
+  return items;
+}
+
+function buildSensitivityExpectedBenefitItems(context: SensitivityAnalysisContext) {
+  const items: string[] = [];
+
+  if (context.sensitivityCoefficient !== null && context.sensitivityCoefficient >= 0.4) {
+    items.push(
+      `若优先控制 ${context.topVariableName} 的运行窗口，可减少关键结果对单一变量扰动的放大效应，提高工况调整的可预测性。`,
+    );
+  }
+
+  if (context.minEndStationPressure !== null && context.minEndStationPressure < 0) {
+    items.push('若按建议优先复核最不利压力区间，可恢复末站压力裕度，降低运行越界和误判风险。');
+  } else if (context.flowRegimeChanged) {
+    items.push('若单独校核流态切换区间，可缩小临界区间的不确定性，避免不同流动态势共用同一套调度结论。');
+  }
+
+  if (context.frictionTrendText === '整体上升') {
+    items.push('若同步复核粗糙度与摩阻参数，可更早识别阻力抬升来源，为压降控制和后续能耗优化提供依据。');
+  }
+
+  if (!items.length) {
+    items.push('在保持当前参数窗口稳定的前提下，持续监测即可帮助系统维持现有运行状态，并尽早识别潜在敏感点。');
+  }
+
+  return items;
 }
 
 function getSensitivityRiskItems(report: DynamicReportResponsePayload) {
@@ -5385,17 +5568,13 @@ function renderSensitivityAiReportContentV2(
   const {
     variableResults,
     rankingRows,
-    impactRankingRows,
     topVariableName,
     topRankNumber,
     sensitivityCoefficient,
     maxImpactPercent,
     pointRows,
-    flowRegimeChanged,
-    minEndStationPressure,
     baseResultStatus,
     riskLevel,
-    sensitivityImpactLevel,
     projectName,
     baseCondition,
     variableTypeText,
@@ -5403,73 +5582,16 @@ function renderSensitivityAiReportContentV2(
     densityText,
     diameterText,
     roughnessText,
-    pressureTrendText,
-    frictionTrendText,
   } = context;
 
-  const rankingSecondRow = rankingRows[1];
-  const topImpactRow = impactRankingRows[0];
-  const secondImpactRow = impactRankingRows[1];
   const riskCards = buildSensitivityRiskCards(context);
   const suggestionCards = buildSensitivitySuggestionCards(context);
-  const skillInsightBlocks = report.aiAnalysis?.sensitivityInsights;
-  const rankingInsightBlock: SensitivityInsightBlockData = {
-    title: skillInsightBlocks?.rankingInsight?.title || '排名解读',
-    content:
-      skillInsightBlocks?.rankingInsight?.content ||
-      [
-        `敏感系数仪表盘显示，${topVariableName}位列第 ${topRankNumber} 位，敏感系数为 ${formatValue(sensitivityCoefficient)}。`,
-        rankingSecondRow
-          ? `与第二位 ${String(rankingSecondRow.variableName ?? rankingSecondRow.variableType ?? '-')} 的差距反映了当前头部变量的影响集中程度。`
-          : null,
-        `整体来看，该变量对系统运行结果具有 ${sensitivityImpactLevel} 影响。`,
-      ]
-        .filter((item): item is string => Boolean(item))
-        .join(''),
-  };
-  const trendInsightBlock: SensitivityInsightBlockData = {
-    title: skillInsightBlocks?.trendInsight?.title || '趋势解读',
-    content:
-      skillInsightBlocks?.trendInsight?.content ||
-      [
-        `随着 ${topVariableName} 变化，末站进站压力${pressureTrendText}，摩阻损失${frictionTrendText}。`,
-        flowRegimeChanged
-          ? '变化过程中出现流态切换，说明趋势解读需要重点关注临界区间。'
-          : '各变化比例下流态整体稳定，趋势变化可作为运行边界参考。',
-      ]
-        .filter((item): item is string => Boolean(item))
-        .join(''),
-  };
-  const impactInsightBlock: SensitivityInsightBlockData = {
-    title: skillInsightBlocks?.impactInsight?.title || '影响区间分析',
-    content:
-      skillInsightBlocks?.impactInsight?.content ||
-      [
-        `最大影响幅度图显示，${String(topImpactRow?.variableName ?? topImpactRow?.variableType ?? topVariableName)} 的最大影响幅度为 ${formatValue(topImpactRow?.maxImpactPercent, '%')}。`,
-        secondImpactRow
-          ? `与第二位 ${String(secondImpactRow.variableName ?? secondImpactRow.variableType ?? '-')} 对比，可以进一步判断影响是否集中在少数关键变量上。`
-          : null,
-        `当前样本中该变量的结果响应属于 ${sensitivityImpactLevel} 影响。`,
-      ]
-        .filter((item): item is string => Boolean(item))
-        .join(''),
-  };
-  const tableConclusionBlock: SensitivityInsightBlockData = {
-    title: skillInsightBlocks?.tableConclusion?.title || '区间变化结论',
-    content:
-      skillInsightBlocks?.tableConclusion?.content ||
-      [
-        `基准工况为 ${baseCondition}，可作为比较不同变化比例结果的参考基础。`,
-        minEndStationPressure !== null && minEndStationPressure < 0
-          ? '区间表格已出现末站压力为负的情形，说明部分变化区间存在明显运行边界风险。'
-          : '当前区间表格未出现明显末站压力失稳边界。',
-        flowRegimeChanged ? '流态切换区间应作为后续复核重点。' : '当前测试区间内流态保持稳定。',
-      ]
-        .filter((item): item is string => Boolean(item))
-        .join(''),
-  };
   const riskItems = getSensitivityRiskItems(report);
   const suggestionItems = getSensitivitySuggestionItems(report);
+  const overallConclusionItems = buildSensitivityOverallConclusionItems(context);
+  const keyFindingItems = buildSensitivityKeyFindingItems(context);
+  const trendAnalysisItems = buildSensitivityTrendAnalysisItems(context);
+  const expectedBenefitItems = buildSensitivityExpectedBenefitItems(context);
 
   const reportViewModel: SensitivitySmartReportPayload = {
     title:
@@ -5537,9 +5659,9 @@ function renderSensitivityAiReportContentV2(
     analysis: {
       resultSummary: [],
       keyChangeAnalysis: [],
-      riskRecognition: riskCards.length ? riskCards.map((item) => item.summary) : ['当前数据不足以支持进一步判断。'],
+      riskRecognition: riskCards.length ? riskCards.map((item) => `${item.reason}${item.impact}`) : ['当前数据不足以支持进一步判断。'],
       optimizationSuggestions: suggestionCards.length
-        ? suggestionCards.map((item) => item.summary)
+        ? suggestionCards.map((item) => item.action)
         : ['当前数据不足以支持进一步判断。'],
     },
   };
@@ -5689,9 +5811,9 @@ function renderSensitivityAiReportContentV2(
         <HydraulicMetricPanelGrid items={coreResultItems} minWidth={190} valueFontSize="clamp(20px, 2.3vw, 28px)" />
       </Card>
 
-      <Card size="small" title={SENSITIVITY_REPORT_PAGE_COPY.sectionTitles.chartAnalysis}>
+      <Card size="small" title="图表区">
         <Row gutter={[16, 16]}>
-          <Col xs={24} xl={14}>
+          <Col xs={24}>
             <Card size="small" title={reportViewModel.chartMeta.sensitivityRanking.title} style={{ height: '100%' }}>
               {reportViewModel.rankingData.length ? (
                 <Row gutter={[16, 16]}>
@@ -5710,26 +5832,17 @@ function renderSensitivityAiReportContentV2(
               )}
             </Card>
           </Col>
-          <Col xs={24} xl={10}>
-            {renderSensitivityInsightCard(rankingInsightBlock, '#7c6cff')}
-          </Col>
 
-          <Col xs={24} xl={14}>
+          <Col xs={24} xl={12}>
             <Card size="small" title={reportViewModel.chartMeta.changeTrend.title}>
               <Chart option={trendChartOption} height={300} />
             </Card>
           </Col>
-          <Col xs={24} xl={10}>
-            {renderSensitivityInsightCard(trendInsightBlock, '#4e86f7')}
-          </Col>
 
-          <Col xs={24} xl={14}>
+          <Col xs={24} xl={12}>
             <Card size="small" title={reportViewModel.chartMeta.maxImpact.title}>
               <SensitivityImpactBandList items={reportViewModel.impactData} />
             </Card>
-          </Col>
-          <Col xs={24} xl={10}>
-            {renderSensitivityInsightCard(impactInsightBlock, '#f59e0b')}
           </Col>
 
           <Col xs={24}>
@@ -5743,14 +5856,28 @@ function renderSensitivityAiReportContentV2(
               />
             </Card>
           </Col>
-
-          <Col xs={24}>
-            {renderSensitivityInsightCard(tableConclusionBlock, '#12b981')}
-          </Col>
         </Row>
       </Card>
 
-      <Card size="small" title={SENSITIVITY_REPORT_PAGE_COPY.sectionTitles.riskRecognition}>
+      <Card size="small" title="【总体结论】">
+        {renderNarrativeLineList(overallConclusionItems, '#4e86f7') ?? (
+          <Text type="secondary">当前数据不足以支持进一步判断。</Text>
+        )}
+      </Card>
+
+      <Card size="small" title="【关键发现】">
+        {renderNarrativeLineList(keyFindingItems, '#7c6cff') ?? (
+          <Text type="secondary">当前数据不足以支持进一步判断。</Text>
+        )}
+      </Card>
+
+      <Card size="small" title="【趋势分析】">
+        {renderNarrativeLineList(trendAnalysisItems, '#12b981') ?? (
+          <Text type="secondary">当前数据不足以支持进一步判断。</Text>
+        )}
+      </Card>
+
+      <Card size="small" title="【风险识别】">
         {riskItems.length ? (
           <Row gutter={[16, 16]}>
             {riskItems.map((item, index) => (
@@ -5766,9 +5893,12 @@ function renderSensitivityAiReportContentV2(
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                    <Text strong style={{ fontSize: 16, color: '#0f172a' }}>
-                      {item.target || '当前对象'}
-                    </Text>
+                    <div>
+                      <Text strong style={{ fontSize: 16, color: '#0f172a' }}>
+                        {item.target || '当前对象'}
+                      </Text>
+                      <div style={{ marginTop: 4, color: '#991b1b', fontSize: 13 }}>{item.riskType || item.code || '风险项'}</div>
+                    </div>
                     <Tag color={getSensitivityLevelTagColor(item.level)} style={{ marginInlineEnd: 0 }}>
                       {item.level || '中'}
                     </Tag>
@@ -5789,12 +5919,53 @@ function renderSensitivityAiReportContentV2(
               </Col>
             ))}
           </Row>
+        ) : riskCards.length ? (
+          <Row gutter={[16, 16]}>
+            {riskCards.map((item, index) => (
+              <Col xs={24} xl={12} key={`${item.title}-${index}`}>
+                <div
+                  style={{
+                    height: '100%',
+                    borderRadius: 18,
+                    padding: 18,
+                    background: 'linear-gradient(180deg, rgba(254, 242, 242, 0.95) 0%, rgba(255, 255, 255, 1) 100%)',
+                    border: '1px solid #fecaca',
+                    boxShadow: '0 10px 24px rgba(239, 68, 68, 0.08)',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                    <div>
+                      <Text strong style={{ fontSize: 16, color: '#0f172a' }}>
+                        {item.target || '当前对象'}
+                      </Text>
+                      <div style={{ marginTop: 4, color: '#991b1b', fontSize: 13 }}>{item.title}</div>
+                    </div>
+                    <Tag color={getSensitivityLevelTagColor(item.level)} style={{ marginInlineEnd: 0 }}>
+                      {item.level || '中'}
+                    </Tag>
+                  </div>
+                  <Paragraph style={{ margin: '14px 0 8px', color: '#334155' }}>
+                    <Text strong style={{ color: '#991b1b' }}>
+                      风险原因：
+                    </Text>
+                    {item.reason}
+                  </Paragraph>
+                  <Paragraph style={{ margin: 0, color: '#334155' }}>
+                    <Text strong style={{ color: '#991b1b' }}>
+                      对结果的影响：
+                    </Text>
+                    {item.impact}
+                  </Paragraph>
+                </div>
+              </Col>
+            ))}
+          </Row>
         ) : (
-          renderSummaryList(reportViewModel.analysis.riskRecognition)
+          <Text type="secondary">当前数据不足以支持进一步判断。</Text>
         )}
       </Card>
 
-      <Card size="small" title={SENSITIVITY_REPORT_PAGE_COPY.sectionTitles.optimizationSuggestions}>
+      <Card size="small" title="【运行建议】">
         {suggestionItems.length ? (
           <Row gutter={[16, 16]}>
             {suggestionItems.map((item, index) => (
@@ -5810,28 +5981,77 @@ function renderSensitivityAiReportContentV2(
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                    <Text strong style={{ fontSize: 16, color: '#0f172a' }}>
-                      {item.target || '当前对象'}
-                    </Text>
+                    <div>
+                      <Text strong style={{ fontSize: 16, color: '#0f172a' }}>
+                        {item.target || '当前对象'}
+                      </Text>
+                    </div>
                     <Tag color={getSensitivityPriorityTagColor(item.priority)} style={{ marginInlineEnd: 0 }}>
                       {getSensitivityPriorityLabel(item.priority)}
                     </Tag>
                   </div>
                   <Paragraph style={{ margin: '14px 0 8px', color: '#334155' }}>
                     <Text strong style={{ color: '#1d4ed8' }}>
-                      建议：
+                      建议内容：
                     </Text>
                     {item.text || item.action}
                   </Paragraph>
                   <Paragraph style={{ margin: '0 0 8px', color: '#334155' }}>
                     <Text strong style={{ color: '#1d4ed8' }}>
-                      原因：
+                      适用原因：
                     </Text>
                     {item.reason}
                   </Paragraph>
                   <Paragraph style={{ margin: 0, color: '#334155' }}>
                     <Text strong style={{ color: '#1d4ed8' }}>
-                      预期：
+                      预期效果：
+                    </Text>
+                    {item.expected}
+                  </Paragraph>
+                </div>
+              </Col>
+            ))}
+          </Row>
+        ) : suggestionCards.length ? (
+          <Row gutter={[16, 16]}>
+            {suggestionCards.map((item, index) => (
+              <Col xs={24} xl={12} key={`${item.title}-${index}`}>
+                <div
+                  style={{
+                    height: '100%',
+                    borderRadius: 18,
+                    padding: 18,
+                    background: 'linear-gradient(180deg, rgba(239, 246, 255, 0.96) 0%, rgba(255, 255, 255, 1) 100%)',
+                    border: '1px solid #bfdbfe',
+                    boxShadow: '0 10px 24px rgba(59, 130, 246, 0.08)',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                    <div>
+                      <Text strong style={{ fontSize: 16, color: '#0f172a' }}>
+                        {item.target || '当前对象'}
+                      </Text>
+                      <div style={{ marginTop: 4, color: '#1d4ed8', fontSize: 13 }}>{item.title}</div>
+                    </div>
+                    <Tag color={getSensitivityPriorityTagColor(item.priority)} style={{ marginInlineEnd: 0 }}>
+                      {getSensitivityPriorityLabel(item.priority)}
+                    </Tag>
+                  </div>
+                  <Paragraph style={{ margin: '14px 0 8px', color: '#334155' }}>
+                    <Text strong style={{ color: '#1d4ed8' }}>
+                      建议内容：
+                    </Text>
+                    {item.action}
+                  </Paragraph>
+                  <Paragraph style={{ margin: '0 0 8px', color: '#334155' }}>
+                    <Text strong style={{ color: '#1d4ed8' }}>
+                      适用原因：
+                    </Text>
+                    {item.reason}
+                  </Paragraph>
+                  <Paragraph style={{ margin: 0, color: '#334155' }}>
+                    <Text strong style={{ color: '#1d4ed8' }}>
+                      预期效果：
                     </Text>
                     {item.expected}
                   </Paragraph>
@@ -5840,7 +6060,13 @@ function renderSensitivityAiReportContentV2(
             ))}
           </Row>
         ) : (
-          renderSummaryList(reportViewModel.analysis.optimizationSuggestions)
+          <Text type="secondary">当前数据不足以支持进一步判断。</Text>
+        )}
+      </Card>
+
+      <Card size="small" title="【预期收益】">
+        {renderNarrativeLineList(expectedBenefitItems, '#f59e0b') ?? (
+          <Text type="secondary">当前数据不足以支持进一步判断。</Text>
         )}
       </Card>
     </Space>
@@ -6555,14 +6781,8 @@ export default function ReportPreview() {
 
       if (normalizedKeyword) {
         const matched = [
-          item.projectName,
-          project?.number,
-          project?.responsible,
-          item.userName,
-          item.calcTypeName,
-          item.calcType,
-          item.remark,
-          item.errorMessage,
+          item.projectName || project?.name,
+          getHistoryResponsible(project, item),
         ]
           .filter(Boolean)
           .some((value) => String(value).toLowerCase().includes(normalizedKeyword));
@@ -6646,14 +6866,8 @@ export default function ReportPreview() {
 
           if (normalizedKeyword) {
             const matched = [
-              item.projectName,
-              project?.number,
-              project?.responsible,
-              item.userName,
-              item.calcTypeName,
-              item.calcType,
-              item.remark,
-              item.errorMessage,
+              item.projectName || project?.name,
+              getHistoryResponsible(project, item),
             ]
               .filter(Boolean)
               .some((value) => String(value).toLowerCase().includes(normalizedKeyword));
@@ -7291,7 +7505,7 @@ export default function ReportPreview() {
 
       selectedNames = dedupeProjectNames(selectedNames);
       const activeFocuses = preferredSensitivitySnapshot
-        ? ['基准结果', '敏感系数', '最大影响幅度', '排名', '压力变化趋势', '摩阻损失变化趋势', '流态变化']
+        ? ['总体结论', '关键发现', '趋势分析', '风险识别', '运行建议', '预期收益', '基准结果', '敏感系数', '最大影响幅度', '排名', '压力变化趋势', '摩阻损失变化趋势', '流态变化']
         : preferredOptimizationComparisonSnapshot
           ? ['综合评分', '总成本', '年能耗', '末站进站压头', '总扬程', '可行性', '风险等级']
           : preferredOptimizationSnapshot
@@ -7571,7 +7785,7 @@ export default function ReportPreview() {
                   allowClear
                   value={searchKeyword}
                   onChange={(event) => setSearchKeyword(event.target.value)}
-                  placeholder="搜索项目名称或备注..."
+                  placeholder="搜索项目名称或负责人..."
                   prefix={<SearchOutlined style={{ color: '#94a3b8' }} />}
                 />
               </Col>

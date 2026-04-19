@@ -4,7 +4,7 @@ setlocal
 for %%I in ("%~dp0..") do set "ROOT=%%~fI"
 set "JAVA=C:\Program Files\JetBrains\IntelliJ IDEA 2025.1.3\jbr\bin\java.exe"
 set "LOGDIR=%ROOT%\run-logs"
-set "DB_URL=jdbc:mysql://127.0.0.1:3307/pipeline_cloud?useUnicode=true^&characterEncoding=utf8^&zeroDateTimeBehavior=convertToNull^&useSSL=false^&serverTimezone=GMT%%2B8"
+set "DB_URL=jdbc:mysql://127.0.0.1:3307/pipeline_cloud?useUnicode=true^&characterEncoding=utf8^&zeroDateTimeBehavior=convertToNull^&useSSL=false^&serverTimezone=Asia/Shanghai"
 set "GATEWAY_CONFIG=file:%ROOT:\=/%/scripts/gateway-local.yml"
 
 if not exist "%LOGDIR%" mkdir "%LOGDIR%"
@@ -31,6 +31,9 @@ start "pipeline-gateway" /D "%ROOT%\pipeline-energy-cloud\pipeline-gateway" /B c
 
 echo Starting React frontend...
 start "pipeline-react" /D "%ROOT%\pipeline-react" /B cmd /c "npm.cmd run dev -- --host 0.0.0.0 1>"%LOGDIR%\pipeline-react.out.log" 2>"%LOGDIR%\pipeline-react.err.log""
+
+echo Starting Python agent...
+start "pipeline-agent" /D "%ROOT%" /B powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\scripts\run-local-agent.ps1" 1>"%LOGDIR%\pipeline-agent.out.log" 2>"%LOGDIR%\pipeline-agent.err.log"
 
 echo Startup commands dispatched.
 endlocal

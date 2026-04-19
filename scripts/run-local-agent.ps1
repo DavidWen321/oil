@@ -16,5 +16,7 @@ if (-not (Test-Path $pythonExe)) {
   throw "Python runtime not found: $pythonExe"
 }
 
+& (Join-Path $scriptDir 'start-local-mysql-3307.ps1')
+
 Set-Location $agentDir
 & $pythonExe 'main.py'
