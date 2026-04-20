@@ -12,6 +12,7 @@ from .decision_engine import DecisionEngine
 from .diagnosis_engine import DiagnosisEngine
 from .labeling import output_style_key, range_label, report_type_label
 from .metric_engine import build_metric_snapshot
+from .official_research import collect_official_research
 from .report_context_builder import build_report_context
 from .section_generator import (
     build_highlights,
@@ -92,6 +93,7 @@ def _build_llm_input(
     decision,
     outline,
     report_context: dict[str, Any],
+    official_research: dict[str, Any],
     summary: list[str],
     highlights: list[str],
     conclusion: str,
@@ -149,6 +151,12 @@ def _build_llm_input(
                 max_items=8,
             ),
         },
+        "official_research": {
+            "status": official_research.get("status"),
+            "queries": _compact_value(official_research.get("queries", [])[:5], max_items=5),
+            "references": _compact_value(official_research.get("references", [])[:4], max_items=4),
+            "searched_at": official_research.get("searched_at"),
+        },
         "outline": _compact_value([item.__dict__ for item in outline.sections], max_items=8),
         "draft": {
             "title": outline.title,
@@ -193,6 +201,7 @@ def generate_report(request: DynamicReportRequest) -> DynamicReportResponse:
     risks = build_risk_items(diagnosis)
     suggestions = build_suggestion_items(diagnosis)
     report_context = build_report_context(request, data, metrics, diagnosis, decision)
+    official_research = collect_official_research(request, report_context, skill_profile.key)
 
     llm_input = _build_llm_input(
         request,
@@ -201,6 +210,7 @@ def generate_report(request: DynamicReportRequest) -> DynamicReportResponse:
         decision=decision,
         outline=outline,
         report_context=report_context,
+        official_research=official_research,
         summary=summary,
         highlights=highlights,
         conclusion=conclusion,
@@ -240,6 +250,11 @@ def generate_report(request: DynamicReportRequest) -> DynamicReportResponse:
     final_summary = [str(item).strip() for item in polished.get("summary") or summary if str(item).strip()]
     final_highlights = [str(item).strip() for item in polished.get("highlights") or highlights if str(item).strip()]
     final_conclusion = str(polished.get("conclusion") or conclusion).strip()
+    official_conclusions = [
+        str(item).strip()
+        for item in polished.get("official_conclusions") or []
+        if str(item).strip()
+    ]
 
     ai_analysis = skill_profile.build_ai_analysis(report_context)
     ai_summary = ai_analysis.summary
@@ -283,6 +298,9 @@ def generate_report(request: DynamicReportRequest) -> DynamicReportResponse:
             "scope_rows": scope_rows,
             "outline": [item.__dict__ for item in outline.sections],
             "decision_summary": decision.summary,
+            "official_research": official_research,
+            "official_references": official_research.get("references", []),
+            "official_conclusions": official_conclusions,
         },
         raw_text=build_raw_text(outline, diagnosis, metrics, decision, sections),
     )

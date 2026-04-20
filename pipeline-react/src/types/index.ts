@@ -184,7 +184,11 @@ export interface KnowledgeIngestTask {
 export interface HydraulicAnalysisParams {
   projectId?: number;
   pipelineId?: number;
+  pipelineName?: string;
   oilId?: number;
+  oilName?: string;
+  pumpStationId?: number;
+  pumpStationName?: string;
   flowRate: number;
   density: number;
   viscosity: number;
@@ -213,6 +217,12 @@ export interface HydraulicAnalysisResult {
 
 export interface OptimizationParams {
   projectId?: number;
+  pipelineId?: number;
+  pipelineName?: string;
+  oilId?: number;
+  oilName?: string;
+  pumpStationId?: number;
+  pumpStationName?: string;
   flowRate: number;
   density: number;
   viscosity: number;

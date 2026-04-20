@@ -87,6 +87,7 @@ export default function Optimization() {
       const [firstPipeline] = pipelineList;
       form.setFieldsValue({
         pipelineId: firstPipeline.id,
+        pipelineName: firstPipeline.name,
         length: firstPipeline.length,
         diameter: firstPipeline.diameter,
         thickness: firstPipeline.thickness,
@@ -95,7 +96,10 @@ export default function Optimization() {
         endAltitude: firstPipeline.endAltitude,
       });
     } else {
-      form.setFieldValue('pipelineId', undefined);
+      form.setFieldsValue({
+        pipelineId: undefined,
+        pipelineName: undefined,
+      });
     }
   }, [form]);
 
@@ -132,6 +136,7 @@ export default function Optimization() {
 
     form.setFieldsValue({
       pipelineId,
+      pipelineName: pipeline.name,
       length: pipeline.length,
       diameter: pipeline.diameter,
       thickness: pipeline.thickness,
@@ -148,6 +153,7 @@ export default function Optimization() {
 
     form.setFieldsValue({
       oilId,
+      oilName: oil.name,
       density: oil.density,
       viscosity: convertViscosityMm2PerSecToM2PerSec(oil.viscosity) ?? oil.viscosity,
     });
@@ -160,6 +166,7 @@ export default function Optimization() {
 
     const nextValues: Partial<OptimizationFormValues> = {
       pumpStationId: stationId,
+      pumpStationName: station.name,
       pump480Head: station.zmi480Lift,
       pump375Head: station.zmi375Lift,
       pumpEfficiency: station.pumpEfficiency / 100,
@@ -176,13 +183,16 @@ export default function Optimization() {
 
   const handleSubmit = async () => {
     const values = await form.validateFields();
-    const payload = {
+    const linkedInput = {
       ...values,
       projectId: selectedProjectId ?? values.projectId,
+      pipelineName: form.getFieldValue('pipelineName'),
+      oilName: form.getFieldValue('oilName'),
+      pumpStationName: form.getFieldValue('pumpStationName'),
     };
-    delete payload.pipelineId;
-    delete payload.oilId;
-    delete payload.pumpStationId;
+    const payload = {
+      ...linkedInput,
+    };
     setLoading(true);
     try {
       const project = projects.find((item) => item.proId === (payload.projectId ?? null));
@@ -192,9 +202,9 @@ export default function Optimization() {
       if (nextResult) {
         useCalculationLinkStore.getState().linkCalculation({
           calcType: 'OPTIMIZATION',
-          projectId: payload.projectId ?? null,
+          projectId: linkedInput.projectId ?? null,
           projectName: project?.name ?? null,
-          input: payload as unknown as Record<string, unknown>,
+          input: linkedInput as unknown as Record<string, unknown>,
           output: nextResult as unknown as Record<string, unknown>,
           updatedAt: new Date().toISOString(),
         });
@@ -261,7 +271,10 @@ export default function Optimization() {
                           handlePipelineChange(value);
                           return;
                         }
-                        form.setFieldValue('pipelineId', undefined);
+                        form.setFieldsValue({
+                          pipelineId: undefined,
+                          pipelineName: undefined,
+                        });
                         setResult(null);
                       }}
                       options={pipelines.map((pipeline) => ({ value: pipeline.id, label: pipeline.name }))}
@@ -278,7 +291,10 @@ export default function Optimization() {
                           handleOilChange(value);
                           return;
                         }
-                        form.setFieldValue('oilId', undefined);
+                        form.setFieldsValue({
+                          oilId: undefined,
+                          oilName: undefined,
+                        });
                         setResult(null);
                       }}
                       options={oils.map((oil) => ({ value: oil.id, label: oil.name }))}
@@ -295,7 +311,10 @@ export default function Optimization() {
                           handleStationChange(value);
                           return;
                         }
-                        form.setFieldValue('pumpStationId', undefined);
+                        form.setFieldsValue({
+                          pumpStationId: undefined,
+                          pumpStationName: undefined,
+                        });
                         setResult(null);
                       }}
                       options={stations.map((station) => ({ value: station.id, label: station.name }))}

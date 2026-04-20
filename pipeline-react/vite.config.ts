@@ -1,51 +1,49 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-const gatewayTarget = process.env.VITE_GATEWAY_TARGET || 'http://localhost:8080'
+const authTarget = process.env.VITE_AUTH_TARGET || 'http://127.0.0.1:9300'
+const dataTarget = process.env.VITE_DATA_TARGET || 'http://127.0.0.1:9400'
+const calculationTarget = process.env.VITE_CALCULATION_TARGET || 'http://127.0.0.1:9500'
+const agentTarget = process.env.VITE_AGENT_TARGET || 'http://127.0.0.1:8100'
 
 export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
       '/auth': {
-        target: gatewayTarget,
+        target: authTarget,
         changeOrigin: true,
       },
       '/project': {
-        target: gatewayTarget,
+        target: dataTarget,
         changeOrigin: true,
-        rewrite: (path) => `/data${path}`,
       },
       '/pipeline': {
-        target: gatewayTarget,
+        target: dataTarget,
         changeOrigin: true,
-        rewrite: (path) => `/data${path}`,
       },
       '/pump-station': {
-        target: gatewayTarget,
+        target: dataTarget,
         changeOrigin: true,
-        rewrite: (path) => `/data${path}`,
       },
       '/oil-property': {
-        target: gatewayTarget,
+        target: dataTarget,
         changeOrigin: true,
-        rewrite: (path) => `/data${path}`,
       },
       '/knowledge-doc': {
-        target: gatewayTarget,
+        target: dataTarget,
         changeOrigin: true,
-        rewrite: (path) => `/data${path}`,
       },
       '/calculation': {
-        target: gatewayTarget,
+        target: calculationTarget,
         changeOrigin: true,
       },
       '/api/v1': {
-        target: 'http://127.0.0.1:8100',
+        target: agentTarget,
         changeOrigin: true,
       },
       '/api/v2': {
-        target: 'http://127.0.0.1:8100',
+        target: agentTarget,
         changeOrigin: true,
       },
     },

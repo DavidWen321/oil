@@ -92,6 +92,7 @@ export default function HydraulicAnalysis() {
       const [firstPipeline] = pipelineList;
       form.setFieldsValue({
         pipelineId: firstPipeline.id,
+        pipelineName: firstPipeline.name,
         length: firstPipeline.length,
         diameter: firstPipeline.diameter,
         thickness: firstPipeline.thickness,
@@ -100,7 +101,10 @@ export default function HydraulicAnalysis() {
         endAltitude: firstPipeline.endAltitude,
       });
     } else {
-      form.setFieldValue('pipelineId', undefined);
+      form.setFieldsValue({
+        pipelineId: undefined,
+        pipelineName: undefined,
+      });
     }
   }, [form]);
 
@@ -138,6 +142,7 @@ export default function HydraulicAnalysis() {
 
     form.setFieldsValue({
       pipelineId,
+      pipelineName: pipeline.name,
       length: pipeline.length,
       diameter: pipeline.diameter,
       thickness: pipeline.thickness,
@@ -156,6 +161,7 @@ export default function HydraulicAnalysis() {
 
     form.setFieldsValue({
       oilId,
+      oilName: oil.name,
       density: oil.density,
       viscosity: convertViscosityMm2PerSecToM2PerSec(oil.viscosity) ?? oil.viscosity,
     });
@@ -171,6 +177,7 @@ export default function HydraulicAnalysis() {
     setSelectedStationId(stationId);
     const nextValues: Partial<HydraulicAnalysisFormValues> = {
       pumpStationId: stationId,
+      pumpStationName: station.name,
       pump480Head: station.zmi480Lift,
       pump375Head: station.zmi375Lift,
     };
@@ -188,6 +195,9 @@ export default function HydraulicAnalysis() {
     const payload = {
       ...values,
       projectId: selectedProjectId ?? values.projectId,
+      pipelineName: form.getFieldValue('pipelineName'),
+      oilName: form.getFieldValue('oilName'),
+      pumpStationName: form.getFieldValue('pumpStationName'),
     };
     setLoading(true);
     try {
@@ -267,7 +277,17 @@ export default function HydraulicAnalysis() {
                     <Select<number>
                       allowClear
                       placeholder="从数据中心带入管道参数"
-                      onChange={(value) => value && handlePipelineChange(value)}
+                      onChange={(value) => {
+                        if (value) {
+                          handlePipelineChange(value);
+                          return;
+                        }
+                        form.setFieldsValue({
+                          pipelineId: undefined,
+                          pipelineName: undefined,
+                        });
+                        setResult(null);
+                      }}
                       options={pipelines.map((pipeline) => ({ value: pipeline.id, label: pipeline.name }))}
                     />
                   </Form.Item>
@@ -277,7 +297,17 @@ export default function HydraulicAnalysis() {
                     <Select<number>
                       allowClear
                       placeholder="从数据中心带入油品参数"
-                      onChange={(value) => value && handleOilChange(value)}
+                      onChange={(value) => {
+                        if (value) {
+                          handleOilChange(value);
+                          return;
+                        }
+                        form.setFieldsValue({
+                          oilId: undefined,
+                          oilName: undefined,
+                        });
+                        setResult(null);
+                      }}
                       options={oils.map((oil) => ({ value: oil.id, label: oil.name }))}
                     />
                   </Form.Item>
@@ -293,7 +323,10 @@ export default function HydraulicAnalysis() {
                           return;
                         }
                         setSelectedStationId(null);
-                        form.setFieldValue('pumpStationId', undefined);
+                        form.setFieldsValue({
+                          pumpStationId: undefined,
+                          pumpStationName: undefined,
+                        });
                         setResult(null);
                       }}
                       options={stations.map((station) => ({ value: station.id, label: station.name }))}

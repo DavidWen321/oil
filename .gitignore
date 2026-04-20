@@ -57,9 +57,11 @@ desktop.ini
 /data/
 /pipeline-energy-cloud/data/
 /pipeline-agent/data/
+pipeline-ai/.pip-tmp/
 
 # Reports
 reports/
+run-logs/
 
 # Node.js
 node_modules/
@@ -70,7 +72,11 @@ dist/
 # Misc
 NUL
 *.txt.bak
+*.zip
 maven_output.txt
+pipeline-energy-cloud/sql/pipeline_cloud_export*.sql
+pipeline-energy-cloud/sql/restore_master_data_*.sql
 
 # Claude
 .claude/
+.codex-worktrees/

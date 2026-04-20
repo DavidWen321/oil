@@ -58,6 +58,19 @@ class Settings(BaseSettings):
     LLM_MAX_TOKENS: int = Field(default=4096)
     LLM_TIMEOUT_SECONDS: int = Field(default=20)
 
+    # ===== Dynamic report official web research =====
+    REPORT_WEB_RESEARCH_ENABLED: bool = Field(default=True)
+    REPORT_WEB_RESEARCH_TOP_K: int = Field(default=4)
+    REPORT_WEB_RESEARCH_TIMEOUT_SECONDS: int = Field(default=8)
+    REPORT_WEB_RESEARCH_ALLOWED_DOMAINS: str = Field(
+        default=(
+            "std.samr.gov.cn,openstd.samr.gov.cn,www.samr.gov.cn,www.gov.cn,"
+            "www.nea.gov.cn,zfxxgk.nea.gov.cn,www.ndrc.gov.cn,www.mem.gov.cn,"
+            "www.mee.gov.cn,www.mot.gov.cn,www.mnr.gov.cn"
+        ),
+        description="Comma-separated official domains allowed for dynamic report web research",
+    )
+
     # ===== 分层模型路由配置 =====
     LLM_LIGHT_MODEL: str = Field(default="claude-haiku-3-5")
     LLM_MEDIUM_MODEL: str = Field(default="claude-sonnet-4")

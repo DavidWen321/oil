@@ -46,6 +46,11 @@ public class SensitivityAnalysisResult implements Serializable {
     private List<SensitivityRanking> sensitivityRanking;
 
     /**
+     * 核心算法层规则判断结果
+     */
+    private List<RiskRule> riskRules;
+
+    /**
      * 交叉分析结果矩阵（仅CROSS类型）
      */
     private List<CrossAnalysisResult> crossResults;
@@ -212,6 +217,69 @@ public class SensitivityAnalysisResult implements Serializable {
          * 影响描述
          */
         private String description;
+    }
+
+    /**
+     * 由计算结果直接触发的规则判断项
+     */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class RiskRule implements Serializable {
+
+        @Serial
+        private static final long serialVersionUID = 1L;
+
+        /**
+         * 规则编码
+         */
+        private String riskCode;
+
+        /**
+         * 规则类别
+         */
+        private String category;
+
+        /**
+         * 展示标题
+         */
+        private String title;
+
+        /**
+         * 判断对象
+         */
+        private String targetName;
+
+        /**
+         * 规则等级
+         */
+        private String level;
+
+        /**
+         * 判断依据
+         */
+        private String message;
+
+        /**
+         * 管理含义
+         */
+        private String impact;
+
+        /**
+         * 建议动作
+         */
+        private String suggestion;
+
+        /**
+         * 可审计证据
+         */
+        private Map<String, Object> evidence;
+
+        /**
+         * 结果来源
+         */
+        private String source;
     }
 
     /**

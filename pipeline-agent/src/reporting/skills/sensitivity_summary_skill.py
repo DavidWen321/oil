@@ -25,7 +25,7 @@ def sensitivity_summary_skill(ctx: dict[str, Any]) -> list[str]:
         ),
         (
             f"系统整体风险等级评估为 {insights['riskLevel']}，"
-            f"已识别 {len(risk_rules)} 条重点风险信息，涉及 {project_count or 1} 个项目样本。"
+            f"已生成 {len(risk_rules)} 条规则判断信息，涉及 {project_count or 1} 个项目样本。"
         ),
     ]
 
