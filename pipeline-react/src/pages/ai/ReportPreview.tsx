@@ -180,6 +180,11 @@ type ReportProjectScope = {
   projectNames: string[];
 };
 
+type ReportPumpStationScope = {
+  pumpStationIds: number[];
+  pumpStationNames: string[];
+};
+
 type DetailPreviewState =
   | {
       mode: 'history';
@@ -1832,6 +1837,88 @@ function buildProjectScopeFromOptimizationComparisonSnapshot(
       ),
     ],
     projectNames: dedupeProjectNames(snapshot.projects.map((project) => project.projectName)),
+  };
+}
+
+function appendScopeId(target: Set<number>, value: unknown) {
+  const values = Array.isArray(value) ? value : [value];
+  values.forEach((item) => {
+    const next = toFiniteNumber(item);
+    if (next !== null && next > 0) {
+      target.add(next);
+    }
+  });
+}
+
+function appendScopeName(target: Set<string>, value: unknown) {
+  const values = Array.isArray(value) ? value : [value];
+  values.forEach((item) => {
+    const next = String(item ?? '').trim();
+    if (next) {
+      target.add(next);
+    }
+  });
+}
+
+function buildPumpStationScopeFromSources(sources: unknown[]): ReportPumpStationScope {
+  const ids = new Set<number>();
+  const names = new Set<string>();
+  const idPaths = [
+    'pumpStationId',
+    'pumpStationIds',
+    'selectedPumpStationId',
+    'selectedPumpStationIds',
+    'stationId',
+    'stationIds',
+    'baseParams.pumpStationId',
+    'baseParams.pumpStationIds',
+    'baseParams.selectedPumpStationId',
+    'baseParams.selectedPumpStationIds',
+    'baseParams.stationId',
+    'baseParams.stationIds',
+  ];
+  const namePaths = [
+    'pumpStationName',
+    'pumpStationNames',
+    'pumpStationLabel',
+    'selectedPumpStationName',
+    'selectedPumpStationNames',
+    'stationName',
+    'baseParams.pumpStationName',
+    'baseParams.pumpStationNames',
+    'baseParams.pumpStationLabel',
+    'baseParams.selectedPumpStationName',
+    'baseParams.selectedPumpStationNames',
+    'baseParams.stationName',
+  ];
+
+  sources.filter(Boolean).forEach((source) => {
+    idPaths.forEach((path) => appendScopeId(ids, getValueByPath(source, path)));
+    namePaths.forEach((path) => appendScopeName(names, getValueByPath(source, path)));
+  });
+
+  return {
+    pumpStationIds: [...ids],
+    pumpStationNames: [...names],
+  };
+}
+
+function buildPumpStationScopeFromSnapshots(
+  snapshots: Array<{ input: Record<string, unknown> } | null | undefined>,
+): ReportPumpStationScope {
+  return buildPumpStationScopeFromSources(snapshots.flatMap((snapshot) => (snapshot ? [snapshot.input] : [])));
+}
+
+function buildPumpStationScopeFromHistoryRows(
+  rows: Array<Pick<HistoryTableRow, 'inputParams'>>,
+): ReportPumpStationScope {
+  return buildPumpStationScopeFromSources(rows.map((row) => parseJson(row.inputParams)).filter(Boolean));
+}
+
+function mergePumpStationScopes(scopes: ReportPumpStationScope[]): ReportPumpStationScope {
+  return {
+    pumpStationIds: [...new Set(scopes.flatMap((scope) => scope.pumpStationIds))],
+    pumpStationNames: [...new Set(scopes.flatMap((scope) => scope.pumpStationNames.map((name) => name.trim()).filter(Boolean)))],
   };
 }
 
@@ -8605,6 +8692,18 @@ export default function ReportPreview() {
       }
 
       selectedNames = dedupeProjectNames(selectedNames);
+      const fallbackScopeRows = [selectedSensitivityRecord, selectedOptimizationRecord, selectedHydraulicRecord].filter(
+        (record): record is HistoryTableRow => Boolean(record),
+      );
+      const pumpStationScope = mergePumpStationScopes([
+        buildPumpStationScopeFromHistoryRows(selectedGenerationRecords.length ? selectedGenerationRecords : fallbackScopeRows),
+        buildPumpStationScopeFromSnapshots([
+          preferredSensitivitySnapshot,
+          preferredOptimizationSnapshot,
+          preferredHydraulicSnapshot,
+          ...(preferredOptimizationComparisonSnapshot?.projects ?? []),
+        ]),
+      ]);
       const activeFocuses = preferredSensitivitySnapshot
         ? ['核心结论', '官方资料依据', '机理分析', '趋势解读', '风险分析', '运行建议', '基准结果', '敏感系数', '最大影响幅度', '排名', '压力变化趋势', '摩阻损失变化趋势', '雷诺数', '流态变化']
         : preferredOptimizationComparisonSnapshot
@@ -8620,6 +8719,8 @@ export default function ReportPreview() {
       const result = await agentApi.generateDynamicReport({
         selected_project_ids: activeProjectIds,
         project_names: selectedNames,
+        selected_pump_station_ids: pumpStationScope.pumpStationIds.length ? pumpStationScope.pumpStationIds : undefined,
+        selected_pump_station_names: pumpStationScope.pumpStationNames.length ? pumpStationScope.pumpStationNames : undefined,
         report_type: reportType,
         report_type_label: reportTypeLabel,
         intelligence_level: 'enhanced',

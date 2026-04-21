@@ -180,7 +180,17 @@ def build_report_context(
 ) -> dict[str, Any]:
     project_names = [str(item.get("name") or "-") for item in data.projects]
     pipeline_name = request.selected_pipeline_name or (str(data.pipelines[0].get("name")) if data.pipelines else "-")
-    pump_scope = "全部泵站" if not request.selected_pump_station_names else "指定泵站"
+    selected_pump_names = [
+        str(item.get("name") or "").strip()
+        for item in data.pump_stations
+        if str(item.get("name") or "").strip()
+    ]
+    has_pump_scope = bool(request.selected_pump_station_ids or request.selected_pump_station_names)
+    pump_scope = (
+        "、".join(selected_pump_names)
+        if has_pump_scope and selected_pump_names
+        else ("指定泵站" if has_pump_scope else "全部泵站")
+    )
     oil_name = request.selected_oil_name or (str(data.oil_properties[0].get("name")) if data.oil_properties else "-")
     history_overview = data.history_overview or {}
     risk_flags = [
@@ -207,6 +217,7 @@ def build_report_context(
             "analysisObject": analysis_object_label(request.analysis_object),
             "pipelineName": pipeline_name,
             "pumpStationScope": pump_scope,
+            "selectedPumpStations": selected_pump_names if has_pump_scope else [],
             "oilType": oil_name,
             "focusPoints": request.focuses or [],
             "targetThroughput": request.target_throughput,
@@ -248,6 +259,7 @@ def build_report_context(
             "analysis_object": analysis_object_label(request.analysis_object),
             "pipeline_name": pipeline_name,
             "pump_station_scope": pump_scope,
+            "selected_pump_stations": selected_pump_names if has_pump_scope else [],
             "oil_type": oil_name,
             "data_source": _pick_data_source(request.user_prompt),
         },
