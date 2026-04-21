@@ -595,6 +595,13 @@ function buildOfficialEvidenceMissingItems(report: DynamicReportResponsePayload)
   const status = getOfficialResearchStatus(report);
   const references = getOfficialReferences(report);
 
+  if (!status && !references.length) {
+    return [
+      '当前报告没有包含官方资料联网检索元数据，通常说明这是旧报告、历史归档记录或前端仍在展示缓存结果。',
+      '请在后端服务加载最新代码并具备联网能力后重新生成报告；新报告必须返回官方资料来源和模型判断，核心结论才会展示。',
+    ];
+  }
+
   if (references.length) {
     return [
       '已检索到官方资料，但本次模型没有返回可采信的工程调整结论。为避免把固定规则包装成判断，当前不输出“该不该调、怎么调、调多少”的结论。',
