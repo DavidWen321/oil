@@ -12,6 +12,7 @@ from src.config import settings
 from src.utils import logger
 
 from .sensitivity_facts import extract_ranked_sensitivities, extract_sensitivity_terms
+from .skills.sensitivity_helpers import extract_sensitivity_risk_rules
 
 
 DEFAULT_OFFICIAL_DOMAINS = (
@@ -77,6 +78,21 @@ SENSITIVITY_VARIABLE_QUERIES = {
         "离心泵系统经济运行 通则 国家标准",
         "泵系统 优化 设计 国家标准",
         "离心泵 效率 国家标准",
+    ],
+}
+
+SENSITIVITY_RISK_CODE_QUERIES = {
+    "energy_consumption_zone": [
+        "油气输送管道系统节能监测规范 能耗 风险 国家标准",
+        "输油管道 节能 运行控制 官方 标准",
+    ],
+    "operation_stability_zone": [
+        "油气管道运行与维护规范 压力 波动 运行风险 国家标准",
+        "输油管道 压力 控制 运行维护 官方 标准",
+    ],
+    "equipment_boundary_zone": [
+        "油气管道运行与维护规范 设备 运行边界 官方 标准",
+        "离心泵系统经济运行 高负荷 风险 国家标准",
     ],
 }
 
@@ -193,6 +209,30 @@ def _build_sensitivity_queries(report_context: dict[str, Any], focuses: list[str
     return queries
 
 
+def _build_sensitivity_risk_queries(report_context: dict[str, Any], focuses: list[str]) -> list[str]:
+    ranked_variables = extract_ranked_sensitivities(report_context, limit=5)
+    risk_rules = extract_sensitivity_risk_rules(report_context)
+    variable_terms = [str(item.get("variableName") or "").strip() for item in ranked_variables if item.get("variableName")]
+    topic_terms = " ".join((variable_terms + focuses[:4])[:8])
+
+    queries = [
+        f"油气管道运行与维护规范 {topic_terms} 风险 监测 官方",
+        f"输油管道 运行维护 {topic_terms} 安全 风险 标准",
+        "油气输送管道系统节能监测规范 风险 官方",
+    ]
+
+    for item in ranked_variables:
+        variable_name = str(item.get("variableName") or "").strip()
+        for query in SENSITIVITY_VARIABLE_QUERIES.get(variable_name, [])[:2]:
+            queries.append(f"{query} 风险")
+
+    for row in risk_rules[:3]:
+        risk_code = str(row.get("riskCode") or "").strip()
+        queries.extend(SENSITIVITY_RISK_CODE_QUERIES.get(risk_code, []))
+
+    return queries
+
+
 def _build_queries(request: Any, report_context: dict[str, Any], profile_key: str) -> list[str]:
     focuses = [str(item).strip() for item in getattr(request, "focuses", []) or [] if str(item).strip()]
     sensitivity_terms = extract_sensitivity_terms(report_context, limit=6)
@@ -236,81 +276,182 @@ def _build_queries(request: Any, report_context: dict[str, Any], profile_key: st
     return result[:10]
 
 
-def collect_official_research(
-    request: Any,
-    report_context: dict[str, Any],
-    profile_key: str,
-) -> dict[str, Any]:
-    if not settings.REPORT_WEB_RESEARCH_ENABLED:
-        return {
-            "enabled": False,
-            "status": "disabled",
-            "queries": [],
-            "references": [],
-            "searched_at": datetime.now(timezone.utc).isoformat(),
-        }
+def _build_risk_queries(request: Any, report_context: dict[str, Any], profile_key: str) -> list[str]:
+    focuses = [str(item).strip() for item in getattr(request, "focuses", []) or [] if str(item).strip()]
+    if profile_key == "sensitivity":
+        base_queries = _build_sensitivity_risk_queries(report_context, focuses)
+    else:
+        base_queries = [
+            "油气管道 运行维护 风险 官方 标准",
+            "油气管道 安全 风险 监测 官方 标准",
+        ]
 
-    timeout_seconds = max(int(settings.REPORT_WEB_RESEARCH_TIMEOUT_SECONDS or 8), 3)
-    minimum_top_k = 6 if profile_key == "sensitivity" else 4
-    top_k = max(int(settings.REPORT_WEB_RESEARCH_TOP_K or minimum_top_k), minimum_top_k)
-    allowed_domains = _parse_csv(settings.REPORT_WEB_RESEARCH_ALLOWED_DOMAINS, DEFAULT_OFFICIAL_DOMAINS)
-    queries = _build_queries(request, report_context, profile_key)
+    domain_queries = [
+        "油气管道 运行与维护规范 风险 site:std.samr.gov.cn",
+        "油气输送管道系统节能监测规范 风险 site:std.samr.gov.cn",
+        "油气管道 风险 监测 site:mem.gov.cn",
+        "油气管道 节能 运行 site:nea.gov.cn",
+        "中国政府网 油气管道 安全 风险 site:gov.cn",
+    ]
+
+    result: list[str] = []
+    seen: set[str] = set()
+    for query in base_queries + domain_queries:
+        cleaned = _clean_text(query, max_length=160)
+        if cleaned and cleaned not in seen:
+            result.append(cleaned)
+            seen.add(cleaned)
+    return result[:8]
+
+
+def _collect_references(
+    *,
+    queries: list[str],
+    timeout_seconds: int,
+    top_k: int,
+    allowed_domains: tuple[str, ...],
+    proxy_url: str | None,
+) -> list[dict[str, str]]:
     references: list[dict[str, str]] = []
     seen_urls: set[str] = set()
-
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
             "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36"
         )
     }
+
+    with httpx.Client(
+        timeout=timeout_seconds,
+        headers=headers,
+        follow_redirects=True,
+        proxy=proxy_url,
+    ) as client:
+        for query in queries:
+            if len(references) >= top_k:
+                break
+            try:
+                search_results = _search_duckduckgo(client, query)
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("Official web search skipped | query={} error={}", query, exc)
+                continue
+
+            for item in search_results:
+                url = _resolve_search_url(item.get("url", ""))
+                if not _is_allowed_official_url(url, allowed_domains):
+                    continue
+                normalized_url = url.split("#", maxsplit=1)[0]
+                if normalized_url in seen_urls:
+                    continue
+                seen_urls.add(normalized_url)
+                page = _fetch_reference_page(client, normalized_url, item)
+                references.append(
+                    {
+                        "title": page.get("title") or item.get("title") or "官方资料",
+                        "url": normalized_url,
+                        "domain": urlparse(normalized_url).hostname or "",
+                        "publisher": _publisher_for(normalized_url),
+                        "snippet": page.get("snippet") or item.get("snippet") or "",
+                        "query": query,
+                    }
+                )
+                if len(references) >= top_k:
+                    break
+
+    return references
+
+
+def _empty_research(status: str) -> dict[str, Any]:
+    return {
+        "enabled": status != "disabled",
+        "status": status,
+        "queries": [],
+        "references": [],
+        "searched_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def collect_official_research(
+    request: Any,
+    report_context: dict[str, Any],
+    profile_key: str,
+) -> dict[str, Any]:
+    if not settings.REPORT_WEB_RESEARCH_ENABLED:
+        return _empty_research("disabled")
+
+    timeout_seconds = max(int(settings.REPORT_WEB_RESEARCH_TIMEOUT_SECONDS or 8), 3)
+    minimum_top_k = 6 if profile_key == "sensitivity" else 4
+    top_k = max(int(settings.REPORT_WEB_RESEARCH_TOP_K or minimum_top_k), minimum_top_k)
+    allowed_domains = _parse_csv(settings.REPORT_WEB_RESEARCH_ALLOWED_DOMAINS, DEFAULT_OFFICIAL_DOMAINS)
+    queries = _build_queries(request, report_context, profile_key)
     proxy_url = str(settings.REPORT_WEB_RESEARCH_PROXY or "").strip() or None
 
     started_at = datetime.now(timezone.utc)
     try:
-        with httpx.Client(
-            timeout=timeout_seconds,
-            headers=headers,
-            follow_redirects=True,
-            proxy=proxy_url,
-        ) as client:
-            for query in queries:
-                if len(references) >= top_k:
-                    break
-                try:
-                    search_results = _search_duckduckgo(client, query)
-                except Exception as exc:  # noqa: BLE001
-                    logger.debug("Official web search skipped | query={} error={}", query, exc)
-                    continue
-
-                for item in search_results:
-                    url = _resolve_search_url(item.get("url", ""))
-                    if not _is_allowed_official_url(url, allowed_domains):
-                        continue
-                    normalized_url = url.split("#", maxsplit=1)[0]
-                    if normalized_url in seen_urls:
-                        continue
-                    seen_urls.add(normalized_url)
-                    page = _fetch_reference_page(client, normalized_url, item)
-                    references.append(
-                        {
-                            "title": page.get("title") or item.get("title") or "官方资料",
-                            "url": normalized_url,
-                            "domain": urlparse(normalized_url).hostname or "",
-                            "publisher": _publisher_for(normalized_url),
-                            "snippet": page.get("snippet") or item.get("snippet") or "",
-                            "query": query,
-                        }
-                    )
-                    if len(references) >= top_k:
-                        break
+        references = _collect_references(
+            queries=queries,
+            timeout_seconds=timeout_seconds,
+            top_k=top_k,
+            allowed_domains=allowed_domains,
+            proxy_url=proxy_url,
+        )
     except Exception as exc:  # noqa: BLE001
         logger.warning("Official web research failed: {}", exc)
+        references = []
 
     status = "found" if references else "not_found"
     elapsed_ms = int((datetime.now(timezone.utc) - started_at).total_seconds() * 1000)
     logger.info(
         "Official web research completed | profile={} status={} refs={} queries={} elapsed_ms={}",
+        profile_key,
+        status,
+        len(references),
+        len(queries),
+        elapsed_ms,
+    )
+
+    return {
+        "enabled": True,
+        "status": status,
+        "queries": queries,
+        "references": references,
+        "searched_at": datetime.now(timezone.utc).isoformat(),
+        "allowed_domains": list(allowed_domains),
+    }
+
+
+def collect_official_risk_research(
+    request: Any,
+    report_context: dict[str, Any],
+    profile_key: str,
+) -> dict[str, Any]:
+    if not settings.REPORT_WEB_RESEARCH_ENABLED:
+        return _empty_research("disabled")
+
+    timeout_seconds = max(int(settings.REPORT_WEB_RESEARCH_TIMEOUT_SECONDS or 8), 3)
+    allowed_domains = _parse_csv(settings.REPORT_WEB_RESEARCH_ALLOWED_DOMAINS, DEFAULT_OFFICIAL_DOMAINS)
+    queries = _build_risk_queries(request, report_context, profile_key)
+    minimum_top_k = 6 if profile_key == "sensitivity" else 4
+    top_k = max(int(settings.REPORT_WEB_RESEARCH_TOP_K or minimum_top_k), minimum_top_k)
+    proxy_url = str(settings.REPORT_WEB_RESEARCH_PROXY or "").strip() or None
+
+    started_at = datetime.now(timezone.utc)
+    try:
+        references = _collect_references(
+            queries=queries,
+            timeout_seconds=timeout_seconds,
+            top_k=top_k,
+            allowed_domains=allowed_domains,
+            proxy_url=proxy_url,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Official risk web research failed: {}", exc)
+        references = []
+
+    status = "found" if references else "not_found"
+    elapsed_ms = int((datetime.now(timezone.utc) - started_at).total_seconds() * 1000)
+    logger.info(
+        "Official risk research completed | profile={} status={} refs={} queries={} elapsed_ms={}",
         profile_key,
         status,
         len(references),

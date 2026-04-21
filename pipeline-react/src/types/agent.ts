@@ -269,6 +269,10 @@ export interface DynamicReportRiskItem {
   suggestion: string;
   code?: string | null;
   message?: string | null;
+  source?: string | null;
+  referenceTitle?: string | null;
+  referenceUrl?: string | null;
+  referencePublisher?: string | null;
 }
 
 export interface DynamicReportSuggestionItem {

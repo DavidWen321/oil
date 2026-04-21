@@ -12,7 +12,8 @@ from .decision_engine import DecisionEngine
 from .diagnosis_engine import DiagnosisEngine
 from .labeling import output_style_key, range_label, report_type_label
 from .metric_engine import build_metric_snapshot
-from .official_research import collect_official_research
+from .official_research import collect_official_research, collect_official_risk_research
+from .official_risk_analysis import build_official_risk_items
 from .report_context_builder import build_report_context
 from .section_generator import (
     build_highlights,
@@ -244,6 +245,7 @@ def generate_report(request: DynamicReportRequest) -> DynamicReportResponse:
     primary_sensitivity = extract_primary_sensitivity(report_context)
     ranked_sensitivities = extract_ranked_sensitivities(report_context)
     official_research = collect_official_research(request, report_context, skill_profile.key)
+    official_risk_research = collect_official_risk_research(request, report_context, skill_profile.key)
 
     llm_input = _build_llm_input(
         request,
@@ -304,6 +306,17 @@ def generate_report(request: DynamicReportRequest) -> DynamicReportResponse:
     )
 
     ai_analysis = skill_profile.build_ai_analysis(report_context)
+    official_risk_items = build_official_risk_items(
+        request,
+        report_context,
+        official_risk_research,
+        skill_profile.key,
+    )
+    if skill_profile.key == "sensitivity":
+        ai_analysis.riskJudgement = official_risk_items
+        ai_analysis.riskIdentify = official_risk_items
+    elif official_risk_items:
+        ai_analysis.riskJudgement = official_risk_items
     ai_summary = ai_analysis.summary
     ai_highlights = ai_analysis.schemeExplain or ai_analysis.comparison or ai_analysis.metricAnalysis or ai_analysis.changeAnalysis
     ai_risks = ai_analysis.riskJudgement or ai_analysis.riskIdentify
@@ -326,7 +339,7 @@ def generate_report(request: DynamicReportRequest) -> DynamicReportResponse:
         aiAnalysis=ai_analysis,
         summary=ai_summary if ai_summary else final_summary,
         highlights=ai_highlights if ai_highlights else final_highlights,
-        risks=ai_risks if ai_risks else risks,
+        risks=ai_risks if ai_risks else ([] if skill_profile.key == "sensitivity" else risks),
         suggestions=ai_analysis.suggestions if ai_analysis.suggestions else suggestions,
         conclusion=final_conclusion,
         sections=sections,
@@ -348,6 +361,9 @@ def generate_report(request: DynamicReportRequest) -> DynamicReportResponse:
             "official_research": official_research,
             "official_references": official_research.get("references", []),
             "official_conclusions": official_conclusions,
+            "official_risk_research": official_risk_research,
+            "official_risk_references": official_risk_research.get("references", []),
+            "official_risk_items": [item.model_dump() for item in official_risk_items],
             "primary_sensitivity": primary_sensitivity,
             "ranked_sensitivities": ranked_sensitivities,
         },

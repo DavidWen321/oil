@@ -596,6 +596,44 @@ function getOfficialResearchStatus(report: DynamicReportResponsePayload) {
   return String(getValueByPath(report, 'metadata.official_research.status') || '').trim();
 }
 
+function getOfficialRiskItems(report: DynamicReportResponsePayload) {
+  const metadata = asRecord(report.metadata);
+  const rows = asRecordArray(metadata?.official_risk_items);
+  return rows.map((item) => ({
+    target: String(item.target || '').trim(),
+    riskType: String(item.riskType || item.code || '').trim(),
+    level: String(item.level || '').trim(),
+    reason: String(item.reason || item.message || '').trim(),
+    impact: String(item.impact || '').trim(),
+    suggestion: String(item.suggestion || '').trim(),
+    code: String(item.code || item.riskType || '').trim(),
+    message: String(item.message || item.reason || '').trim(),
+    source: String(item.source || '').trim(),
+    referenceTitle: String(item.referenceTitle || '').trim(),
+    referenceUrl: String(item.referenceUrl || '').trim(),
+    referencePublisher: String(item.referencePublisher || '').trim(),
+  }));
+}
+
+function getOfficialRiskReferences(report: DynamicReportResponsePayload): OfficialReference[] {
+  const metadata = asRecord(report.metadata);
+  const rows = asRecordArray(metadata?.official_risk_references);
+
+  return rows
+    .map((item) => ({
+      title: String(item.title || item.publisher || item.domain || '官方资料').trim(),
+      url: String(item.url || '').trim(),
+      domain: String(item.domain || '').trim(),
+      publisher: String(item.publisher || '').trim(),
+      snippet: String(item.snippet || '').trim(),
+    }))
+    .filter((item) => item.url);
+}
+
+function getOfficialRiskResearchStatus(report: DynamicReportResponsePayload) {
+  return String(getValueByPath(report, 'metadata.official_risk_research.status') || '').trim();
+}
+
 function buildOfficialEvidenceMissingItems(report: DynamicReportResponsePayload) {
   const status = getOfficialResearchStatus(report);
   const references = getOfficialReferences(report);
@@ -621,6 +659,41 @@ function buildOfficialEvidenceMissingItems(report: DynamicReportResponsePayload)
   return [
     '本次没有检索到可引用的官方资料，因此不输出固定模板式调整建议。',
     '需要后端联网检索命中官方/标准来源，并由模型基于这些来源和计算结果共同判断后，才展示核心结论。',
+  ];
+}
+
+function buildOfficialRiskMissingItems(report: DynamicReportResponsePayload) {
+  const status = getOfficialRiskResearchStatus(report);
+  const references = getOfficialRiskReferences(report);
+
+  if (!status && !references.length) {
+    return [
+      '当前报告没有包含风险分析的官方联网检索元数据，通常说明这是旧报告或仍在展示缓存结果。',
+      '请在后端服务加载最新代码并具备联网能力后重新生成报告；风险分析只有在命中至少两条官方资料并完成校核后才展示。',
+    ];
+  }
+
+  if (references.length > 0 && references.length < 2) {
+    return [
+      `本次只检索到 ${references.length} 条官方来源，证据数量不足，当前不展示风险卡片。`,
+      '风险分析必须同时满足“已有计算结果 + 至少两条官方来源 + 校核说明”这三个条件，避免把本地规则包装成联网判断。',
+    ];
+  }
+
+  if (references.length) {
+    return [
+      '已检索到官方资料，但本次没有形成可采信的风险校核结论。为避免把本地规则包装成联网判断，当前不展示风险卡片。',
+      '请重新生成报告，或检查后端模型与联网检索配置是否正常；风险分析必须同时包含计算规则、至少两条官方来源和校核说明后才展示。',
+    ];
+  }
+
+  if (status === 'disabled') {
+    return ['官方资料联网检索未启用，当前不输出风险分析结论。请启用后端 REPORT_WEB_RESEARCH_ENABLED 后重新生成报告。'];
+  }
+
+  return [
+    '本次没有检索到可引用的官方风险资料，因此不展示基于固定规则补算的风险分析。',
+    '需要后端联网检索命中官方/标准来源，并在至少两条来源支持下结合计算结果做校核说明后，才展示风险分析。',
   ];
 }
 
@@ -3132,6 +3205,9 @@ function getSensitivityRiskSourceLabel(source?: string | null) {
   if (normalized === 'calculated_rule_fallback') {
     return '计算结果规则补算';
   }
+  if (normalized === 'official_web_research') {
+    return '官方资料联网校核';
+  }
   return normalized || '';
 }
 
@@ -3766,14 +3842,18 @@ function buildSensitivityExpectedBenefitItems(context: SensitivityAnalysisContex
   return items;
 }
 
+void buildSensitivityRiskCards;
+
 function getSensitivityRiskItems(report: DynamicReportResponsePayload) {
-  const skillItems = report.aiAnalysis?.riskJudgement ?? [];
-  if (skillItems.length) {
-    return skillItems;
+  const officialItems = getOfficialRiskItems(report);
+  if (officialItems.length) {
+    return officialItems;
   }
 
-  const identifyItems = report.aiAnalysis?.riskIdentify ?? [];
-  return identifyItems.length ? identifyItems : report.risks;
+  const skillItems = (report.aiAnalysis?.riskJudgement ?? []).filter(
+    (item) => String(item.source || '').trim() === 'official_web_research',
+  );
+  return skillItems;
 }
 
 function getSensitivitySuggestionItems(report: DynamicReportResponsePayload) {
@@ -6758,9 +6838,11 @@ function renderSensitivityAiReportContentV2(
     roughnessText,
   } = context;
 
-  const riskCards = buildSensitivityRiskCards(context);
   const suggestionCards = buildSensitivitySuggestionCards(context);
   const riskItems = getSensitivityRiskItems(report);
+  const officialRiskReferences = getOfficialRiskReferences(report);
+  const officialRiskItems = riskItems;
+  const officialRiskNarratives = buildOfficialRiskMissingItems(report);
   const suggestionItems = getSensitivitySuggestionItems(report);
   const officialConclusionItems = getOfficialConclusionItems(report);
   const officialReferences = getOfficialReferences(report);
@@ -6840,7 +6922,9 @@ function renderSensitivityAiReportContentV2(
     analysis: {
       resultSummary: [],
       keyChangeAnalysis: [],
-      riskRecognition: riskCards.length ? riskCards.map((item) => `${item.reason}${item.impact}`) : ['当前数据不足以支持进一步判断。'],
+      riskRecognition: officialRiskItems.length
+        ? officialRiskItems.map((item) => `${item.message || item.reason}${item.impact || ''}`)
+        : ['当前数据不足以支持进一步判断。'],
       optimizationSuggestions: suggestionCards.length
         ? suggestionCards.map((item) => item.action)
         : ['当前数据不足以支持进一步判断。'],
@@ -7088,58 +7172,18 @@ function renderSensitivityAiReportContentV2(
       </Card>
 
       <Card size="small" title="风险分析">
-        {riskCards.length ? (
+        {!officialRiskItems.length ? (
+          <Alert
+            showIcon
+            type="warning"
+            message="风险分析未采用固定模板"
+            description="该区域只展示联网检索到至少两条官方资料后，对既有风险规则做出的校核说明；当前结果缺少可采信的官方依据风险结论。"
+            style={{ marginBottom: 12 }}
+          />
+        ) : null}
+        {officialRiskItems.length ? (
           <Row gutter={[16, 16]}>
-            {riskCards.map((item, index) => {
-              const cardTheme = getSensitivityRiskCardTheme(item.level);
-              return (
-                <Col xs={24} xl={12} key={`${item.title}-${index}`}>
-                  <div
-                    style={{
-                      height: '100%',
-                      borderRadius: 18,
-                      padding: 18,
-                      background: cardTheme.background,
-                      border: `1px solid ${cardTheme.border}`,
-                      boxShadow: cardTheme.shadow,
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                      <div>
-                        <Text strong style={{ fontSize: 16, color: '#0f172a' }}>
-                          {item.target || '当前对象'}
-                        </Text>
-                        <div style={{ marginTop: 4, color: cardTheme.accent, fontSize: 13 }}>{item.title}</div>
-                        {getSensitivityRiskSourceLabel(item.source) ? (
-                          <div style={{ marginTop: 2, color: '#64748b', fontSize: 12 }}>
-                            来源：{getSensitivityRiskSourceLabel(item.source)}
-                          </div>
-                        ) : null}
-                      </div>
-                      <Tag color={getSensitivityLevelTagColor(item.level)} style={{ marginInlineEnd: 0 }}>
-                        {item.level || '预警区'}
-                      </Tag>
-                    </div>
-                    <Paragraph style={{ margin: '14px 0 8px', color: '#334155' }}>
-                      <Text strong style={{ color: cardTheme.accent }}>
-                        判断依据：
-                      </Text>
-                      {item.reason}
-                    </Paragraph>
-                    <Paragraph style={{ margin: 0, color: '#334155' }}>
-                      <Text strong style={{ color: cardTheme.accent }}>
-                        管理含义：
-                      </Text>
-                      {item.impact}
-                    </Paragraph>
-                  </div>
-                </Col>
-              );
-            })}
-          </Row>
-        ) : riskItems.length ? (
-          <Row gutter={[16, 16]}>
-            {riskItems.map((item, index) => {
+            {officialRiskItems.map((item, index) => {
               const cardTheme = getSensitivityRiskCardTheme(item.level);
               return (
                 <Col xs={24} xl={12} key={`${item.target}-${index}`}>
@@ -7161,6 +7205,12 @@ function renderSensitivityAiReportContentV2(
                         <div style={{ marginTop: 4, color: cardTheme.accent, fontSize: 13 }}>
                           {item.riskType || item.code || '区间判断'}
                         </div>
+                        {getSensitivityRiskSourceLabel(item.source) ? (
+                          <div style={{ marginTop: 2, color: '#64748b', fontSize: 12 }}>
+                            来源：{getSensitivityRiskSourceLabel(item.source)}
+                            {item.referencePublisher ? ` · ${item.referencePublisher}` : ''}
+                          </div>
+                        ) : null}
                       </div>
                       <Tag color={getSensitivityLevelTagColor(item.level)} style={{ marginInlineEnd: 0 }}>
                         {item.level || '预警区'}
@@ -7178,14 +7228,26 @@ function renderSensitivityAiReportContentV2(
                       </Text>
                       {item.impact || item.suggestion || '会对结果稳定性和运行边界判断带来额外扰动。'}
                     </Paragraph>
+                    {item.referenceUrl ? (
+                      <div style={{ marginTop: 10, fontSize: 12 }}>
+                        <a href={item.referenceUrl} target="_blank" rel="noreferrer">
+                          {item.referenceTitle || item.referencePublisher || '官方资料'}
+                        </a>
+                      </div>
+                    ) : null}
                   </div>
                 </Col>
               );
             })}
           </Row>
         ) : (
-          <Text type="secondary">当前数据不足以支持进一步判断。</Text>
+          <>
+            {renderNarrativeLineList(officialRiskNarratives, '#f59e0b') ?? (
+              <Text type="secondary">当前数据不足以支持进一步判断。</Text>
+            )}
+          </>
         )}
+        {renderOfficialEvidenceSources(officialRiskReferences)}
       </Card>
 
       <Card size="small" title="运行建议">

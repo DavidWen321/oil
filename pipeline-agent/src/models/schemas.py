@@ -240,6 +240,10 @@ class ReportRiskItem(BaseModel):
     suggestion: str
     code: Optional[str] = None
     message: Optional[str] = None
+    source: Optional[str] = None
+    referenceTitle: Optional[str] = None
+    referenceUrl: Optional[str] = None
+    referencePublisher: Optional[str] = None
 
 
 class ReportSuggestionItem(BaseModel):
