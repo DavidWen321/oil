@@ -68,9 +68,10 @@ class Settings(BaseSettings):
     )
     REPORT_WEB_RESEARCH_ALLOWED_DOMAINS: str = Field(
         default=(
-            "std.samr.gov.cn,openstd.samr.gov.cn,www.samr.gov.cn,www.gov.cn,"
-            "www.nea.gov.cn,zfxxgk.nea.gov.cn,www.ndrc.gov.cn,www.mem.gov.cn,"
-            "www.mee.gov.cn,www.mot.gov.cn,www.mnr.gov.cn"
+            "std.samr.gov.cn,openstd.samr.gov.cn,samr.gov.cn,www.samr.gov.cn,gov.cn,www.gov.cn,"
+            "nea.gov.cn,www.nea.gov.cn,zfxxgk.nea.gov.cn,ndrc.gov.cn,www.ndrc.gov.cn,"
+            "mem.gov.cn,www.mem.gov.cn,mee.gov.cn,www.mee.gov.cn,mot.gov.cn,www.mot.gov.cn,"
+            "mnr.gov.cn,www.mnr.gov.cn"
         ),
         description="Comma-separated official domains allowed for dynamic report web research",
     )

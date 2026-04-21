@@ -18,28 +18,44 @@ from .skills.sensitivity_helpers import extract_sensitivity_risk_rules
 DEFAULT_OFFICIAL_DOMAINS = (
     "std.samr.gov.cn",
     "openstd.samr.gov.cn",
+    "samr.gov.cn",
     "www.samr.gov.cn",
+    "gov.cn",
     "www.gov.cn",
+    "nea.gov.cn",
     "www.nea.gov.cn",
     "zfxxgk.nea.gov.cn",
+    "ndrc.gov.cn",
     "www.ndrc.gov.cn",
+    "mem.gov.cn",
     "www.mem.gov.cn",
+    "mee.gov.cn",
     "www.mee.gov.cn",
+    "mot.gov.cn",
     "www.mot.gov.cn",
+    "mnr.gov.cn",
     "www.mnr.gov.cn",
 )
 
 PUBLISHER_LABELS = {
     "std.samr.gov.cn": "全国标准信息公共服务平台",
     "openstd.samr.gov.cn": "国家标准全文公开系统",
+    "samr.gov.cn": "国家市场监督管理总局",
     "www.samr.gov.cn": "国家市场监督管理总局",
+    "gov.cn": "中国政府网",
     "www.gov.cn": "中国政府网",
+    "nea.gov.cn": "国家能源局",
     "www.nea.gov.cn": "国家能源局",
     "zfxxgk.nea.gov.cn": "国家能源局政府信息公开",
+    "ndrc.gov.cn": "国家发展和改革委员会",
     "www.ndrc.gov.cn": "国家发展和改革委员会",
+    "mem.gov.cn": "应急管理部",
     "www.mem.gov.cn": "应急管理部",
+    "mee.gov.cn": "生态环境部",
     "www.mee.gov.cn": "生态环境部",
+    "mot.gov.cn": "交通运输部",
     "www.mot.gov.cn": "交通运输部",
+    "mnr.gov.cn": "自然资源部",
     "www.mnr.gov.cn": "自然资源部",
 }
 
@@ -368,6 +384,53 @@ def _empty_research(status: str) -> dict[str, Any]:
         "queries": [],
         "references": [],
         "searched_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def merge_official_research_payloads(*payloads: dict[str, Any]) -> dict[str, Any]:
+    references: list[dict[str, Any]] = []
+    queries: list[str] = []
+    allowed_domains: list[str] = []
+    seen_urls: set[str] = set()
+    seen_queries: set[str] = set()
+    seen_domains: set[str] = set()
+    enabled = False
+    searched_at = ""
+
+    for payload in payloads:
+        if not isinstance(payload, dict):
+            continue
+        enabled = enabled or bool(payload.get("enabled"))
+        searched_at = str(payload.get("searched_at") or searched_at)
+
+        for query in payload.get("queries") or []:
+            cleaned = _clean_text(query, max_length=200)
+            if cleaned and cleaned not in seen_queries:
+                queries.append(cleaned)
+                seen_queries.add(cleaned)
+
+        for domain in payload.get("allowed_domains") or []:
+            cleaned = str(domain or "").strip().lower()
+            if cleaned and cleaned not in seen_domains:
+                allowed_domains.append(cleaned)
+                seen_domains.add(cleaned)
+
+        for item in payload.get("references") or []:
+            if not isinstance(item, dict):
+                continue
+            url = str(item.get("url") or "").strip()
+            if not url or url in seen_urls:
+                continue
+            references.append(item)
+            seen_urls.add(url)
+
+    return {
+        "enabled": enabled,
+        "status": "found" if references else "not_found",
+        "queries": queries,
+        "references": references,
+        "searched_at": searched_at or datetime.now(timezone.utc).isoformat(),
+        "allowed_domains": allowed_domains,
     }
 
 
