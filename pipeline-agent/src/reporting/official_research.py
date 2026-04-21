@@ -181,6 +181,51 @@ def _search_duckduckgo(client: httpx.Client, query: str) -> list[dict[str, str]]
     return results
 
 
+def _search_bing(client: httpx.Client, query: str) -> list[dict[str, str]]:
+    response = client.get("https://cn.bing.com/search", params={"q": query, "setlang": "zh-Hans"})
+    response.raise_for_status()
+    soup = BeautifulSoup(response.text, "html.parser")
+    results: list[dict[str, str]] = []
+
+    for item in soup.select("li.b_algo"):
+        link = item.select_one("h2 a") or item.select_one("a")
+        if not link:
+            continue
+        href = str(link.get("href") or "").strip()
+        title = _clean_text(link.get_text(" ", strip=True), max_length=160)
+        snippet_el = item.select_one(".b_caption p") or item.select_one("p")
+        snippet = _clean_text(snippet_el.get_text(" ", strip=True) if snippet_el else "", max_length=260)
+        if href and title:
+            results.append({"title": title, "url": href, "snippet": snippet})
+    return results
+
+
+def _is_low_quality_reference(url: str, title: str, snippet: str) -> bool:
+    parsed = urlparse(url)
+    path = (parsed.path or "").strip("/")
+    title_text = _clean_text(title, max_length=200)
+    snippet_text = _clean_text(snippet, max_length=260)
+    generic_tokens = (
+        "首页",
+        "目录查询",
+        "公告查询",
+        "标准公告",
+        "国家标准信息公共服务平台",
+        "国家标准全文公开系统",
+    )
+
+    if any(token in title_text for token in generic_tokens):
+        if len(path) <= 3:
+            return True
+        if "id=" not in url and "detail" not in path.lower() and "search" not in path.lower():
+            return True
+
+    if not snippet_text and len(path) <= 1:
+        return True
+
+    return False
+
+
 def _fetch_reference_page(client: httpx.Client, url: str, fallback: dict[str, str]) -> dict[str, str]:
     title = fallback.get("title", "")
     snippet = fallback.get("snippet", "")
@@ -346,28 +391,41 @@ def _collect_references(
         for query in queries:
             if len(references) >= top_k:
                 break
-            try:
-                search_results = _search_duckduckgo(client, query)
-            except Exception as exc:  # noqa: BLE001
-                logger.debug("Official web search skipped | query={} error={}", query, exc)
-                continue
+            raw_results: list[dict[str, str]] = []
+            for search_name, searcher in (("duckduckgo", _search_duckduckgo), ("bing", _search_bing)):
+                try:
+                    raw_results.extend(searcher(client, query))
+                except Exception as exc:  # noqa: BLE001
+                    logger.debug("Official web search skipped | engine={} query={} error={}", search_name, query, exc)
 
-            for item in search_results:
+            for item in raw_results:
                 url = _resolve_search_url(item.get("url", ""))
                 if not _is_allowed_official_url(url, allowed_domains):
                     continue
                 normalized_url = url.split("#", maxsplit=1)[0]
                 if normalized_url in seen_urls:
                     continue
-                seen_urls.add(normalized_url)
+                if _is_low_quality_reference(
+                    normalized_url,
+                    str(item.get("title") or ""),
+                    str(item.get("snippet") or ""),
+                ):
+                    continue
+
                 page = _fetch_reference_page(client, normalized_url, item)
+                page_title = page.get("title") or item.get("title") or "官方资料"
+                page_snippet = page.get("snippet") or item.get("snippet") or ""
+                if _is_low_quality_reference(normalized_url, page_title, page_snippet):
+                    continue
+
+                seen_urls.add(normalized_url)
                 references.append(
                     {
-                        "title": page.get("title") or item.get("title") or "官方资料",
+                        "title": page_title,
                         "url": normalized_url,
                         "domain": urlparse(normalized_url).hostname or "",
                         "publisher": _publisher_for(normalized_url),
-                        "snippet": page.get("snippet") or item.get("snippet") or "",
+                        "snippet": page_snippet,
                         "query": query,
                     }
                 )
