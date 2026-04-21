@@ -53,6 +53,7 @@ public class SensitivityAnalysisServiceImpl implements ISensitivityAnalysisServi
     private static final BigDecimal DEFAULT_STEP_PERCENT = new BigDecimal("5");
     private static final List<SensitivityVariableEnum> SUPPORTED_QUICK_SINGLE_VARIABLES = List.of(
             SensitivityVariableEnum.FLOW_RATE,
+            SensitivityVariableEnum.OIL_DENSITY,
             SensitivityVariableEnum.OIL_VISCOSITY,
             SensitivityVariableEnum.PIPE_DIAMETER,
             SensitivityVariableEnum.PIPE_ROUGHNESS

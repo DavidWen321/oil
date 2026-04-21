@@ -224,7 +224,7 @@ const HYDRAULIC_REPORT_CORE_SENTENCE =
   '用真实水力计算结果做基础，用图表展示压头和扬程变化，再让 API 对雷诺数、流态、摩阻损失、总扬程和末站进站压头进行解释、判断和建议。';
 
 const SENSITIVITY_REPORT_CORE_SENTENCE =
-  '基于真实敏感性计算结果，重点分析变量变化对压力、摩阻损失和流态的影响程度，用敏感系数仪表盘、趋势图和风险结论告诉用户哪个变量最值得重点控制。';
+  '基于真实敏感性计算结果，按敏感排序分析关键变量对压力、摩阻损失和流态的影响程度，再结合官方资料判断哪些变量需要优先控制、哪些变量需要复核或整改。';
 
 const OPTIMIZATION_REPORT_CORE_SENTENCE =
   '基于真实优化结果，围绕推荐泵组合的可行性、压力保障能力、能耗水平和总成本进行解释和判断，告诉用户这个方案为什么被选中、能不能用、值不值得用。';
@@ -1179,7 +1179,7 @@ function buildSensitivityUserPrompt() {
     '外部知识增强：必须优先使用后端联网检索到的官方/标准资料校核判断，并在核心结论中体现依据来源。',
     '必须严格基于输入事实分析，不得编造不存在的数据、趋势或风险；语言保持专业、正式、工程化，不要口语化。',
     '不要重复页面已有的基础参数、结果卡片和图表说明，不要把页面数据重新抄一遍，也不要只描述结果。',
-    '分析必须解释“原因 + 影响 + 建议”，尤其要说明为什么该参数最敏感、为什么会影响压力与摩阻、为什么当前区间存在或不存在风险。',
+    '分析必须解释“原因 + 影响 + 建议”，尤其要说明为什么头部敏感变量会影响压力与摩阻、为什么当前区间存在或不存在风险。',
     '机理分析必须从物理角度展开，优先解释流速、雷诺数、流态、摩阻损失、末站压力之间的传导链条。',
     '每张图表对应的解读都应优先回答“为什么”，尤其是仪表盘/排序图，不要只写“谁排第一、系数是多少”，而要写出变量到结果的因果关系。',
     '趋势解读必须结合排序图与趋势图，判断压力/摩阻是否进入非线性增长区，并明确指出临界区间或主要放大区间。',
@@ -1187,7 +1187,8 @@ function buildSensitivityUserPrompt() {
     '风险结论必须遵循“核心算法计算结果 → riskRules 规则判断 → AI 解释”的链路；如果输入中已有 riskRules 或 riskItems，不得改写其等级和结论，只能解释其依据和管理含义。',
     '如果数据表明系统总体稳定，也要明确指出潜在敏感点；如果数据不足，请明确说明“当前数据不足以支持进一步判断”。',
     '输出时请按工程报告方式组织为 6 个部分：核心结论；机理分析；趋势解读；风险分析；运行建议；预期收益。',
-    '其中核心结论不要停留在结果描述，必须直接回答“该不该调、怎么调、调多少”，量化给出最敏感变量、影响幅度与当前控制边界；运行建议尽量给出“常规控制带、调度策略、监测指标”。',
+    '其中核心结论不要停留在结果描述，必须先围绕第一敏感变量回答“该不该调、怎么调、调多少”，再补充其他高影响变量的工程含义；运行建议尽量给出“常规控制带、调度策略、监测指标”。',
+    '如果结果中存在多个已计算变量，核心结论和机理分析要覆盖这些头部变量，不要只围绕单一变量反复输出；同时要区分运行可调变量和设计/状态变量。',
     '预期收益必须说明数据来源和计算口径：用当前工况（基准/0% 样本）对比最优工况（本次样本内可行且摩阻最低的工况），写清“最优值 - 当前值”或“当前值 - 最优值”的差值，不要直接给孤立数字。',
     `最核心的一句话请围绕这层意思展开：${SENSITIVITY_REPORT_CORE_SENTENCE}`,
   ].join('');
@@ -1293,6 +1294,13 @@ function getSensitivityPrimaryVariableResult(output: Record<string, unknown>) {
   return (
     variableResults.find((item) => String(item.variableType ?? '') === String(topRank.variableType ?? '')) ?? variableResults[0]
   );
+}
+
+function getSensitivityFocusVariables(output: Record<string, unknown>) {
+  return toSortedSensitivityRankingRows(output)
+    .map((item) => String(item.variableName ?? item.variableType ?? '').trim())
+    .filter(Boolean)
+    .slice(0, 5);
 }
 
 function buildSensitivityBaseCondition(inputPayload: Record<string, unknown>, inputBase: Record<string, unknown> | null) {
@@ -2079,7 +2087,7 @@ function renderOfficialEvidenceSources(references: OfficialReference[]) {
           <Tag color="processing">AI 联网查证</Tag>
           <Text type="secondary">官方资料来源</Text>
         </Space>
-        {references.slice(0, 4).map((item, index) => (
+        {references.slice(0, 6).map((item, index) => (
           <div key={`${item.url}-${index}`} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
             <Text type="secondary">{index + 1}.</Text>
             <div style={{ minWidth: 0 }}>
@@ -8692,6 +8700,9 @@ export default function ReportPreview() {
       }
 
       selectedNames = dedupeProjectNames(selectedNames);
+      const sensitivityFocusVariables = preferredSensitivitySnapshot
+        ? getSensitivityFocusVariables(preferredSensitivitySnapshot.output)
+        : [];
       const fallbackScopeRows = [selectedSensitivityRecord, selectedOptimizationRecord, selectedHydraulicRecord].filter(
         (record): record is HistoryTableRow => Boolean(record),
       );
@@ -8705,7 +8716,23 @@ export default function ReportPreview() {
         ]),
       ]);
       const activeFocuses = preferredSensitivitySnapshot
-        ? ['核心结论', '官方资料依据', '机理分析', '趋势解读', '风险分析', '运行建议', '基准结果', '敏感系数', '最大影响幅度', '排名', '压力变化趋势', '摩阻损失变化趋势', '雷诺数', '流态变化']
+        ? [
+            '核心结论',
+            '官方资料依据',
+            '机理分析',
+            '趋势解读',
+            '风险分析',
+            '运行建议',
+            '基准结果',
+            '敏感系数',
+            '最大影响幅度',
+            '排名',
+            '压力变化趋势',
+            '摩阻损失变化趋势',
+            '雷诺数',
+            '流态变化',
+            ...sensitivityFocusVariables,
+          ]
         : preferredOptimizationComparisonSnapshot
           ? ['综合评分', '总成本', '年能耗', '末站进站压头', '总扬程', '可行性', '风险等级']
           : preferredOptimizationSnapshot

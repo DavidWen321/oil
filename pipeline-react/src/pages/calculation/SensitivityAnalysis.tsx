@@ -27,6 +27,7 @@ import type {
   Project,
   PumpStation,
   SensitivityPoint,
+  SensitivityVariableConfig,
   SensitivityResult,
   SensitivityVariableInfo,
   VariableSensitivityResult,
@@ -217,11 +218,29 @@ export default function SensitivityAnalysis() {
     setLoading(true);
     try {
       const project = projects.find((item) => item.proId === (payload.projectId ?? null));
-      const response = await calculationApi.quickSensitivityAnalysis(variableType, payload, project?.name);
+      const analysisVariables: SensitivityVariableConfig[] = variables.map((item) => ({
+        variableType: item.code,
+        variableName: item.name,
+        unit: item.unit,
+        startPercent: item.minChangePercent ?? -20,
+        endPercent: item.maxChangePercent ?? 20,
+        stepPercent: 5,
+      }));
+      if (!analysisVariables.length) {
+        message.warning('当前没有可用的敏感变量。');
+        return;
+      }
+
+      const response = await calculationApi.sensitivityAnalysisSave({
+        projectId: payload.projectId ?? undefined,
+        projectName: project?.name ?? payload.pipelineName,
+        analysisType: 'SINGLE',
+        baseParams: payload,
+        variables: analysisVariables,
+      });
       const nextResult = response.data ?? null;
       setResult(nextResult);
       if (nextResult) {
-        const selectedVariable = variables.find((item) => item.code === variableType);
         useCalculationLinkStore.getState().linkCalculation({
           calcType: 'SENSITIVITY',
           projectId: payload.projectId ?? null,
@@ -231,22 +250,14 @@ export default function SensitivityAnalysis() {
             projectName: project?.name ?? null,
             analysisType: 'SINGLE',
             baseParams: payload,
-            variables: [
-              {
-                variableType,
-                variableName: selectedVariable?.name ?? variableType,
-                unit: selectedVariable?.unit ?? '',
-                startPercent: selectedVariable?.minChangePercent ?? -20,
-                endPercent: selectedVariable?.maxChangePercent ?? 20,
-                stepPercent: 5,
-              },
-            ],
+            variables: analysisVariables,
           },
           output: nextResult as unknown as Record<string, unknown>,
           updatedAt: new Date().toISOString(),
         });
       }
-      message.success('敏感性分析完成');
+      const selectedVariable = variables.find((item) => item.code === variableType);
+      message.success(`敏感性分析完成，当前聚焦 ${selectedVariable?.name ?? '所选变量'}。`);
     } finally {
       setLoading(false);
     }

@@ -16,6 +16,7 @@ import type {
   PumpStation,
   R,
   SaveReportRequest,
+  SensitivityParams,
   SensitivityResult,
   SensitivityVariableInfo,
 } from '../types';
@@ -80,6 +81,8 @@ export const calculationApi = {
     }),
   sensitivityAnalysis: (params: Record<string, unknown>) =>
     http.post<R<SensitivityResult>>('/calculation/sensitivity/analyze', params),
+  sensitivityAnalysisSave: (params: SensitivityParams) =>
+    http.post<R<SensitivityResult>>('/calculation/sensitivity/analyze-save', params),
   quickSensitivityAnalysis: (variableType: string, params: HydraulicAnalysisParams, projectName?: string) =>
     http.post<R<SensitivityResult>>(
       `/calculation/sensitivity/quick-single?variableType=${encodeURIComponent(variableType)}`,

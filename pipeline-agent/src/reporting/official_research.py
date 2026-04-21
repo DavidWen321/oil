@@ -11,7 +11,7 @@ import httpx
 from src.config import settings
 from src.utils import logger
 
-from .sensitivity_facts import extract_sensitivity_terms
+from .sensitivity_facts import extract_ranked_sensitivities, extract_sensitivity_terms
 
 
 DEFAULT_OFFICIAL_DOMAINS = (
@@ -40,6 +40,44 @@ PUBLISHER_LABELS = {
     "www.mee.gov.cn": "生态环境部",
     "www.mot.gov.cn": "交通运输部",
     "www.mnr.gov.cn": "自然资源部",
+}
+
+SENSITIVITY_VARIABLE_QUERIES = {
+    "流量": [
+        "油气管道运行与维护规范 流量 压力 国家标准",
+        "输油管道 工艺控制参数 流量 标准",
+        "油气输送管道系统节能监测规范 输量 标准",
+    ],
+    "粘度": [
+        "原油粘温曲线 测定 标准",
+        "原油管道加热处理输送工艺规程 粘度 温度 标准",
+        "输油管道 原油粘度 官方 标准",
+    ],
+    "密度": [
+        "石油液体密度测定法 国家标准",
+        "输油管道 原油密度 官方 标准",
+        "油气输送管道系统节能监测规范 密度 标准",
+    ],
+    "管径": [
+        "石油天然气工业 管线输送系统用钢管 国家标准",
+        "输油管道 工程设计 管径 标准",
+        "输油管道 工艺控制参数 管径 官方 标准",
+    ],
+    "粗糙度": [
+        "钢质管道内腐蚀控制规范 国家标准",
+        "油气管道 内腐蚀 控制 规范 官方",
+        "输油管道 粗糙度 内壁状态 标准",
+    ],
+    "温度": [
+        "原油管道加热处理输送工艺规程 标准",
+        "原油粘温曲线 测定 标准",
+        "输油管道 输送温度 官方 标准",
+    ],
+    "泵效率": [
+        "离心泵系统经济运行 通则 国家标准",
+        "泵系统 优化 设计 国家标准",
+        "离心泵 效率 国家标准",
+    ],
 }
 
 
@@ -93,8 +131,7 @@ def _resolve_search_url(raw_url: str) -> str:
 
 
 def _search_duckduckgo(client: httpx.Client, query: str) -> list[dict[str, str]]:
-    url = "https://duckduckgo.com/html/"
-    response = client.get(url, params={"q": query, "kl": "cn-zh"})
+    response = client.get("https://duckduckgo.com/html/", params={"q": query, "kl": "cn-zh"})
     response.raise_for_status()
     soup = BeautifulSoup(response.text, "html.parser")
     results: list[dict[str, str]] = []
@@ -138,48 +175,65 @@ def _fetch_reference_page(client: httpx.Client, url: str, fallback: dict[str, st
         return {"title": title, "snippet": snippet}
 
 
+def _build_sensitivity_queries(report_context: dict[str, Any], focuses: list[str]) -> list[str]:
+    ranked_variables = extract_ranked_sensitivities(report_context, limit=5)
+    sensitivity_terms = extract_sensitivity_terms(report_context, limit=8)
+    topic_terms = " ".join((sensitivity_terms + focuses[:4])[:8])
+
+    queries = [
+        f"输油管道 水力计算 {topic_terms} 摩阻 压力 标准 规范",
+        f"油气管道运行与维护规范 {topic_terms} 官方",
+        "油气输送管道系统节能监测规范 国家标准",
+    ]
+
+    for item in ranked_variables:
+        variable_name = str(item.get("variableName") or "").strip()
+        queries.extend(SENSITIVITY_VARIABLE_QUERIES.get(variable_name, []))
+
+    return queries
+
+
 def _build_queries(request: Any, report_context: dict[str, Any], profile_key: str) -> list[str]:
     focuses = [str(item).strip() for item in getattr(request, "focuses", []) or [] if str(item).strip()]
-    sensitivity_terms = extract_sensitivity_terms(report_context)
+    sensitivity_terms = extract_sensitivity_terms(report_context, limit=6)
     topic_terms = " ".join((sensitivity_terms + focuses[:4])[:6])
 
-    base_queries = {
-        "sensitivity": [
-            f"输油管道 水力计算 {topic_terms} 摩阻 压力 标准 规范",
-            f"油气管道 安全运行 {topic_terms} 压力 流量 调度 官方",
-            f"管道运输 节能 降耗 泵站 调度 {topic_terms} 官方",
-        ],
-        "optimization": [
-            f"输油管道 泵站 优化 调度 能耗 末站压力 官方 标准 {topic_terms}",
-            f"油气管道 节能 降耗 泵站 运行 国家能源局 {topic_terms}",
-        ],
-        "hydraulic": [
-            f"输油管道 水力计算 雷诺数 摩阻损失 压力 标准 规范 {topic_terms}",
-            f"油气管道 安全运行 压力 控制 水力 官方 {topic_terms}",
-        ],
-    }.get(
-        profile_key,
-        [
-            f"输油管道 运行 分析 官方 标准 {topic_terms}",
-            f"油气管道 安全 节能 调度 官方 {topic_terms}",
-        ],
-    )
+    if profile_key == "sensitivity":
+        base_queries = _build_sensitivity_queries(report_context, focuses)
+    else:
+        base_queries = {
+            "optimization": [
+                f"输油管道 泵站 优化 调度 能耗 末站压力 官方 标准 {topic_terms}",
+                f"油气管道 节能 降耗 泵站 运行 国家能源局 {topic_terms}",
+            ],
+            "hydraulic": [
+                f"输油管道 水力计算 雷诺数 摩阻损失 压力 标准 规范 {topic_terms}",
+                f"油气管道 运行与维护 压力 控制 水力 官方 {topic_terms}",
+            ],
+        }.get(
+            profile_key,
+            [
+                f"输油管道 运行 分析 官方 标准 {topic_terms}",
+                f"油气管道 安全 节能 调度 官方 {topic_terms}",
+            ],
+        )
 
     domain_queries = [
         "输油管道 工程设计规范 site:std.samr.gov.cn",
-        "油气管道 安全运行 官方 site:gov.cn",
-        "油气管道 节能 降耗 国家能源局",
+        "油气管道 运行与维护规范 site:std.samr.gov.cn",
+        "离心泵系统经济运行 通则 site:std.samr.gov.cn",
+        "油气输送管道系统节能监测规范 site:std.samr.gov.cn",
     ]
     queries = base_queries + domain_queries
 
     result: list[str] = []
     seen: set[str] = set()
     for query in queries:
-        cleaned = _clean_text(query, max_length=140)
+        cleaned = _clean_text(query, max_length=160)
         if cleaned and cleaned not in seen:
             result.append(cleaned)
             seen.add(cleaned)
-    return result[:5]
+    return result[:10]
 
 
 def collect_official_research(
@@ -197,7 +251,8 @@ def collect_official_research(
         }
 
     timeout_seconds = max(int(settings.REPORT_WEB_RESEARCH_TIMEOUT_SECONDS or 8), 3)
-    top_k = max(int(settings.REPORT_WEB_RESEARCH_TOP_K or 4), 1)
+    minimum_top_k = 6 if profile_key == "sensitivity" else 4
+    top_k = max(int(settings.REPORT_WEB_RESEARCH_TOP_K or minimum_top_k), minimum_top_k)
     allowed_domains = _parse_csv(settings.REPORT_WEB_RESEARCH_ALLOWED_DOMAINS, DEFAULT_OFFICIAL_DOMAINS)
     queries = _build_queries(request, report_context, profile_key)
     references: list[dict[str, str]] = []
