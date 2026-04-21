@@ -11,6 +11,8 @@ import httpx
 from src.config import settings
 from src.utils import logger
 
+from .sensitivity_facts import extract_sensitivity_terms
+
 
 DEFAULT_OFFICIAL_DOMAINS = (
     "std.samr.gov.cn",
@@ -90,66 +92,6 @@ def _resolve_search_url(raw_url: str) -> str:
     return raw_url
 
 
-def _first_text(record: dict[str, Any], keys: tuple[str, ...]) -> str:
-    for key in keys:
-        value = record.get(key)
-        if value is not None and str(value).strip():
-            return str(value).strip()
-    return ""
-
-
-def _as_records(value: Any) -> list[dict[str, Any]]:
-    if not isinstance(value, list):
-        return []
-    return [item for item in value if isinstance(item, dict)]
-
-
-def _extract_sensitivity_terms(report_context: dict[str, Any]) -> list[str]:
-    snapshot = report_context.get("sensitivity_snapshot")
-    if not isinstance(snapshot, dict):
-        return []
-
-    output_payload = snapshot.get("output")
-    input_payload = snapshot.get("input")
-    output_payload = output_payload if isinstance(output_payload, dict) else {}
-    input_payload = input_payload if isinstance(input_payload, dict) else {}
-
-    ranking_rows = _as_records(output_payload.get("sensitivityRanking"))
-    variable_results = _as_records(output_payload.get("variableResults"))
-    variables = _as_records(input_payload.get("variables"))
-    terms: list[str] = []
-
-    for row in ranking_rows[:2] + variable_results[:2] + variables[:2]:
-        text = _first_text(row, ("variableName", "variableType", "name", "code"))
-        if text:
-            terms.append(text)
-
-    mapped_terms: list[str] = []
-    for term in terms:
-        normalized = term.upper()
-        if "FLOW" in normalized or "THROUGHPUT" in normalized or "流量" in term or "输量" in term:
-            mapped_terms.extend(["流量", "输量"])
-        elif "VISCOSITY" in normalized or "粘" in term or "黏" in term:
-            mapped_terms.append("黏度")
-        elif "DENSITY" in normalized or "密度" in term:
-            mapped_terms.append("密度")
-        elif "DIAMETER" in normalized or "管径" in term:
-            mapped_terms.append("管径")
-        elif "ROUGH" in normalized or "粗糙" in term:
-            mapped_terms.append("粗糙度")
-        else:
-            mapped_terms.append(term)
-
-    result: list[str] = []
-    seen: set[str] = set()
-    for term in mapped_terms:
-        cleaned = _clean_text(term, max_length=30)
-        if cleaned and cleaned not in seen:
-            result.append(cleaned)
-            seen.add(cleaned)
-    return result[:4]
-
-
 def _search_duckduckgo(client: httpx.Client, query: str) -> list[dict[str, str]]:
     url = "https://duckduckgo.com/html/"
     response = client.get(url, params={"q": query, "kl": "cn-zh"})
@@ -198,7 +140,7 @@ def _fetch_reference_page(client: httpx.Client, url: str, fallback: dict[str, st
 
 def _build_queries(request: Any, report_context: dict[str, Any], profile_key: str) -> list[str]:
     focuses = [str(item).strip() for item in getattr(request, "focuses", []) or [] if str(item).strip()]
-    sensitivity_terms = _extract_sensitivity_terms(report_context)
+    sensitivity_terms = extract_sensitivity_terms(report_context)
     topic_terms = " ".join((sensitivity_terms + focuses[:4])[:6])
 
     base_queries = {

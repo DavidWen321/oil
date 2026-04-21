@@ -42,6 +42,7 @@ def explain_report(payload: dict[str, Any], request: DynamicReportRequest) -> di
                 "你只能基于输入中的 facts、outline、draft、report_context 和 official_research 写内容，不允许编造任何数值、对象、时间点、原因或结论。",
                 "如果 official_research.references 有内容，必须把这些官方/标准来源作为外部证据，用来校核“是否调整、怎么调、调多少”的判断；如果没有官方来源，不要假装已经联网查证。",
                 "official_conclusions 必须是中文字符串数组。仅当 official_research.references 非空时输出 2 到 4 条，每条都要直接回答工程动作，并把计算事实和官方依据结合起来。",
+                "如果 facts.primary_sensitivity.variableName 存在，official_conclusions 的第一条必须围绕该最敏感变量展开；不得把其他变量写成主要矛盾或优先调整对象，其他变量只能作为次要补充。",
                 "official_conclusions 不要套用固定句式，不要只重复敏感系数；必须说明依据来自哪个官方发布者或标准平台。不要编造未提供的标准编号或条款号。",
                 "如果证据不足，必须明确写出“数据不足，无法下结论”。",
                 "你只能输出 JSON，字段仅允许包含 title、abstract、summary、highlights、conclusion、section_summaries、official_conclusions。",

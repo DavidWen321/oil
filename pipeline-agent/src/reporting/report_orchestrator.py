@@ -21,6 +21,7 @@ from .section_generator import (
     build_suggestion_items,
     build_summary,
 )
+from .sensitivity_facts import extract_primary_sensitivity, sensitivity_term_aliases
 from .skill_registry import resolve_report_skill
 
 
@@ -85,6 +86,36 @@ def _compact_value(
     return str(value)
 
 
+def _mentions_primary_sensitivity(text: str, primary_sensitivity: dict[str, Any]) -> bool:
+    aliases = sensitivity_term_aliases(
+        primary_sensitivity.get("rawVariableName")
+        or primary_sensitivity.get("variableName")
+        or primary_sensitivity.get("variableType")
+    )
+    normalized_text = str(text or "").lower()
+    return any(str(alias).lower() in normalized_text for alias in aliases if str(alias).strip())
+
+
+def _filter_official_conclusions(
+    items: list[str],
+    *,
+    profile_key: str,
+    primary_sensitivity: dict[str, Any],
+) -> list[str]:
+    if profile_key != "sensitivity" or not primary_sensitivity:
+        return items
+    aligned_items = [item for item in items if _mentions_primary_sensitivity(item, primary_sensitivity)]
+    if aligned_items or not items:
+        return aligned_items
+
+    logger.warning(
+        "Official conclusions rejected because they did not mention primary sensitivity variable | variable={} count={}",
+        primary_sensitivity.get("variableName"),
+        len(items),
+    )
+    return []
+
+
 def _build_llm_input(
     request: DynamicReportRequest,
     *,
@@ -100,6 +131,7 @@ def _build_llm_input(
 ) -> dict[str, Any]:
     charts = report_context.get("charts") or {}
     history = report_context.get("history") or {}
+    primary_sensitivity = extract_primary_sensitivity(report_context)
 
     compact_report_context = {
         "project": _compact_value(report_context.get("project"), max_items=8),
@@ -134,6 +166,7 @@ def _build_llm_input(
         "report_context": compact_report_context,
         "facts": {
             "overview_metrics": _compact_value(metrics.overview_metrics, max_items=12),
+            "primary_sensitivity": _compact_value(primary_sensitivity, max_items=8),
             "trends": _compact_value([item.__dict__ for item in diagnosis.trends[:4]], max_items=4),
             "issues": _compact_value([item.__dict__ for item in diagnosis.issues[:6]], max_items=6),
             "anomalies": _compact_value([item.__dict__ for item in diagnosis.anomalies[:4]], max_items=4),
@@ -201,6 +234,7 @@ def generate_report(request: DynamicReportRequest) -> DynamicReportResponse:
     risks = build_risk_items(diagnosis)
     suggestions = build_suggestion_items(diagnosis)
     report_context = build_report_context(request, data, metrics, diagnosis, decision)
+    primary_sensitivity = extract_primary_sensitivity(report_context)
     official_research = collect_official_research(request, report_context, skill_profile.key)
 
     llm_input = _build_llm_input(
@@ -255,6 +289,11 @@ def generate_report(request: DynamicReportRequest) -> DynamicReportResponse:
         for item in polished.get("official_conclusions") or []
         if str(item).strip()
     ]
+    official_conclusions = _filter_official_conclusions(
+        official_conclusions,
+        profile_key=skill_profile.key,
+        primary_sensitivity=primary_sensitivity,
+    )
 
     ai_analysis = skill_profile.build_ai_analysis(report_context)
     ai_summary = ai_analysis.summary
@@ -301,6 +340,7 @@ def generate_report(request: DynamicReportRequest) -> DynamicReportResponse:
             "official_research": official_research,
             "official_references": official_research.get("references", []),
             "official_conclusions": official_conclusions,
+            "primary_sensitivity": primary_sensitivity,
         },
         raw_text=build_raw_text(outline, diagnosis, metrics, decision, sections),
     )
