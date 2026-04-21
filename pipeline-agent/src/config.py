@@ -62,6 +62,10 @@ class Settings(BaseSettings):
     REPORT_WEB_RESEARCH_ENABLED: bool = Field(default=True)
     REPORT_WEB_RESEARCH_TOP_K: int = Field(default=4)
     REPORT_WEB_RESEARCH_TIMEOUT_SECONDS: int = Field(default=8)
+    REPORT_WEB_RESEARCH_PROXY: str = Field(
+        default="",
+        description="Optional HTTP/SOCKS proxy URL for official web research, e.g. http://127.0.0.1:7897",
+    )
     REPORT_WEB_RESEARCH_ALLOWED_DOMAINS: str = Field(
         default=(
             "std.samr.gov.cn,openstd.samr.gov.cn,www.samr.gov.cn,www.gov.cn,"

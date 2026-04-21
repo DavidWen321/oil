@@ -587,6 +587,31 @@ function getOfficialReferences(report: DynamicReportResponsePayload): OfficialRe
     .filter((item) => item.url);
 }
 
+function getOfficialResearchStatus(report: DynamicReportResponsePayload) {
+  return String(getValueByPath(report, 'metadata.official_research.status') || '').trim();
+}
+
+function buildOfficialEvidenceMissingItems(report: DynamicReportResponsePayload) {
+  const status = getOfficialResearchStatus(report);
+  const references = getOfficialReferences(report);
+
+  if (references.length) {
+    return [
+      '已检索到官方资料，但本次模型没有返回可采信的工程调整结论。为避免把固定规则包装成判断，当前不输出“该不该调、怎么调、调多少”的结论。',
+      '请重新生成报告，或检查后端模型与联网检索配置是否正常；生成结果必须同时包含计算事实、官方资料来源和工程动作建议后才会展示在核心结论中。',
+    ];
+  }
+
+  if (status === 'disabled') {
+    return ['官方资料联网检索未启用，当前不输出核心调整结论。请启用后端 REPORT_WEB_RESEARCH_ENABLED 后重新生成报告。'];
+  }
+
+  return [
+    '本次没有检索到可引用的官方资料，因此不输出固定模板式调整建议。',
+    '需要后端联网检索命中官方/标准来源，并由模型基于这些来源和计算结果共同判断后，才展示核心结论。',
+  ];
+}
+
 function formatValue(value: unknown, unit?: string) {
   if (value === undefined || value === null || value === '') {
     return '-';
@@ -3371,44 +3396,6 @@ function buildSensitivitySuggestionCards(context: SensitivityAnalysisContext): S
   });
 
   return cards.slice(0, 3);
-}
-
-function buildSensitivityOverallConclusionItems(context: SensitivityAnalysisContext) {
-  const primaryVariableType = resolveSensitivityPrimaryVariableType(context);
-  const changeStats = getSensitivityChangeStats(context);
-  const controlWindow = resolveSensitivityControlWindow(context);
-  const nonlinearGrowth = analyzeSensitivityNonlinearGrowth(context);
-  const items: string[] = [];
-  const variableActionLabel = primaryVariableType === 'FLOW_RATE' ? '流量' : context.topVariableName;
-  const shouldAvoidIncrease =
-    context.frictionTrendText === '整体上升' || context.pressureTrendText === '整体下降';
-  const highSensitivity =
-    (context.sensitivityCoefficient !== null && context.sensitivityCoefficient >= 0.8) ||
-    (context.maxImpactPercent !== null && context.maxImpactPercent >= 20);
-
-  if (context.minEndStationPressure !== null && context.minEndStationPressure < 0) {
-    items.push(
-      `是否调整：需要调整，而且不能继续上调${variableActionLabel}。当前最不利工况已出现末站进站压力 ${formatValue(context.minEndStationPressure)}，运行边界已经被触发，应先把工况收回到更保守区间。`,
-    );
-  } else if (shouldAvoidIncrease && highSensitivity) {
-    items.push(
-      `是否调整：不建议继续大幅上调${variableActionLabel}。当前${context.topVariableName}敏感系数为 ${formatValue(context.sensitivityCoefficient)}，最大影响幅度达到 ${formatValue(context.maxImpactPercent, '%')}，说明再往不利方向放大，结果侧会被快速拉开。`,
-    );
-  } else {
-    items.push(
-      `是否调整：当前可以调，但只能把 ${variableActionLabel} 当作一级控制变量小步微调，不能按普通参数粗放处理。`,
-    );
-  }
-
-  items.push(
-    `怎么调：优先采用“小步调整 + 每步复算”的方式处理${variableActionLabel}。${shouldAvoidIncrease ? `从当前结果看，${variableActionLabel}上调会对应摩阻继续抬升、末站压力继续收紧，因此应优先维持基准或向更安全方向微调。` : `从当前样本看，仍应先观察每一步调整后的压力与摩阻反馈，再决定是否继续调整。`}${nonlinearGrowth.hasNonlinearGrowth ? ` 同时避开 ${nonlinearGrowth.segmentLabel} 这一高响应区。` : ''}`,
-  );
-
-  items.push(
-    `调多少：日常调节建议先按不超过 ±5% 的节奏试调；若要采用更严格的工程边界，则以 ${controlWindow.windowText} 作为当前可参考控制窗口。${changeStats.maxFrictionIncreasePercent !== null || changeStats.maxPressureDropPercent !== null ? `继续超出该窗口后，结果侧已经表现为${changeStats.maxFrictionIncreasePercent !== null ? `摩阻增幅可放大到 ${formatValue(changeStats.maxFrictionIncreasePercent, '%')}` : ''}${changeStats.maxFrictionIncreasePercent !== null && changeStats.maxPressureDropPercent !== null ? '、' : ''}${changeStats.maxPressureDropPercent !== null ? `末站压力降幅约为 ${formatValue(changeStats.maxPressureDropPercent, '%')}` : ''}。` : ''}`,
-  );
-
-  return items;
 }
 
 function buildSensitivityMechanismItems(context: SensitivityAnalysisContext) {
@@ -6677,7 +6664,7 @@ function renderSensitivityAiReportContentV2(
   const officialReferences = getOfficialReferences(report);
   const overallConclusionItems = officialConclusionItems.length
     ? officialConclusionItems
-    : buildSensitivityOverallConclusionItems(context);
+    : buildOfficialEvidenceMissingItems(report);
   const mechanismItems = buildSensitivityMechanismItems(context);
   const rankingNarrativeItems = buildSensitivityRankingNarrativeItems(context);
   const trendChartNarrativeItems = buildSensitivityTrendChartNarrativeItems(context);
@@ -6977,10 +6964,19 @@ function renderSensitivityAiReportContentV2(
       </Card>
 
       <Card size="small" title="核心结论">
+        {!officialConclusionItems.length ? (
+          <Alert
+            showIcon
+            type="warning"
+            message="核心结论未采用固定模板"
+            description="该区域只展示联网检索到官方资料后由模型生成的判断；当前结果缺少可采信的官方依据结论。"
+            style={{ marginBottom: 12 }}
+          />
+        ) : null}
         {renderNarrativeLineList(overallConclusionItems, '#4e86f7') ?? (
           <Text type="secondary">当前数据不足以支持进一步判断。</Text>
         )}
-        {officialConclusionItems.length ? renderOfficialEvidenceSources(officialReferences) : null}
+        {renderOfficialEvidenceSources(officialReferences)}
       </Card>
 
       <Card size="small" title="机理分析">

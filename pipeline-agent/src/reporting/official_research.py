@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import re
 from typing import Any
-from urllib.parse import parse_qs, quote_plus, unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from bs4 import BeautifulSoup
 import httpx
@@ -267,10 +267,16 @@ def collect_official_research(
             "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36"
         )
     }
+    proxy_url = str(settings.REPORT_WEB_RESEARCH_PROXY or "").strip() or None
 
     started_at = datetime.now(timezone.utc)
     try:
-        with httpx.Client(timeout=timeout_seconds, headers=headers, follow_redirects=True) as client:
+        with httpx.Client(
+            timeout=timeout_seconds,
+            headers=headers,
+            follow_redirects=True,
+            proxy=proxy_url,
+        ) as client:
             for query in queries:
                 if len(references) >= top_k:
                     break
