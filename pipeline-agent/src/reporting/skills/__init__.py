@@ -6,6 +6,7 @@ from src.models.schemas import DynamicReportAiAnalysis
 
 from .change_analysis_skill import change_analysis_skill
 from .hydraulic_dynamic_skill import build_hydraulic_report_ai_sections
+from .mechanism_insight_skill import mechanism_insight_skill
 from .metric_skill import metric_skill
 from .operation_suggestion_skill import operation_suggestion_skill
 from .optimization_dynamic_skill import build_optimization_report_ai_sections
@@ -27,8 +28,10 @@ def build_report_ai_sections(ctx: dict[str, Any]) -> DynamicReportAiAnalysis:
 
 def build_sensitivity_report_ai_sections(ctx: dict[str, Any]) -> DynamicReportAiAnalysis:
     insight_blocks = build_sensitivity_insight_blocks(ctx)
+    mechanism_content = mechanism_insight_skill(ctx)
     return DynamicReportAiAnalysis(
         summary=sensitivity_summary_skill(ctx),
+        metricAnalysis=[mechanism_content] if mechanism_content else [],
         changeAnalysis=change_analysis_skill(ctx),
         riskIdentify=risk_identify_skill(ctx),
         suggestions=operation_suggestion_skill(ctx),

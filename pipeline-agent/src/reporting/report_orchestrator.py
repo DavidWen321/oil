@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from typing import Any
 
@@ -18,6 +19,11 @@ from .official_research import (
     merge_official_research_payloads,
 )
 from .official_risk_analysis import build_official_risk_items
+from .research_planner import (
+    build_report_module_evidence,
+    is_web_research_topic_enabled,
+    resolve_report_research_plan,
+)
 from .report_context_builder import build_report_context
 from .section_generator import (
     build_highlights,
@@ -105,23 +111,112 @@ def _mentions_primary_sensitivity(text: str, primary_sensitivity: dict[str, Any]
     return any(str(alias).lower() in normalized_text for alias in aliases if str(alias).strip())
 
 
+OFFICIAL_TITLE_PATTERN = re.compile(r"《([^》]+)》")
+
+
+def _normalize_reference_title(value: Any) -> str:
+    return re.sub(r"[《》〈〉【】〔〕（）()「」『』、，。；：\s]", "", str(value or "")).strip().lower()
+
+
+def _uses_supported_reference_titles(text: str, supported_titles: list[str]) -> bool:
+    mentioned_titles = [
+        _normalize_reference_title(match)
+        for match in OFFICIAL_TITLE_PATTERN.findall(str(text or ""))
+        if _normalize_reference_title(match)
+    ]
+    if not mentioned_titles:
+        return True
+    if not supported_titles:
+        return False
+    return all(
+        any(
+            supported_title in mentioned_title or mentioned_title in supported_title
+            for supported_title in supported_titles
+        )
+        for mentioned_title in mentioned_titles
+    )
+
+
+def _collect_supported_official_titles(
+    official_research: dict[str, Any],
+    official_module_evidence: dict[str, Any],
+) -> list[str]:
+    normalized_titles: list[str] = []
+    seen: set[str] = set()
+
+    def _append_from_rows(rows: list[dict[str, Any]] | Any) -> None:
+        for item in rows or []:
+            if not isinstance(item, dict):
+                continue
+            aliases = item.get("aliases")
+            alias_values = aliases if isinstance(aliases, list) else ([aliases] if aliases else [])
+            candidates = [
+                item.get("title"),
+                item.get("publisher"),
+                item.get("domain"),
+                *alias_values,
+            ]
+            for candidate in candidates:
+                title = _normalize_reference_title(candidate)
+                if title and title not in seen:
+                    normalized_titles.append(title)
+                    seen.add(title)
+
+    core_module = (
+        official_module_evidence.get("coreConclusion")
+        if isinstance(official_module_evidence, dict)
+        else None
+    )
+    if isinstance(core_module, dict):
+        _append_from_rows(core_module.get("references"))
+
+    if isinstance(official_research, dict):
+        _append_from_rows(official_research.get("references"))
+        topics = official_research.get("topics")
+        if isinstance(topics, dict):
+            for topic_payload in topics.values():
+                if isinstance(topic_payload, dict):
+                    _append_from_rows(topic_payload.get("references"))
+
+    return normalized_titles
+
+
 def _filter_official_conclusions(
     items: list[str],
     *,
     profile_key: str,
     primary_sensitivity: dict[str, Any],
+    supported_reference_titles: list[str] | None = None,
 ) -> list[str]:
+    filtered_items = items
+    if supported_reference_titles is not None:
+        filtered_items = (
+            [
+                item
+                for item in items
+                if _uses_supported_reference_titles(item, supported_reference_titles)
+            ]
+            if supported_reference_titles
+            else []
+        )
+        if len(filtered_items) != len(items):
+            logger.warning(
+                "Official conclusions filtered by supported references | before={} after={}",
+                len(items),
+                len(filtered_items),
+            )
+
     if profile_key != "sensitivity" or not primary_sensitivity:
-        return items
-    primary_items = [item for item in items if _mentions_primary_sensitivity(item, primary_sensitivity)]
-    if primary_items or not items:
-        other_items = [item for item in items if item not in primary_items]
+        return filtered_items
+    primary_items = [item for item in filtered_items if _mentions_primary_sensitivity(item, primary_sensitivity)]
+    if primary_items or not filtered_items:
+        other_items = [item for item in filtered_items if item not in primary_items]
         return primary_items + other_items
 
     logger.warning(
         "Official conclusions rejected because they did not mention primary sensitivity variable | variable={} count={}",
         primary_sensitivity.get("variableName"),
-        len(items),
+        len(filtered_items),
     )
     return []
 
@@ -135,6 +230,7 @@ def _build_llm_input(
     outline,
     report_context: dict[str, Any],
     official_research: dict[str, Any],
+    official_risk_research: dict[str, Any],
     summary: list[str],
     highlights: list[str],
     conclusion: str,
@@ -174,6 +270,7 @@ def _build_llm_input(
 
     return {
         "request": _compact_value(request.model_dump(), max_items=12),
+        "research_plan": _compact_value(report_context.get("research_plan"), max_items=8),
         "report_context": compact_report_context,
         "facts": {
             "overview_metrics": _compact_value(metrics.overview_metrics, max_items=12),
@@ -200,7 +297,15 @@ def _build_llm_input(
             "status": official_research.get("status"),
             "queries": _compact_value(official_research.get("queries", [])[:5], max_items=5),
             "references": _compact_value(official_research.get("references", [])[:4], max_items=4),
+            "topics": _compact_value(official_research.get("topics", {}), max_items=4),
             "searched_at": official_research.get("searched_at"),
+        },
+        "official_risk_research": {
+            "status": official_risk_research.get("status"),
+            "queries": _compact_value(official_risk_research.get("queries", [])[:5], max_items=5),
+            "references": _compact_value(official_risk_research.get("references", [])[:4], max_items=4),
+            "topics": _compact_value(official_risk_research.get("topics", {}), max_items=4),
+            "searched_at": official_risk_research.get("searched_at"),
         },
         "outline": _compact_value([item.__dict__ for item in outline.sections], max_items=8),
         "draft": {
@@ -248,9 +353,36 @@ def generate_report(request: DynamicReportRequest) -> DynamicReportResponse:
     report_context = build_report_context(request, data, metrics, diagnosis, decision)
     primary_sensitivity = extract_primary_sensitivity(report_context)
     ranked_sensitivities = extract_ranked_sensitivities(report_context)
-    official_research = collect_official_research(request, report_context, skill_profile.key)
-    official_risk_research = collect_official_risk_research(request, report_context, skill_profile.key)
-    merged_official_risk_research = merge_official_research_payloads(official_risk_research, official_research)
+    research_plan = resolve_report_research_plan(request, skill_profile.key)
+    official_research = collect_official_research(
+        request,
+        report_context,
+        skill_profile.key,
+        research_plan=research_plan,
+    )
+    official_risk_research = collect_official_risk_research(
+        request,
+        report_context,
+        skill_profile.key,
+        research_plan=research_plan,
+    )
+    merged_official_risk_research = (
+        merge_official_research_payloads(official_risk_research, official_research)
+        if is_web_research_topic_enabled(research_plan, "risk")
+        else official_risk_research
+    )
+    official_module_evidence = build_report_module_evidence(
+        research_plan,
+        official_research,
+        official_risk_research,
+    )
+    enriched_report_context = {
+        **report_context,
+        "research_plan": research_plan,
+        "official_research": official_research,
+        "official_risk_research": merged_official_risk_research,
+        "official_module_evidence": official_module_evidence,
+    }
 
     llm_input = _build_llm_input(
         request,
@@ -258,8 +390,9 @@ def generate_report(request: DynamicReportRequest) -> DynamicReportResponse:
         diagnosis=diagnosis,
         decision=decision,
         outline=outline,
-        report_context=report_context,
+        report_context=enriched_report_context,
         official_research=official_research,
+        official_risk_research=merged_official_risk_research,
         summary=summary,
         highlights=highlights,
         conclusion=conclusion,
@@ -304,16 +437,21 @@ def generate_report(request: DynamicReportRequest) -> DynamicReportResponse:
         for item in polished.get("official_conclusions") or []
         if str(item).strip()
     ]
+    supported_reference_titles = _collect_supported_official_titles(
+        official_research,
+        official_module_evidence,
+    )
     official_conclusions = _filter_official_conclusions(
         official_conclusions,
         profile_key=skill_profile.key,
         primary_sensitivity=primary_sensitivity,
+        supported_reference_titles=supported_reference_titles,
     )
 
-    ai_analysis = skill_profile.build_ai_analysis(report_context)
+    ai_analysis = skill_profile.build_ai_analysis(enriched_report_context)
     official_risk_items = build_official_risk_items(
         request,
-        report_context,
+        enriched_report_context,
         merged_official_risk_research,
         skill_profile.key,
     )
@@ -363,6 +501,8 @@ def generate_report(request: DynamicReportRequest) -> DynamicReportResponse:
             "scope_rows": scope_rows,
             "outline": [item.__dict__ for item in outline.sections],
             "decision_summary": decision.summary,
+            "research_plan": research_plan,
+            "official_module_evidence": official_module_evidence,
             "official_research": official_research,
             "official_references": official_research.get("references", []),
             "official_conclusions": official_conclusions,

@@ -317,6 +317,7 @@ export interface DynamicReportSensitivityInsightBlockPayload {
 }
 
 export interface DynamicReportSensitivityInsightsPayload {
+  mechanismInsight?: DynamicReportSensitivityInsightBlockPayload | null;
   rankingInsight?: DynamicReportSensitivityInsightBlockPayload | null;
   trendInsight?: DynamicReportSensitivityInsightBlockPayload | null;
   impactInsight?: DynamicReportSensitivityInsightBlockPayload | null;
@@ -398,6 +399,7 @@ export interface DynamicReportRequestPayload {
   allow_pump_adjust?: boolean;
   remark?: string;
   user_prompt?: string;
+  web_research_plan?: Record<string, unknown>;
   hydraulic_snapshot?: DynamicReportHydraulicSnapshotPayload;
   optimization_snapshot?: DynamicReportOptimizationSnapshotPayload;
   sensitivity_snapshot?: DynamicReportSensitivitySnapshotPayload;

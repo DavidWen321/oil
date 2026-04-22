@@ -171,6 +171,7 @@ type OfficialReference = {
   domain?: string;
   publisher?: string;
   snippet?: string;
+  aliases?: string[];
 };
 
 type ReportKind = 'hydraulic' | 'sensitivity' | 'optimization' | 'optimization-comparison' | 'generic';
@@ -581,15 +582,16 @@ function getOfficialReferences(report: DynamicReportResponsePayload): OfficialRe
   const metadata = asRecord(report.metadata);
   const rows = asRecordArray(metadata?.official_references);
 
-  return rows
+  return dedupeOfficialReferences(rows
     .map((item) => ({
       title: String(item.title || item.publisher || item.domain || '官方资料').trim(),
       url: String(item.url || '').trim(),
       domain: String(item.domain || '').trim(),
       publisher: String(item.publisher || '').trim(),
       snippet: String(item.snippet || '').trim(),
+      aliases: Array.isArray(item.aliases) ? item.aliases.map((alias) => String(alias || '').trim()).filter(Boolean) : [],
     }))
-    .filter((item) => item.url);
+    .filter((item) => item.url));
 }
 
 function getOfficialResearchStatus(report: DynamicReportResponsePayload) {
@@ -619,24 +621,203 @@ function getOfficialRiskReferences(report: DynamicReportResponsePayload): Offici
   const metadata = asRecord(report.metadata);
   const rows = asRecordArray(metadata?.official_risk_references);
 
-  return rows
+  return dedupeOfficialReferences(rows
     .map((item) => ({
       title: String(item.title || item.publisher || item.domain || '官方资料').trim(),
       url: String(item.url || '').trim(),
       domain: String(item.domain || '').trim(),
       publisher: String(item.publisher || '').trim(),
       snippet: String(item.snippet || '').trim(),
+      aliases: Array.isArray(item.aliases) ? item.aliases.map((alias) => String(alias || '').trim()).filter(Boolean) : [],
     }))
-    .filter((item) => item.url);
+    .filter((item) => item.url));
 }
 
 function getOfficialRiskResearchStatus(report: DynamicReportResponsePayload) {
   return String(getValueByPath(report, 'metadata.official_risk_research.status') || '').trim();
 }
 
-function buildOfficialEvidenceMissingItems(report: DynamicReportResponsePayload) {
-  const status = getOfficialResearchStatus(report);
-  const references = getOfficialReferences(report);
+function getOfficialModuleEvidence(
+  report: DynamicReportResponsePayload,
+  moduleId: string,
+): Record<string, unknown> {
+  const metadata = asRecord(report.metadata);
+  const moduleMap = asRecord(metadata?.official_module_evidence);
+  return asRecord(moduleMap?.[moduleId]) ?? {};
+}
+
+function getOfficialModuleReferences(report: DynamicReportResponsePayload, moduleId: string): OfficialReference[] {
+  const moduleEvidence = getOfficialModuleEvidence(report, moduleId);
+  const rows = asRecordArray(moduleEvidence.references);
+
+  return dedupeOfficialReferences(rows
+    .map((item) => ({
+      title: String(item.title || item.publisher || item.domain || '官方资料').trim(),
+      url: String(item.url || '').trim(),
+      domain: String(item.domain || '').trim(),
+      publisher: String(item.publisher || '').trim(),
+      snippet: String(item.snippet || '').trim(),
+      aliases: Array.isArray(item.aliases) ? item.aliases.map((alias) => String(alias || '').trim()).filter(Boolean) : [],
+    }))
+    .filter((item) => item.url));
+}
+
+function getOfficialModuleStatus(report: DynamicReportResponsePayload, moduleId: string) {
+  const moduleEvidence = getOfficialModuleEvidence(report, moduleId);
+  return String(moduleEvidence.status || '').trim();
+}
+
+function normalizeOfficialReferenceToken(value: string) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[《》〈〉【】〔〕（）()「」『』、，。；：\s]/g, '');
+}
+
+function getOfficialReferenceIdentity(reference: OfficialReference) {
+  const title = normalizeOfficialReferenceToken(reference.title);
+  const publisher = normalizeOfficialReferenceToken(reference.publisher || reference.domain || '');
+  if (title && title !== normalizeOfficialReferenceToken('官方资料')) {
+    return `title:${title}|${publisher}`;
+  }
+  return `url:${String(reference.url || '').split('#')[0]}`;
+}
+
+function dedupeOfficialReferences(references: OfficialReference[]) {
+  const seen = new Set<string>();
+  const deduped: OfficialReference[] = [];
+
+  for (const item of references) {
+    const key = getOfficialReferenceIdentity(item);
+    if (!key || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    deduped.push(item);
+  }
+
+  return deduped;
+}
+
+function extractMentionedOfficialTitles(lines: string[]) {
+  const text = lines.join(' ');
+  const matches = text.matchAll(/《([^》]+)》/g);
+  const titles: string[] = [];
+  const seen = new Set<string>();
+
+  for (const match of matches) {
+    const title = String(match[1] || '').trim();
+    if (!title || seen.has(title)) {
+      continue;
+    }
+    titles.push(title);
+    seen.add(title);
+  }
+
+  return titles;
+}
+
+function resolveMentionedOfficialReferences(
+  primary: OfficialReference[],
+  fallback: OfficialReference[],
+  lines: string[],
+): OfficialReference[] {
+  if (!primary.length) {
+    return fallback;
+  }
+
+  const mentionedTitles = extractMentionedOfficialTitles(lines).map(normalizeOfficialReferenceToken).filter(Boolean);
+  if (!mentionedTitles.length) {
+    return primary;
+  }
+
+  const merged = [...primary];
+  const seenUrls = new Set(primary.map((item) => item.url).filter(Boolean));
+
+  for (const item of fallback) {
+    if (!item.url || seenUrls.has(item.url)) {
+      continue;
+    }
+
+    const normalizedTitle = normalizeOfficialReferenceToken(item.title);
+    if (!normalizedTitle) {
+      continue;
+    }
+
+    const matched = mentionedTitles.some(
+      (mentionedTitle) =>
+        normalizedTitle.includes(mentionedTitle) || mentionedTitle.includes(normalizedTitle),
+    );
+    if (!matched) {
+      continue;
+    }
+
+    merged.push(item);
+    seenUrls.add(item.url);
+  }
+
+  return merged;
+}
+
+function getOfficialReferenceMatchTokens(reference: OfficialReference) {
+  return [reference.title, reference.publisher, reference.domain, ...(reference.aliases ?? [])]
+    .map((value) => normalizeOfficialReferenceToken(value || ''))
+    .filter((value) => value && value !== normalizeOfficialReferenceToken('官方资料'));
+}
+
+function usesSupportedOfficialReferenceTitles(line: string, references: OfficialReference[]) {
+  const mentionedTitles = extractMentionedOfficialTitles([line])
+    .map(normalizeOfficialReferenceToken)
+    .filter(Boolean);
+
+  if (!mentionedTitles.length) {
+    return true;
+  }
+
+  if (!references.length) {
+    return false;
+  }
+
+  const referenceTokens = references.flatMap(getOfficialReferenceMatchTokens);
+  return mentionedTitles.every((mentionedTitle) =>
+    referenceTokens.some(
+      (referenceToken) =>
+        referenceToken.includes(mentionedTitle) || mentionedTitle.includes(referenceToken),
+    ),
+  );
+}
+
+function filterSupportedOfficialConclusionItems(lines: string[], references: OfficialReference[]) {
+  if (!references.length) {
+    return [];
+  }
+
+  return lines.filter((line) => usesSupportedOfficialReferenceTitles(line, references));
+}
+
+function getSensitivityInsightContent(
+  report: DynamicReportResponsePayload,
+  key: 'mechanismInsight' | 'rankingInsight' | 'trendInsight' | 'impactInsight' | 'tableConclusion',
+) {
+  const block = report.aiAnalysis?.sensitivityInsights?.[key];
+  const content = typeof block?.content === 'string' ? block.content.trim() : '';
+  return content;
+}
+
+function getSensitivityInsightItems(
+  report: DynamicReportResponsePayload,
+  key: 'mechanismInsight' | 'rankingInsight' | 'trendInsight' | 'impactInsight' | 'tableConclusion',
+) {
+  const content = getSensitivityInsightContent(report, key);
+  return content ? [content] : [];
+}
+
+function buildOfficialEvidenceMissingItems(
+  report: DynamicReportResponsePayload,
+  overrides?: { status?: string; references?: OfficialReference[] },
+) {
+  const status = overrides?.status ?? getOfficialResearchStatus(report);
+  const references = overrides?.references ?? getOfficialReferences(report);
 
   if (!status && !references.length) {
     return [
@@ -656,15 +837,22 @@ function buildOfficialEvidenceMissingItems(report: DynamicReportResponsePayload)
     return ['官方资料联网检索未启用，当前不输出核心调整结论。请启用后端 REPORT_WEB_RESEARCH_ENABLED 后重新生成报告。'];
   }
 
+  if (status === 'not_requested') {
+    return ['本次报告未请求“核心结论/标准依据”类联网校核，因此这里不展示官方资料驱动的核心调整结论。'];
+  }
+
   return [
     '本次没有检索到可引用的官方资料，因此不输出固定模板式调整建议。',
     '需要后端联网检索命中官方/标准来源，并由模型基于这些来源和计算结果共同判断后，才展示核心结论。',
   ];
 }
 
-function buildOfficialRiskMissingItems(report: DynamicReportResponsePayload) {
-  const status = getOfficialRiskResearchStatus(report);
-  const references = getOfficialRiskReferences(report);
+function buildOfficialRiskMissingItems(
+  report: DynamicReportResponsePayload,
+  overrides?: { status?: string; references?: OfficialReference[] },
+) {
+  const status = overrides?.status ?? getOfficialRiskResearchStatus(report);
+  const references = overrides?.references ?? getOfficialRiskReferences(report);
 
   if (!status && !references.length) {
     return [
@@ -691,10 +879,147 @@ function buildOfficialRiskMissingItems(report: DynamicReportResponsePayload) {
     return ['官方资料联网检索未启用，当前不输出风险分析结论。请启用后端 REPORT_WEB_RESEARCH_ENABLED 后重新生成报告。'];
   }
 
+  if (status === 'not_requested') {
+    return ['本次报告未请求“风险分析”类联网校核，因此这里不展示基于官方资料校核的风险卡片。'];
+  }
+
   return [
     '本次没有检索到可引用的官方风险资料，因此不展示基于固定规则补算的风险分析。',
     '需要后端联网检索命中官方/标准来源，并在至少两条来源支持下结合计算结果做校核说明后，才展示风险分析。',
   ];
+}
+
+function collectFocusHits(focuses: string[] | undefined, keywords: string[]) {
+  const normalizedFocuses = (focuses ?? []).map((item) => String(item).trim()).filter(Boolean);
+  return normalizedFocuses.filter((focus) => keywords.some((keyword) => focus.includes(keyword)));
+}
+
+function buildSensitivityWebResearchPlan(focuses: string[] | undefined, options: {
+  hasSnapshot: boolean;
+  includeSummary: boolean;
+  includeRisk: boolean;
+  includeSuggestions: boolean;
+  includeConclusion: boolean;
+}) {
+  const mechanismHits = collectFocusHits(focuses, [
+    '机理分析',
+    '趋势解读',
+    '排序',
+    '排名',
+    '图表',
+    '雷诺数',
+    '流态',
+    '摩阻',
+    '压降',
+    '压力变化趋势',
+    '摩阻损失变化趋势',
+    '敏感系数',
+    '最大影响幅度',
+  ]);
+  const standardsHits = collectFocusHits(focuses, ['核心结论', '官方资料依据', '标准', '规范', '公开资料', '结论']);
+  const operationsHits = collectFocusHits(focuses, ['运行建议', '调度', '节能', '优化建议', '预期收益', '监测指标']);
+  const riskHits = collectFocusHits(focuses, ['风险', '风险分析', '风险识别', '高黏度', '处理方式', '输送影响']);
+
+  return {
+    workflow: 'local_results_plus_web_evidence',
+    local_computation: {
+      mode: options.hasSnapshot ? 'reuse_existing_snapshot' : 'reuse_saved_history',
+      required: false,
+      completed: true,
+      reason: options.hasSnapshot
+        ? '敏感性计算已在勾选报告前完成，本次直接复用既有本地结果。'
+        : '报告阶段只加载已保存的历史结果，不重新执行业务计算。',
+    },
+    web_research: {
+      enabled: true,
+      strategy: 'topic_scoped_official_search',
+      guardrails: [
+        '先按报告区块决定研究主题，不做无差别全网搜索。',
+        '联网结果只作解释、校核和建议补充，不替代本地计算。',
+        '检索结果必须合成为工程判断，不原样堆砌给用户。',
+      ],
+      topics: {
+        mechanism: {
+          enabled: options.includeSummary || mechanismHits.length > 0,
+          focus_hits: mechanismHits,
+          purpose: '补充流量/流速/雷诺数/摩阻/压降链路解释，以及图表与趋势的物理机制说明。',
+        },
+        standards: {
+          enabled: options.includeConclusion || standardsHits.length > 0,
+          focus_hits: standardsHits,
+          purpose: '核对真实标准名称、标准表述和公开资料中的行业通用说法，为核心结论提供依据。',
+        },
+        operations: {
+          enabled: options.includeSuggestions || operationsHits.length > 0,
+          focus_hits: operationsHits,
+          purpose: '补充行业调度策略、运行经验和节能优化方案，为运行建议提供依据。',
+        },
+        risk: {
+          enabled: options.includeRisk || riskHits.length > 0,
+          focus_hits: riskHits,
+          purpose: '补充高黏度油品风险、输送影响和行业处理方式，对既有风险规则做联网校核。',
+        },
+      },
+      modules: {
+        coreConclusion: {
+          title: '核心结论',
+          enabled: options.includeConclusion,
+          topics: ['standards', 'mechanism', 'operations'],
+          focus_hits: standardsHits,
+          purpose: '核对真实标准/规范/公开资料，并把本地计算结果与行业依据融合为最终结论。',
+        },
+        mechanismAnalysis: {
+          title: '机理分析',
+          enabled: options.includeSummary,
+          topics: ['mechanism', 'standards'],
+          focus_hits: mechanismHits,
+          purpose: '补充流量、流速、雷诺数、摩阻、压降之间的物理机制解释。',
+        },
+        dashboardInterpretation: {
+          title: '仪表盘解读',
+          enabled: options.includeSummary,
+          topics: ['mechanism', 'standards'],
+          focus_hits: collectFocusHits(focuses, ['仪表盘', '排序', '排名', '敏感系数']),
+          purpose: '解释敏感排序与头部变量为何排在前列，以及背后的工程含义。',
+        },
+        trendChartInterpretation: {
+          title: '趋势图解读',
+          enabled: options.includeSummary,
+          topics: ['mechanism', 'standards'],
+          focus_hits: collectFocusHits(focuses, ['趋势解读', '压力变化趋势', '摩阻损失变化趋势', '流态变化']),
+          purpose: '解释趋势图中压力、摩阻与流态变化的原因，以及是否进入主要放大区间。',
+        },
+        impactInterpretation: {
+          title: '影响幅度解读',
+          enabled: options.includeSummary,
+          topics: ['standards', 'mechanism'],
+          focus_hits: collectFocusHits(focuses, ['最大影响幅度', '影响幅度']),
+          purpose: '说明影响幅度变化的物理原因，以及工程上意味着哪些边界更需要校核。',
+        },
+        tableInterpretation: {
+          title: '数据表解读',
+          enabled: options.includeSummary,
+          topics: ['standards', 'risk', 'mechanism'],
+          focus_hits: collectFocusHits(focuses, ['数据表', '区间', '变化比例']),
+          purpose: '解释区间表格中的边界变化、控制带与需要重点复核的区段。',
+        },
+        riskAnalysis: {
+          title: '风险分析',
+          enabled: options.includeRisk,
+          topics: ['risk', 'standards', 'operations'],
+          focus_hits: riskHits,
+          purpose: '补充风险资料，对既有风险规则做联网校核，不把本地规则直接包装成结论。',
+        },
+        operationSuggestions: {
+          title: '运行建议',
+          enabled: options.includeSuggestions,
+          topics: ['operations', 'standards'],
+          focus_hits: operationsHits,
+          purpose: '补充调度策略、运行经验与节能方案，形成可执行的运行建议。',
+        },
+      },
+    },
+  } satisfies Record<string, unknown>;
 }
 
 function formatValue(value: unknown, unit?: string) {
@@ -1249,9 +1574,12 @@ function buildSensitivityUserPrompt() {
   return [
     '你是石油管道水力分析专家（高级工程师级别），负责根据系统计算结果生成“工程级敏感性分析报告”。',
     '请按 Calc Agent → Analysis Agent → Report Agent 的思路工作：先吃透真实计算结果，再解释机理，最后形成工程化结论与建议。',
+    '本次报告阶段不要重新做本地业务计算；敏感性快照已经在勾选报告时生成，本次只允许复用既有本地结果。',
     '外部知识增强：必须优先使用后端联网检索到的官方/标准资料校核判断，并在核心结论中体现依据来源。',
+    '联网检索要先判断用途，再按需查两类资料：A. 行业知识/工程解释；B. 标准、规范、公开资料。不要一上来无差别全网搜索。',
     '必须严格基于输入事实分析，不得编造不存在的数据、趋势或风险；语言保持专业、正式、工程化，不要口语化。',
     '不要重复页面已有的基础参数、结果卡片和图表说明，不要把页面数据重新抄一遍，也不要只描述结果。',
+    '不要把联网检索结果原样堆给用户，必须把“本地计算结果 + 联网证据”合成为工程结论。',
     '分析必须解释“原因 + 影响 + 建议”，尤其要说明为什么头部敏感变量会影响压力与摩阻、为什么当前区间存在或不存在风险。',
     '机理分析必须从物理角度展开，优先解释流速、雷诺数、流态、摩阻损失、末站压力之间的传导链条。',
     '每张图表对应的解读都应优先回答“为什么”，尤其是仪表盘/排序图，不要只写“谁排第一、系数是多少”，而要写出变量到结果的因果关系。',
@@ -2141,7 +2469,9 @@ function renderNarrativeLineList(lines: Array<string | null | undefined>, dotCol
 void renderNarrativeLineList;
 
 function renderOfficialEvidenceSources(references: OfficialReference[]) {
-  if (!references.length) {
+  const displayReferences = dedupeOfficialReferences(references);
+
+  if (!displayReferences.length) {
     return null;
   }
 
@@ -2160,7 +2490,7 @@ function renderOfficialEvidenceSources(references: OfficialReference[]) {
           <Tag color="processing">AI 联网查证</Tag>
           <Text type="secondary">官方资料来源</Text>
         </Space>
-        {references.slice(0, 6).map((item, index) => (
+        {displayReferences.slice(0, 6).map((item, index) => (
           <div key={`${item.url}-${index}`} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
             <Text type="secondary">{index + 1}.</Text>
             <div style={{ minWidth: 0 }}>
@@ -3976,7 +4306,12 @@ function renderSensitivityInsightCard(block: SensitivityInsightBlockData, accent
   );
 }
 
-function renderSensitivityNarrativeCard(title: string, lines: Array<string | null | undefined>, accentColor: string) {
+function renderSensitivityNarrativeCard(
+  title: string,
+  lines: Array<string | null | undefined>,
+  accentColor: string,
+  references: OfficialReference[] = [],
+) {
   return (
     <Card
       size="small"
@@ -4000,6 +4335,7 @@ function renderSensitivityNarrativeCard(title: string, lines: Array<string | nul
         }}
       >
         {renderNarrativeLineList(lines, accentColor) ?? <Text type="secondary">当前数据不足以支持进一步判断。</Text>}
+        {renderOfficialEvidenceSources(references)}
       </div>
     </Card>
   );
@@ -6840,20 +7176,56 @@ function renderSensitivityAiReportContentV2(
 
   const suggestionCards = buildSensitivitySuggestionCards(context);
   const riskItems = getSensitivityRiskItems(report);
-  const officialRiskReferences = getOfficialRiskReferences(report);
+  const officialRiskReferences = getOfficialModuleReferences(report, 'riskAnalysis');
+  const fallbackOfficialRiskReferences = getOfficialRiskReferences(report);
   const officialRiskItems = riskItems;
-  const officialRiskNarratives = buildOfficialRiskMissingItems(report);
+  const officialRiskStatus = getOfficialModuleStatus(report, 'riskAnalysis') || getOfficialRiskResearchStatus(report);
+  const resolvedOfficialRiskReferences = officialRiskReferences.length ? officialRiskReferences : fallbackOfficialRiskReferences;
+  const officialRiskNarratives = buildOfficialRiskMissingItems(report, {
+    status: officialRiskStatus,
+    references: resolvedOfficialRiskReferences,
+  });
   const suggestionItems = getSensitivitySuggestionItems(report);
-  const officialConclusionItems = getOfficialConclusionItems(report);
-  const officialReferences = getOfficialReferences(report);
+  const rawOfficialConclusionItems = getOfficialConclusionItems(report);
+  const officialReferences = getOfficialModuleReferences(report, 'coreConclusion');
+  const fallbackOfficialReferences = getOfficialReferences(report);
+  const officialConclusionStatus = getOfficialModuleStatus(report, 'coreConclusion') || getOfficialResearchStatus(report);
+  const resolvedOfficialReferences = resolveMentionedOfficialReferences(
+    officialReferences,
+    fallbackOfficialReferences,
+    rawOfficialConclusionItems,
+  );
+  const officialConclusionItems = filterSupportedOfficialConclusionItems(
+    rawOfficialConclusionItems,
+    resolvedOfficialReferences,
+  );
   const overallConclusionItems = officialConclusionItems.length
     ? officialConclusionItems
-    : buildOfficialEvidenceMissingItems(report);
-  const mechanismItems = buildSensitivityMechanismItems(context);
-  const rankingNarrativeItems = buildSensitivityRankingNarrativeItems(context);
-  const trendChartNarrativeItems = buildSensitivityTrendChartNarrativeItems(context);
-  const impactNarrativeItems = buildSensitivityImpactNarrativeItems(context);
-  const trendTableNarrativeItems = buildSensitivityTrendTableNarrativeItems(context);
+    : buildOfficialEvidenceMissingItems(report, {
+        status: officialConclusionStatus,
+        references: resolvedOfficialReferences,
+      });
+  const mechanismReferences = getOfficialModuleReferences(report, 'mechanismAnalysis');
+  const rankingReferences = getOfficialModuleReferences(report, 'dashboardInterpretation');
+  const trendChartReferences = getOfficialModuleReferences(report, 'trendChartInterpretation');
+  const impactReferences = getOfficialModuleReferences(report, 'impactInterpretation');
+  const trendTableReferences = getOfficialModuleReferences(report, 'tableInterpretation');
+  const suggestionReferences = getOfficialModuleReferences(report, 'operationSuggestions');
+  const mechanismItems = getSensitivityInsightItems(report, 'mechanismInsight').length
+    ? getSensitivityInsightItems(report, 'mechanismInsight')
+    : buildSensitivityMechanismItems(context);
+  const rankingNarrativeItems = getSensitivityInsightItems(report, 'rankingInsight').length
+    ? getSensitivityInsightItems(report, 'rankingInsight')
+    : buildSensitivityRankingNarrativeItems(context);
+  const trendChartNarrativeItems = getSensitivityInsightItems(report, 'trendInsight').length
+    ? getSensitivityInsightItems(report, 'trendInsight')
+    : buildSensitivityTrendChartNarrativeItems(context);
+  const impactNarrativeItems = getSensitivityInsightItems(report, 'impactInsight').length
+    ? getSensitivityInsightItems(report, 'impactInsight')
+    : buildSensitivityImpactNarrativeItems(context);
+  const trendTableNarrativeItems = getSensitivityInsightItems(report, 'tableConclusion').length
+    ? getSensitivityInsightItems(report, 'tableConclusion')
+    : buildSensitivityTrendTableNarrativeItems(context);
   const expectedBenefitItems = buildSensitivityExpectedBenefitItems(context);
 
   const reportViewModel: SensitivitySmartReportPayload = {
@@ -7104,7 +7476,7 @@ function renderSensitivityAiReportContentV2(
           </Col>
 
           <Col xs={24} xl={8}>
-            {renderSensitivityNarrativeCard('仪表盘解读', rankingNarrativeItems, '#7c6cff')}
+            {renderSensitivityNarrativeCard('仪表盘解读', rankingNarrativeItems, '#7c6cff', rankingReferences)}
           </Col>
 
           <Col xs={24} xl={16}>
@@ -7114,7 +7486,7 @@ function renderSensitivityAiReportContentV2(
           </Col>
 
           <Col xs={24} xl={8}>
-            {renderSensitivityNarrativeCard('趋势图解读', trendChartNarrativeItems, '#12b981')}
+            {renderSensitivityNarrativeCard('趋势图解读', trendChartNarrativeItems, '#12b981', trendChartReferences)}
           </Col>
 
           {shouldShowImpactComparison ? (
@@ -7126,7 +7498,7 @@ function renderSensitivityAiReportContentV2(
               </Col>
 
               <Col xs={24} xl={8}>
-                {renderSensitivityNarrativeCard('影响幅度解读', impactNarrativeItems, '#f59e0b')}
+                {renderSensitivityNarrativeCard('影响幅度解读', impactNarrativeItems, '#f59e0b', impactReferences)}
               </Col>
             </>
           ) : null}
@@ -7144,7 +7516,7 @@ function renderSensitivityAiReportContentV2(
           </Col>
 
           <Col xs={24} xl={8}>
-            {renderSensitivityNarrativeCard('数据表解读', trendTableNarrativeItems, '#06b6d4')}
+            {renderSensitivityNarrativeCard('数据表解读', trendTableNarrativeItems, '#06b6d4', trendTableReferences)}
           </Col>
         </Row>
       </Card>
@@ -7162,13 +7534,14 @@ function renderSensitivityAiReportContentV2(
         {renderNarrativeLineList(overallConclusionItems, '#4e86f7') ?? (
           <Text type="secondary">当前数据不足以支持进一步判断。</Text>
         )}
-        {renderOfficialEvidenceSources(officialReferences)}
+        {renderOfficialEvidenceSources(resolvedOfficialReferences)}
       </Card>
 
       <Card size="small" title="机理分析">
         {renderNarrativeLineList(mechanismItems, '#7c6cff') ?? (
           <Text type="secondary">当前数据不足以支持进一步判断。</Text>
         )}
+        {renderOfficialEvidenceSources(mechanismReferences)}
       </Card>
 
       <Card size="small" title="风险分析">
@@ -7247,11 +7620,57 @@ function renderSensitivityAiReportContentV2(
             )}
           </>
         )}
-        {renderOfficialEvidenceSources(officialRiskReferences)}
+        {renderOfficialEvidenceSources(resolvedOfficialRiskReferences)}
       </Card>
 
       <Card size="small" title="运行建议">
-        {suggestionCards.length ? (
+        {suggestionItems.length ? (
+          <Row gutter={[16, 16]}>
+            {suggestionItems.map((item, index) => (
+              <Col xs={24} xl={12} key={`${item.target}-${index}`}>
+                <div
+                  style={{
+                    height: '100%',
+                    borderRadius: 18,
+                    padding: 18,
+                    background: 'linear-gradient(180deg, rgba(239, 246, 255, 0.96) 0%, rgba(255, 255, 255, 1) 100%)',
+                    border: '1px solid #bfdbfe',
+                    boxShadow: '0 10px 24px rgba(59, 130, 246, 0.08)',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                    <div>
+                      <Text strong style={{ fontSize: 16, color: '#0f172a' }}>
+                        {item.target || '当前对象'}
+                      </Text>
+                    </div>
+                    <Tag color={getSensitivityPriorityTagColor(item.priority)} style={{ marginInlineEnd: 0 }}>
+                      {getSensitivityPriorityLabel(item.priority)}
+                    </Tag>
+                  </div>
+                  <Paragraph style={{ margin: '14px 0 8px', color: '#334155' }}>
+                    <Text strong style={{ color: '#1d4ed8' }}>
+                      建议内容：
+                    </Text>
+                    {item.text || item.action}
+                  </Paragraph>
+                  <Paragraph style={{ margin: '0 0 8px', color: '#334155' }}>
+                    <Text strong style={{ color: '#1d4ed8' }}>
+                      适用原因：
+                    </Text>
+                    {item.reason}
+                  </Paragraph>
+                  <Paragraph style={{ margin: 0, color: '#334155' }}>
+                    <Text strong style={{ color: '#1d4ed8' }}>
+                      预期效果：
+                    </Text>
+                    {item.expected}
+                  </Paragraph>
+                </div>
+              </Col>
+            ))}
+          </Row>
+        ) : suggestionCards.length ? (
           <Row gutter={[16, 16]}>
             {suggestionCards.map((item, index) => (
               <Col xs={24} xl={12} key={`${item.title}-${index}`}>
@@ -7298,55 +7717,10 @@ function renderSensitivityAiReportContentV2(
               </Col>
             ))}
           </Row>
-        ) : suggestionItems.length ? (
-          <Row gutter={[16, 16]}>
-            {suggestionItems.map((item, index) => (
-              <Col xs={24} xl={12} key={`${item.target}-${index}`}>
-                <div
-                  style={{
-                    height: '100%',
-                    borderRadius: 18,
-                    padding: 18,
-                    background: 'linear-gradient(180deg, rgba(239, 246, 255, 0.96) 0%, rgba(255, 255, 255, 1) 100%)',
-                    border: '1px solid #bfdbfe',
-                    boxShadow: '0 10px 24px rgba(59, 130, 246, 0.08)',
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                    <div>
-                      <Text strong style={{ fontSize: 16, color: '#0f172a' }}>
-                        {item.target || '当前对象'}
-                      </Text>
-                    </div>
-                    <Tag color={getSensitivityPriorityTagColor(item.priority)} style={{ marginInlineEnd: 0 }}>
-                      {getSensitivityPriorityLabel(item.priority)}
-                    </Tag>
-                  </div>
-                  <Paragraph style={{ margin: '14px 0 8px', color: '#334155' }}>
-                    <Text strong style={{ color: '#1d4ed8' }}>
-                      建议内容：
-                    </Text>
-                    {item.text || item.action}
-                  </Paragraph>
-                  <Paragraph style={{ margin: '0 0 8px', color: '#334155' }}>
-                    <Text strong style={{ color: '#1d4ed8' }}>
-                      适用原因：
-                    </Text>
-                    {item.reason}
-                  </Paragraph>
-                  <Paragraph style={{ margin: 0, color: '#334155' }}>
-                    <Text strong style={{ color: '#1d4ed8' }}>
-                      预期效果：
-                    </Text>
-                    {item.expected}
-                  </Paragraph>
-                </div>
-              </Col>
-            ))}
-          </Row>
         ) : (
           <Text type="secondary">当前数据不足以支持进一步判断。</Text>
         )}
+        {renderOfficialEvidenceSources(suggestionReferences)}
       </Card>
 
       <Card size="small" title="预期收益">
@@ -7854,8 +8228,13 @@ export function ReportHistoryDetailPage() {
 
         const history = historyResponse.data;
         if (!history) {
-          setRow(null);
-          setError('未找到对应的计算记录。');
+          if (initialRow) {
+            setRow(initialRow);
+            setError('后台未找到这条归档记录，当前页面展示的是从列表跳转时携带的本地快照；请返回列表打开真实存在的记录，或重新生成报告。');
+          } else {
+            setRow(null);
+            setError('未找到对应的计算记录。');
+          }
           return;
         }
 
@@ -7867,7 +8246,10 @@ export function ReportHistoryDetailPage() {
           return;
         }
 
-        if (!initialRow) {
+        if (initialRow) {
+          setRow(initialRow);
+          setError('后台详情接口读取失败，当前页面展示的是从列表跳转时携带的本地快照；快照内容可能不是最新归档结果。');
+        } else {
           setRow(null);
           setError('读取详情失败，请稍后重试。');
         }
@@ -8805,6 +9187,15 @@ export default function ReportPreview() {
       const reportTypeLabel = preferredOptimizationComparisonSnapshot
         ? '多项目泵站优化对比报告'
         : '智能报告';
+      const webResearchPlan = preferredSensitivitySnapshot
+        ? buildSensitivityWebResearchPlan(activeFocuses, {
+            hasSnapshot: Boolean(preferredSensitivitySnapshot),
+            includeSummary: true,
+            includeRisk: true,
+            includeSuggestions: true,
+            includeConclusion: true,
+          })
+        : undefined;
       const result = await agentApi.generateDynamicReport({
         selected_project_ids: activeProjectIds,
         project_names: selectedNames,
@@ -8823,6 +9214,7 @@ export default function ReportPreview() {
         custom_end: dateRange ? dateRange[1].format('YYYY-MM-DD') : undefined,
         focuses: activeFocuses,
         user_prompt: activePrompt,
+        web_research_plan: webResearchPlan,
         hydraulic_snapshot: preferredHydraulicSnapshot ?? undefined,
         optimization_snapshot:
           preferredOptimizationComparisonSnapshot ? undefined : preferredOptimizationSnapshot ?? undefined,

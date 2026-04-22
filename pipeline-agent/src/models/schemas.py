@@ -302,6 +302,7 @@ class SensitivityInsightBlock(BaseModel):
 class SensitivityReportAiInsights(BaseModel):
     """Structured insight blocks rendered next to sensitivity charts."""
 
+    mechanismInsight: Optional[SensitivityInsightBlock] = None
     rankingInsight: Optional[SensitivityInsightBlock] = None
     trendInsight: Optional[SensitivityInsightBlock] = None
     impactInsight: Optional[SensitivityInsightBlock] = None
@@ -370,6 +371,7 @@ class DynamicReportRequest(BaseModel):
     allow_pump_adjust: bool = True
     remark: Optional[str] = None
     user_prompt: Optional[str] = None
+    web_research_plan: Optional[dict[str, Any]] = None
     hydraulic_snapshot: Optional[dict[str, Any]] = None
     optimization_snapshot: Optional[dict[str, Any]] = None
     sensitivity_snapshot: Optional[dict[str, Any]] = None

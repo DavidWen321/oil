@@ -370,3 +370,102 @@ def extract_sensitivity_insights(ctx: dict[str, Any]) -> dict[str, Any]:
         "maxFrictionPoint": pick_extreme_point(point_rows, "frictionHeadLoss", "max"),
         "minFrictionPoint": pick_extreme_point(point_rows, "frictionHeadLoss", "min"),
     }
+
+
+def extract_primary_variable_type(insights: dict[str, Any]) -> str:
+    if not insights:
+        return ""
+    primary_result = as_record(insights.get("primaryVariableResult"))
+    return str(
+        primary_result.get("variableType")
+        or pick_first_value([as_record(insights.get("inputPayload"))], ["sensitiveVariableType", "sensitivityVariableType"])
+        or ""
+    ).strip().upper()
+
+
+def build_sensitivity_mechanism_chain(variable_type: str, variable_name: str) -> str:
+    normalized = str(variable_type or "").strip().upper()
+    display_name = str(variable_name or "关键变量").strip() or "关键变量"
+    mapping = {
+        "FLOW_RATE": f"{display_name}变化 → 流速变化 → 雷诺数与摩阻响应变化 → 沿程压降变化 → 末站压力变化",
+        "OIL_VISCOSITY": f"{display_name}变化 → 黏性阻力变化 → 雷诺数与摩阻系数变化 → 沿程压降变化 → 末站压力变化",
+        "PIPE_DIAMETER": f"{display_name}变化 → 断面流速变化 → 雷诺数与摩阻损失变化 → 压降重分配 → 末站压力变化",
+        "PIPE_ROUGHNESS": f"{display_name}变化 → 管壁摩擦条件变化 → 摩阻系数变化 → 沿程压降变化 → 压力裕度变化",
+        "OIL_DENSITY": f"{display_name}变化 → 单位体积重力与压头换算变化 → 总压降变化 → 末站压力变化",
+        "TEMPERATURE": f"{display_name}变化 → 黏度与流动性变化 → 雷诺数与摩阻损失变化 → 末站压力变化",
+        "PUMP_EFFICIENCY": f"{display_name}变化 → 有效扬程利用率变化 → 压力支撑与单位输量能耗变化",
+    }
+    return mapping.get(
+        normalized,
+        f"{display_name}变化 → 阻力或压头条件变化 → 沿程压降重分配 → 末站压力与运行边界变化",
+    )
+
+
+def build_sensitivity_mechanism_reason(variable_type: str, variable_name: str) -> str:
+    normalized = str(variable_type or "").strip().upper()
+    display_name = str(variable_name or "该变量").strip() or "该变量"
+    mapping = {
+        "FLOW_RATE": f"{display_name}直接决定单位时间内通过管道的介质量，流量抬升后流速与沿程摩阻通常同步放大，因此结果侧会先表现为压降增大和末站压力回落。",
+        "OIL_VISCOSITY": f"{display_name}变化会先改变流体黏性阻力，黏度升高时雷诺数更容易下降、摩阻损失更容易抬升，因此压力边界会更快收紧。",
+        "PIPE_DIAMETER": f"{display_name}变化会改变过流断面和平均流速，同样输量下断面越小，速度项和沿程损失越容易被放大。",
+        "PIPE_ROUGHNESS": f"{display_name}变化虽然不直接增加流量，但会改变壁面摩擦条件，因此阻力项会先于其他指标放大。",
+        "OIL_DENSITY": f"{display_name}变化会改变压头换算和压力传递关系，进而影响总压降与末站压力的分配。",
+        "TEMPERATURE": f"{display_name}变化通常通过改变原油黏度与流动性来间接影响雷诺数和摩阻损失，因此对压力结果具有传导效应。",
+        "PUMP_EFFICIENCY": f"{display_name}变化会改变扬程利用率和单位输量能耗，效率偏低时更容易出现高能耗与边界收紧并存的情况。",
+    }
+    return mapping.get(
+        normalized,
+        f"{display_name}会通过阻力变化、压头分配或设备边界占用把扰动逐步传导到末站压力和能耗结果侧。",
+    )
+
+
+def extract_official_research_payload(ctx: dict[str, Any]) -> dict[str, Any]:
+    return as_record(ctx.get("official_research"))
+
+
+def extract_official_topic_payload(ctx: dict[str, Any], topic_key: str) -> dict[str, Any]:
+    research = extract_official_research_payload(ctx)
+    topics = as_record(research.get("topics"))
+    return as_record(topics.get(topic_key))
+
+
+def extract_official_topic_references(ctx: dict[str, Any], topic_key: str) -> list[dict[str, Any]]:
+    topic_payload = extract_official_topic_payload(ctx, topic_key)
+    topic_references = as_record_array(topic_payload.get("references"))
+    if topic_references:
+        return topic_references
+    return as_record_array(extract_official_research_payload(ctx).get("references"))
+
+
+def extract_official_risk_references(ctx: dict[str, Any]) -> list[dict[str, Any]]:
+    research = as_record(ctx.get("official_risk_research"))
+    return as_record_array(research.get("references"))
+
+
+def build_official_reference_label(reference: dict[str, Any]) -> str:
+    title = str(reference.get("title") or "").strip()
+    publisher = str(reference.get("publisher") or reference.get("domain") or "").strip()
+    if publisher and title:
+        return f"{publisher}发布的《{title}》"
+    if title:
+        return f"《{title}》"
+    if publisher:
+        return publisher
+    return "官方公开资料"
+
+
+def build_official_reference_text(references: list[dict[str, Any]], limit: int = 2) -> str:
+    labels: list[str] = []
+    seen: set[str] = set()
+    for item in references:
+        label = build_official_reference_label(item)
+        if label and label not in seen:
+            labels.append(label)
+            seen.add(label)
+        if len(labels) >= limit:
+            break
+    if not labels:
+        return ""
+    if len(labels) == 1:
+        return labels[0]
+    return "、".join(labels[:-1]) + f"和{labels[-1]}"

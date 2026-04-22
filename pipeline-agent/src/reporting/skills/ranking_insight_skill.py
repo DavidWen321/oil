@@ -2,7 +2,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from .sensitivity_helpers import extract_sensitivity_insights, format_number, to_float
+from .sensitivity_helpers import (
+    build_official_reference_text,
+    build_sensitivity_mechanism_chain,
+    extract_official_topic_references,
+    extract_primary_variable_type,
+    extract_sensitivity_insights,
+    format_number,
+    to_float,
+)
 
 
 def ranking_insight_skill(ctx: dict[str, Any]) -> str:
@@ -17,25 +25,22 @@ def ranking_insight_skill(ctx: dict[str, Any]) -> str:
     second_row = ranking_rows[1] if len(ranking_rows) > 1 else None
 
     sentences = [
-        (
-            f"敏感系数排名显示，{top_name}位列第 {top_rank} 位，敏感系数为 {format_number(top_coefficient)}，"
-            "是当前样本中最需要优先关注的变量。"
-        )
+        f"敏感系数排序显示，{top_name}位列第 {top_rank} 位，敏感系数为 {format_number(top_coefficient)}，是当前样本中最需要优先关注的变量。"
     ]
 
     if second_row:
-        second_name = str(second_row.get("variableName") or second_row.get("variableType") or "第二位变量")
+        second_name = str(second_row.get("variableName") or second_row.get("variableType") or "第二位变量").strip()
         second_value = to_float(second_row.get("sensitivityCoefficient"))
         gap = None
         if top_coefficient is not None and second_value is not None:
             gap = top_coefficient - second_value
         if gap is not None and gap >= 0.2:
             sentences.append(
-                f"它与第二位的 {second_name} 拉开了 {format_number(gap)} 的差值，头部影响较为集中。"
+                f"它与第二位的 {second_name} 拉开了 {format_number(gap)} 的差距，说明头部影响已经相对集中。"
             )
         else:
             sentences.append(
-                f"它与第二位的 {second_name} 差距不大，说明头部变量之间仍需联动关注。"
+                f"它与第二位的 {second_name} 差距不大，说明头部变量之间仍然需要联动关注。"
             )
 
     top_three = [
@@ -44,6 +49,13 @@ def ranking_insight_skill(ctx: dict[str, Any]) -> str:
         if str(item.get("variableName") or item.get("variableType") or "").strip()
     ]
     if top_three:
-        sentences.append(f"当前排名前列的变量为 {'、'.join(top_three)}。")
+        sentences.append(f"当前排名前三的变量为 {'、'.join(top_three)}。")
 
-    return "".join(sentences)
+    mechanism_chain = build_sensitivity_mechanism_chain(extract_primary_variable_type(insights), top_name)
+    evidence_text = build_official_reference_text(extract_official_topic_references(ctx, "mechanism"))
+    if evidence_text:
+        sentences.append(
+            f"结合联网检索命中的 {evidence_text}，这组排序可以理解为“{mechanism_chain}”这条因果链在本次样本内的放大程度排序，因此首位变量应优先进入运行解释与控制清单。"
+        )
+
+    return "".join(sentence for sentence in sentences if sentence.strip())
