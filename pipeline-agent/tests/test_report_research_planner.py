@@ -81,9 +81,11 @@ def test_sensitivity_research_plan_reuses_existing_snapshot_and_enables_targeted
         "operations",
         "risk",
     ]
+    assert "流量" in plan["web_research"]["topics"]["risk"]["purpose"]
     assert plan["web_research"]["modules"]["coreConclusion"]["topics"] == ["standards", "mechanism", "operations"]
     assert plan["web_research"]["modules"]["mechanismAnalysis"]["topics"] == ["mechanism", "standards"]
     assert plan["web_research"]["modules"]["riskAnalysis"]["topics"] == ["risk", "standards", "operations"]
+    assert "头部敏感变量" in plan["web_research"]["modules"]["riskAnalysis"]["purpose"]
 
 
 def test_client_web_research_plan_can_disable_specific_topic():

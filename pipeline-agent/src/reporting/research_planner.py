@@ -47,6 +47,11 @@ SENSITIVITY_TOPIC_KEYWORDS: dict[str, tuple[str, ...]] = {
         "风险",
         "风险分析",
         "风险识别",
+        "流量",
+        "输量",
+        "压力边界",
+        "末站压力",
+        "摩阻",
         "高黏度",
         "输送影响",
         "处理方式",
@@ -98,8 +103,8 @@ SENSITIVITY_MODULE_DEFINITIONS: dict[str, dict[str, Any]] = {
     "riskAnalysis": {
         "title": "风险分析",
         "topics": ["risk", "standards", "operations"],
-        "keywords": ("风险", "风险分析", "风险识别", "高黏度", "输送影响", "处理方式"),
-        "purpose": "补充风险资料，对既有风险规则做联网校核，不把本地规则直接包装成结论。",
+        "keywords": ("风险", "风险分析", "风险识别", "流量", "输量", "末站压力", "摩阻", "高黏度"),
+        "purpose": "补充头部敏感变量及压力/摩阻边界相关风险资料，对既有风险规则做联网校核，不把本地规则直接包装成结论。",
     },
     "operationSuggestions": {
         "title": "运行建议",
@@ -341,7 +346,7 @@ def _build_sensitivity_plan(request: DynamicReportRequest) -> dict[str, Any]:
                 "risk": _topic_plan(
                     enabled=risk_enabled,
                     focus_hits=risk_hits,
-                    purpose="补充高黏度油品风险、输送影响和行业处理方式，对既有风险规则做联网校核。",
+                    purpose="补充头部敏感变量（尤其是流量）、压力边界、摩阻放大和高黏度工况相关风险资料，对既有风险规则做联网校核。",
                     reason=(
                         "风险分析需要独立的风险资料校核，不能只复述本地规则。"
                         if risk_enabled

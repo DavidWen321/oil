@@ -2,6 +2,14 @@ from __future__ import annotations
 
 from typing import Any
 
+ENERGY_WARNING_THRESHOLD = 20.0
+ENERGY_RISK_THRESHOLD = 45.0
+PRESSURE_WARNING_DROP_THRESHOLD = 5.0
+HIGH_LOAD_SENSITIVITY_THRESHOLD = 0.8
+NONLINEAR_SLOPE_MIN_THRESHOLD = 0.01
+NONLINEAR_SLOPE_RATIO_THRESHOLD = 1.8
+NONLINEAR_SLOPE_DELTA_THRESHOLD = 0.3
+
 
 def as_record(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
@@ -155,9 +163,233 @@ def get_sensitivity_primary_variable_result(output_payload: dict[str, Any]) -> d
     return variable_results[0]
 
 
+def _get_change_label(row: dict[str, Any]) -> str:
+    return format_signed_percent(row.get("changePercent"))
+
+
+def _get_change_stats(point_rows: list[dict[str, Any]]) -> dict[str, float | None]:
+    max_friction_increase_percent: float | None = None
+    max_pressure_drop_percent: float | None = None
+
+    for row in point_rows:
+        friction_change = to_float(row.get("frictionChangePercent"))
+        if friction_change is not None and friction_change > 0:
+            if max_friction_increase_percent is None or friction_change > max_friction_increase_percent:
+                max_friction_increase_percent = friction_change
+
+        pressure_change = to_float(row.get("pressureChangePercent"))
+        if pressure_change is not None and pressure_change < 0:
+            drop_percent = abs(pressure_change)
+            if max_pressure_drop_percent is None or drop_percent > max_pressure_drop_percent:
+                max_pressure_drop_percent = drop_percent
+
+    return {
+        "maxFrictionIncreasePercent": max_friction_increase_percent,
+        "maxPressureDropPercent": max_pressure_drop_percent,
+    }
+
+
+def _analyze_nonlinear_growth(point_rows: list[dict[str, Any]]) -> dict[str, Any]:
+    sorted_rows = sorted(point_rows, key=lambda item: to_float(item.get("changePercent")) or 0.0)
+    slopes: list[dict[str, Any]] = []
+
+    for index in range(1, len(sorted_rows)):
+        previous = sorted_rows[index - 1]
+        current = sorted_rows[index]
+        start = to_float(previous.get("changePercent"))
+        end = to_float(current.get("changePercent"))
+        previous_value = to_float(previous.get("frictionChangePercent"))
+        current_value = to_float(current.get("frictionChangePercent"))
+        if start is None or end is None or previous_value is None or current_value is None:
+            continue
+
+        span = end - start
+        if abs(span) < 1e-9:
+            continue
+
+        slope = abs((current_value - previous_value) / span)
+        if slope < NONLINEAR_SLOPE_MIN_THRESHOLD:
+            continue
+
+        slopes.append(
+            {
+                "label": f"{_get_change_label(previous)} 至 {_get_change_label(current)}",
+                "slope": slope,
+            }
+        )
+
+    if len(slopes) < 2:
+        return {"hasNonlinearGrowth": False, "segmentLabel": "", "slopeRatio": None}
+
+    min_slope = min(item["slope"] for item in slopes)
+    max_item = max(slopes, key=lambda item: item["slope"])
+    slope_ratio = None if min_slope <= 0 else max_item["slope"] / min_slope
+    has_growth = bool(
+        slope_ratio is not None
+        and slope_ratio >= NONLINEAR_SLOPE_RATIO_THRESHOLD
+        and (max_item["slope"] - min_slope) >= NONLINEAR_SLOPE_DELTA_THRESHOLD
+    )
+    return {
+        "hasNonlinearGrowth": has_growth,
+        "segmentLabel": max_item["label"] if has_growth else "",
+        "slopeRatio": slope_ratio if has_growth else None,
+    }
+
+
+def build_sensitivity_fallback_risk_rules(insights: dict[str, Any]) -> list[dict[str, Any]]:
+    if not insights:
+        return []
+
+    point_rows = as_record_array(insights.get("pointRows"))
+    top_variable_name = str(insights.get("topVariableName") or "").strip() or "当前关键变量"
+    sensitivity_coefficient = to_float(insights.get("sensitivityCoefficient"))
+    max_impact_percent = to_float(insights.get("maxImpactPercent"))
+    min_end_station_pressure = to_float(insights.get("minEndStationPressure"))
+    pressure_trend_text = str(insights.get("pressureTrendText") or "").strip() or "变化不明显"
+    flow_regime_changed = bool(insights.get("flowRegimeChanged"))
+    flow_regime_segments = [
+        str(item).strip()
+        for item in insights.get("flowRegimeSegments") or []
+        if str(item).strip()
+    ]
+
+    if not point_rows and sensitivity_coefficient is None and max_impact_percent is None and min_end_station_pressure is None:
+        return []
+
+    change_stats = _get_change_stats(point_rows)
+    nonlinear_growth = _analyze_nonlinear_growth(point_rows)
+    max_friction_increase_percent = change_stats["maxFrictionIncreasePercent"]
+    max_pressure_drop_percent = change_stats["maxPressureDropPercent"]
+
+    if max_friction_increase_percent is not None and max_friction_increase_percent >= ENERGY_RISK_THRESHOLD:
+        energy_level = "风险区"
+    elif max_friction_increase_percent is not None and max_friction_increase_percent >= ENERGY_WARNING_THRESHOLD:
+        energy_level = "高能耗区"
+    else:
+        energy_level = "安全区"
+
+    if min_end_station_pressure is not None and min_end_station_pressure < 0:
+        stability_level = "风险区"
+    elif max_pressure_drop_percent is not None and max_pressure_drop_percent >= PRESSURE_WARNING_DROP_THRESHOLD:
+        stability_level = "预警区"
+    else:
+        stability_level = "安全区"
+
+    if flow_regime_changed or nonlinear_growth["hasNonlinearGrowth"]:
+        equipment_level = "风险区"
+    elif sensitivity_coefficient is not None and sensitivity_coefficient >= HIGH_LOAD_SENSITIVITY_THRESHOLD:
+        equipment_level = "高负荷区"
+    else:
+        equipment_level = "安全区"
+
+    if energy_level == "风险区":
+        energy_message = (
+            f"核心算法结果未附带 riskRules，现按采样点补算：{top_variable_name}扰动后的摩阻损失最大正向增幅为 "
+            f"{format_number(max_friction_increase_percent, suffix='%')}，已超过能耗风险阈值 "
+            f"{format_number(ENERGY_RISK_THRESHOLD, suffix='%')}。"
+        )
+    elif energy_level == "高能耗区":
+        energy_message = (
+            f"核心算法结果未附带 riskRules，现按采样点补算：{top_variable_name}扰动后的摩阻损失最大正向增幅为 "
+            f"{format_number(max_friction_increase_percent, suffix='%')}，已超过高能耗阈值 "
+            f"{format_number(ENERGY_WARNING_THRESHOLD, suffix='%')}，但尚未达到风险阈值 "
+            f"{format_number(ENERGY_RISK_THRESHOLD, suffix='%')}。"
+        )
+    else:
+        energy_message = (
+            f"核心算法结果未附带 riskRules，现按采样点补算：{top_variable_name}扰动后的摩阻损失最大正向增幅为 "
+            f"{format_number(max_friction_increase_percent, suffix='%')}，未达到高能耗阈值 "
+            f"{format_number(ENERGY_WARNING_THRESHOLD, suffix='%')}。"
+        )
+
+    if stability_level == "风险区":
+        stability_message = (
+            "核心算法结果未附带 riskRules，现按采样点补算：末站最小进站压力为 "
+            f"{format_number(min_end_station_pressure)}，已低于 0，压力边界被直接触发。"
+        )
+    elif stability_level == "预警区":
+        stability_message = (
+            "核心算法结果未附带 riskRules，现按采样点补算：末站进站压力最大降幅为 "
+            f"{format_number(max_pressure_drop_percent, suffix='%')}，已超过预警阈值 "
+            f"{format_number(PRESSURE_WARNING_DROP_THRESHOLD, suffix='%')}；压力趋势为{pressure_trend_text}。"
+        )
+    else:
+        stability_message = (
+            "核心算法结果未附带 riskRules，现按采样点补算：最小末站进站压力为 "
+            f"{format_number(min_end_station_pressure)}，最大压力降幅为 "
+            f"{format_number(max_pressure_drop_percent, suffix='%')}，尚未触发压力风险或预警阈值。"
+        )
+
+    if equipment_level == "风险区":
+        reasons: list[str] = []
+        if flow_regime_changed and flow_regime_segments:
+            reasons.append(f"采样区间内流态发生切换：{'；'.join(flow_regime_segments)}。")
+        if nonlinear_growth["hasNonlinearGrowth"]:
+            reasons.append(
+                "摩阻变化在 "
+                f"{str(nonlinear_growth['segmentLabel']) or '当前采样区间'} 出现非线性放大，最大局部响应约为最小响应的 "
+                f"{format_number(nonlinear_growth['slopeRatio'])} 倍。"
+            )
+        equipment_message = "".join(reasons) or "采样区间内识别到设备边界放大迹象。"
+    elif equipment_level == "高负荷区":
+        equipment_message = (
+            f"核心算法结果未附带 riskRules，现按采样点补算：{top_variable_name}敏感系数为 "
+            f"{format_number(sensitivity_coefficient)}，达到高负荷关注阈值 "
+            f"{format_number(HIGH_LOAD_SENSITIVITY_THRESHOLD)}。"
+        )
+    else:
+        equipment_message = (
+            "核心算法结果未附带 riskRules，现按采样点补算：采样区间内未发现明显流态切换或非线性放大；"
+            f"{top_variable_name}敏感系数为 {format_number(sensitivity_coefficient)}，未达到高负荷关注阈值。"
+        )
+
+    return [
+        {
+            "riskCode": "energy_consumption_zone",
+            "title": "能耗区判断",
+            "targetName": top_variable_name,
+            "level": energy_level,
+            "message": energy_message,
+            "impact": {
+                "风险区": "单位输量能耗和泵组负荷会被阻力项快速放大，应限制继续向不利方向调整。",
+                "高能耗区": "系统尚可运行，但新增扬程会优先用于克服沿程阻力，继续粗放上调变量会扩大能耗。",
+            }.get(energy_level, "当前能耗侧仍有调节余量，但仍应围绕头部敏感变量做小步调整。"),
+            "suggestion": "建议以摩阻损失增幅作为能耗侧复核指标，优先控制头部敏感变量。",
+            "source": "calculated_rule_fallback",
+        },
+        {
+            "riskCode": "operation_stability_zone",
+            "title": "运行稳定区判断",
+            "targetName": "当前方案",
+            "level": stability_level,
+            "message": stability_message,
+            "impact": {
+                "风险区": "末站供输裕度被压缩到边界以下，当前方案不宜按常规稳定工况处理。",
+                "预警区": "当前仍可运行，但调度弹性已经变窄，继续向不利区间偏移可能进入风险区。",
+            }.get(stability_level, "供输稳定性总体可控，但应持续监测末站压力降幅。"),
+            "suggestion": "建议将末站进站压力和压力变化率作为稳定性复核指标。",
+            "source": "calculated_rule_fallback",
+        },
+        {
+            "riskCode": "equipment_boundary_zone",
+            "title": "设备边界区判断",
+            "targetName": "当前方案",
+            "level": equipment_level,
+            "message": equipment_message,
+            "impact": {
+                "风险区": "相同幅度的参数扰动不再可靠对应线性结果变化，容易导致误调度和泵组高负荷运行。",
+                "高负荷区": "设备可运行但不宜长期贴近高阻、高负荷带，否则泵效率下降和维护周期缩短会先于故障边界出现。",
+            }.get(equipment_level, "设备侧仍有调节余度，但调度策略仍应避免大步长调整。"),
+            "suggestion": "建议同步跟踪流态、雷诺数和局部摩阻响应，避免越过稳定采样窗口。",
+            "source": "calculated_rule_fallback",
+        },
+    ]
+
+
 def normalize_sensitivity_risk_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     normalized: list[dict[str, Any]] = []
     for row in rows:
+        title = str(pick_first_value([row], ["title", "name", "label"]) or "").strip()
         risk_code = str(
             pick_first_value([row], ["code", "riskCode", "riskType", "issueType", "metric"]) or "unknown"
         ).strip()
@@ -174,6 +406,7 @@ def normalize_sensitivity_risk_rows(rows: list[dict[str, Any]]) -> list[dict[str
             continue
         normalized.append(
             {
+                "title": title,
                 "targetName": target_name,
                 "riskCode": risk_code or "unknown",
                 "level": level,
@@ -193,6 +426,10 @@ def extract_sensitivity_risk_rules(ctx: dict[str, Any]) -> list[dict[str, Any]]:
         rows = normalize_sensitivity_risk_rows(as_record_array(output_payload.get(key)))
         if rows:
             return rows
+
+    fallback_rules = build_sensitivity_fallback_risk_rules(extract_sensitivity_insights(ctx))
+    if fallback_rules:
+        return fallback_rules
 
     return normalize_sensitivity_risk_rows(as_record_array(ctx.get("risk_flags")))
 

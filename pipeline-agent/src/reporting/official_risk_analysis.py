@@ -33,6 +33,24 @@ RISK_CODE_META: dict[str, dict[str, Any]] = {
     },
 }
 
+RISK_DISPLAY_LABELS: dict[str, str] = {
+    "energy_consumption_zone": "能耗区判断",
+    "operation_stability_zone": "运行稳定区判断",
+    "equipment_boundary_zone": "设备边界区判断",
+    "viscosity_high": "油品黏度风险",
+    "flow_rate_low": "流量偏低风险",
+    "flow_rate_jump": "流量波动风险",
+}
+
+GENERIC_RISK_TARGETS = {
+    "当前方案",
+    "当前项目",
+    "当前对象",
+    "项目",
+    "系统",
+    "管道系统",
+}
+
 
 def _normalize_text(value: Any) -> str:
     return str(value or "").strip()
@@ -58,23 +76,62 @@ def _risk_keywords(risk_code: str) -> list[str]:
     return [str(item).strip().lower() for item in meta.get("keywords", []) if str(item).strip()]
 
 
-def _variable_keywords(target: str, insights: dict[str, Any]) -> list[str]:
+def _resolve_risk_display_type(row: dict[str, Any]) -> str:
+    title = _normalize_text(row.get("title"))
+    if title:
+        return title
+
+    risk_code = _normalize_text(row.get("riskCode"))
+    meta = RISK_CODE_META.get(risk_code, {})
+    return _normalize_text(RISK_DISPLAY_LABELS.get(risk_code)) or _normalize_text(meta.get("label")) or risk_code or "风险判断"
+
+
+def _alias_keywords(*values: Any) -> list[str]:
     keywords: list[str] = []
     seen: set[str] = set()
-    for value in (
-        target,
-        insights.get("topVariableName"),
-        insights.get("variableTypeText"),
-    ):
+    for value in values:
         for alias in sensitivity_term_aliases(value):
             cleaned = str(alias or "").strip().lower()
             if cleaned and cleaned not in seen:
                 keywords.append(cleaned)
                 seen.add(cleaned)
-    direct_target = _normalize_text(target).lower()
-    if direct_target and direct_target not in seen:
-        keywords.append(direct_target)
+        direct_value = _normalize_text(value).lower()
+        if direct_value and direct_value not in seen:
+            keywords.append(direct_value)
+            seen.add(direct_value)
     return keywords
+
+
+def _is_specific_risk_target(row: dict[str, Any], insights: dict[str, Any]) -> bool:
+    target = _normalize_text(row.get("targetName"))
+    if not target or target in GENERIC_RISK_TARGETS:
+        return False
+
+    project_name = _normalize_text(insights.get("projectName"))
+    if project_name and target == project_name:
+        return False
+
+    risk_code = _normalize_text(row.get("riskCode"))
+    if risk_code and risk_code not in RISK_CODE_META:
+        return True
+
+    target_keywords = set(_alias_keywords(target))
+    top_keywords = set(_alias_keywords(insights.get("topVariableName"), insights.get("variableTypeText")))
+    return bool(target_keywords and top_keywords and target_keywords.isdisjoint(top_keywords))
+
+
+def _resolve_risk_subject(row: dict[str, Any], insights: dict[str, Any]) -> str:
+    target = _normalize_text(row.get("targetName"))
+    if target:
+        return target
+    return _normalize_text(insights.get("topVariableName")) or "当前关键参数"
+
+
+def _variable_keywords(row: dict[str, Any], insights: dict[str, Any]) -> list[str]:
+    target = _normalize_text(row.get("targetName"))
+    if _is_specific_risk_target(row, insights):
+        return _alias_keywords(target)
+    return _alias_keywords(target, insights.get("topVariableName"), insights.get("variableTypeText"))
 
 
 def _reference_score(reference: dict[str, Any], row: dict[str, Any], insights: dict[str, Any]) -> int:
@@ -87,7 +144,7 @@ def _reference_score(reference: dict[str, Any], row: dict[str, Any], insights: d
         if keyword in haystack:
             score += 4
 
-    for keyword in _variable_keywords(_normalize_text(row.get("targetName")), insights):
+    for keyword in _variable_keywords(row, insights):
         if keyword in haystack:
             score += 3
 
@@ -145,14 +202,15 @@ def _build_fact_summary(row: dict[str, Any], insights: dict[str, Any]) -> str:
     if message:
         pieces.append(message.rstrip("。"))
 
+    specific_target = _is_specific_risk_target(row, insights)
     top_variable = _normalize_text(insights.get("topVariableName"))
     sensitivity_coefficient = format_number(insights.get("sensitivityCoefficient"))
     max_impact_percent = format_number(insights.get("maxImpactPercent"), suffix="%")
     min_end_station_pressure = format_number(insights.get("minEndStationPressure"))
 
-    if top_variable and sensitivity_coefficient != "-":
+    if not specific_target and top_variable and sensitivity_coefficient != "-":
         pieces.append(f"当前最敏感变量为{top_variable}，敏感系数为{sensitivity_coefficient}")
-    if max_impact_percent != "-":
+    if not specific_target and max_impact_percent != "-":
         pieces.append(f"最大影响幅度为{max_impact_percent}")
     if min_end_station_pressure != "-" and _normalize_text(row.get("riskCode")) == "operation_stability_zone":
         pieces.append(f"末站最低进站压力为{min_end_station_pressure}")
@@ -184,8 +242,8 @@ def _build_impact(row: dict[str, Any], insights: dict[str, Any]) -> str:
     if meta.get("impact"):
         return _ensure_sentence(str(meta["impact"]))
 
-    top_variable = _normalize_text(insights.get("topVariableName")) or _normalize_text(row.get("targetName")) or "当前关键参数"
-    return _ensure_sentence(f"说明{top_variable}相关结果边界正在收紧，需要继续按官方规范跟踪其运行变化")
+    subject = _resolve_risk_subject(row, insights)
+    return _ensure_sentence(f"说明{subject}相关结果边界正在收紧，需要继续按官方规范跟踪其运行变化")
 
 
 def _build_suggestion(row: dict[str, Any], references: list[dict[str, Any]]) -> str:
@@ -230,6 +288,7 @@ def build_official_risk_items(
     for row in risk_rules[:3]:
         target = _normalize_text(row.get("targetName")) or _normalize_text(insights.get("topVariableName")) or "-"
         risk_type = _normalize_text(row.get("riskCode")) or "unknown"
+        display_risk_type = _resolve_risk_display_type(row)
         level = _normalize_text(row.get("level"))
         if not level:
             continue
@@ -252,7 +311,7 @@ def build_official_risk_items(
         items.append(
             ReportRiskItem(
                 target=target,
-                riskType=risk_type,
+                riskType=display_risk_type,
                 level=level,
                 reason=reason,
                 impact=_build_impact(row, insights),

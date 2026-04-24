@@ -55,6 +55,7 @@ def explain_report(payload: dict[str, Any], request: DynamicReportRequest) -> di
                 "summary、highlights、official_conclusions 必须是字符串数组。",
                 "section_summaries 必须是对象，key 为 section id，value 为一句中文摘要。",
                 "如果 report_context.official_module_evidence.coreConclusion.references 有内容，official_conclusions 必须优先使用这组来源，确保核心结论的文字与页面展示的官方资料来源一致；不要引用未挂到核心结论模块的来源标题。",
+                "If multiple official_conclusions rely on the same official source, merge them into one item: mention the source once and combine the related engineering judgments in one coherent sentence or short paragraph.",
                 payload_text,
             ]
         )

@@ -760,9 +760,16 @@ function resolveMentionedOfficialReferences(
 }
 
 function getOfficialReferenceMatchTokens(reference: OfficialReference) {
-  return [reference.title, reference.publisher, reference.domain, ...(reference.aliases ?? [])]
+  const baseTokens = [reference.title, reference.publisher, reference.domain, ...(reference.aliases ?? [])]
     .map((value) => normalizeOfficialReferenceToken(value || ''))
     .filter((value) => value && value !== normalizeOfficialReferenceToken('官方资料'));
+
+  const codeTokens = [reference.title, ...(reference.aliases ?? [])]
+    .flatMap((value) => Array.from(String(value || '').matchAll(/[A-Za-z]{1,8}\s*\/\s*[A-Za-z]?\s*\d+(?:\.\d+)?(?:-\d+)*/g)))
+    .map((match) => normalizeOfficialReferenceToken(match[0] || ''))
+    .filter(Boolean);
+
+  return Array.from(new Set([...baseTokens, ...codeTokens]));
 }
 
 function usesSupportedOfficialReferenceTitles(line: string, references: OfficialReference[]) {
@@ -793,6 +800,118 @@ function filterSupportedOfficialConclusionItems(lines: string[], references: Off
   }
 
   return lines.filter((line) => usesSupportedOfficialReferenceTitles(line, references));
+}
+
+function findMatchedOfficialReference(line: string, references: OfficialReference[]) {
+  const normalizedLine = normalizeOfficialReferenceToken(line);
+  let matchedReference: OfficialReference | null = null;
+  let matchedScore = 0;
+
+  for (const reference of references) {
+    const score = getOfficialReferenceMatchTokens(reference).reduce((current, token) => {
+      if (!token) {
+        return current;
+      }
+      return normalizedLine.includes(token) ? Math.max(current, token.length) : current;
+    }, 0);
+
+    if (score > matchedScore) {
+      matchedScore = score;
+      matchedReference = reference;
+    }
+  }
+
+  return matchedReference;
+}
+
+function stripLeadingOfficialCitation(line: string) {
+  let text = String(line || '').trim();
+  if (!text) {
+    return '';
+  }
+
+  const patterns = [
+    /^(根据|依据)\s*[^，。；:：]{0,80}[，,:：]\s*/,
+    /^《[^》]+》\s*(明确要求|要求|指出|规定|强调|提到|提出)?[，,:：]\s*/,
+    /^[A-Za-z]{1,8}\s*\/\s*[A-Za-z]?\s*\d+(?:\.\d+)?(?:-\d+)*(?:\s*《[^》]+》)?\s*(明确要求|要求|指出|规定|强调|提到|提出)?[，,:：]\s*/,
+  ];
+
+  for (let index = 0; index < 3; index += 1) {
+    let changed = false;
+    for (const pattern of patterns) {
+      const next = text.replace(pattern, '');
+      if (next !== text) {
+        text = next.trim();
+        changed = true;
+      }
+    }
+    if (!changed) {
+      break;
+    }
+  }
+
+  return text;
+}
+
+function trimSentenceEnding(text: string) {
+  return String(text || '').trim().replace(/[；;。.!！?？]+$/g, '').trim();
+}
+
+function ensureSentenceEnding(text: string) {
+  const normalized = String(text || '').trim();
+  if (!normalized) {
+    return '';
+  }
+
+  return /[。.!！?？]$/.test(normalized) ? normalized : `${normalized}。`;
+}
+
+function buildGroupedOfficialConclusionItems(lines: string[], references: OfficialReference[]) {
+  if (!lines.length) {
+    return [];
+  }
+
+  const groups = new Map<string, { reference: OfficialReference | null; lines: string[] }>();
+
+  for (const line of lines) {
+    const reference = findMatchedOfficialReference(line, references);
+    const key = reference ? getOfficialReferenceIdentity(reference) : `line:${line}`;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.lines.push(line);
+    } else {
+      groups.set(key, { reference, lines: [line] });
+    }
+  }
+
+  return Array.from(groups.values()).map((group) => {
+    if (!group.reference) {
+      return group.lines[0];
+    }
+
+    const referenceLabel = group.reference.title || group.reference.publisher || group.reference.domain || '官方资料';
+    const fragments = Array.from(new Set(
+      group.lines
+        .map(stripLeadingOfficialCitation)
+        .map(trimSentenceEnding)
+        .filter(Boolean),
+    ));
+
+    if (!fragments.length) {
+      return group.lines[0];
+    }
+
+    if (group.lines.length === 1) {
+      const original = String(group.lines[0] || '').trim();
+      const normalizedOriginal = normalizeOfficialReferenceToken(original);
+      const normalizedFragment = normalizeOfficialReferenceToken(fragments[0]);
+      if (!normalizedFragment || normalizedFragment === normalizedOriginal) {
+        return original;
+      }
+    }
+
+    return ensureSentenceEnding(`根据 ${referenceLabel}，${fragments.join('；')}`);
+  });
 }
 
 function getSensitivityInsightContent(
@@ -918,7 +1037,19 @@ function buildSensitivityWebResearchPlan(focuses: string[] | undefined, options:
   ]);
   const standardsHits = collectFocusHits(focuses, ['核心结论', '官方资料依据', '标准', '规范', '公开资料', '结论']);
   const operationsHits = collectFocusHits(focuses, ['运行建议', '调度', '节能', '优化建议', '预期收益', '监测指标']);
-  const riskHits = collectFocusHits(focuses, ['风险', '风险分析', '风险识别', '高黏度', '处理方式', '输送影响']);
+  const riskHits = collectFocusHits(focuses, [
+    '风险',
+    '风险分析',
+    '风险识别',
+    '流量',
+    '输量',
+    '末站压力',
+    '压力边界',
+    '摩阻',
+    '高黏度',
+    '处理方式',
+    '输送影响',
+  ]);
 
   return {
     workflow: 'local_results_plus_web_evidence',
@@ -957,7 +1088,7 @@ function buildSensitivityWebResearchPlan(focuses: string[] | undefined, options:
         risk: {
           enabled: options.includeRisk || riskHits.length > 0,
           focus_hits: riskHits,
-          purpose: '补充高黏度油品风险、输送影响和行业处理方式，对既有风险规则做联网校核。',
+          purpose: '补充头部敏感变量（尤其是流量）、压力边界、摩阻放大和高黏度工况相关风险资料，对既有风险规则做联网校核。',
         },
       },
       modules: {
@@ -1008,7 +1139,7 @@ function buildSensitivityWebResearchPlan(focuses: string[] | undefined, options:
           enabled: options.includeRisk,
           topics: ['risk', 'standards', 'operations'],
           focus_hits: riskHits,
-          purpose: '补充风险资料，对既有风险规则做联网校核，不把本地规则直接包装成结论。',
+          purpose: '补充头部敏感变量及压力/摩阻边界相关风险资料，对既有风险规则做联网校核，不把本地规则直接包装成结论。',
         },
         operationSuggestions: {
           title: '运行建议',
@@ -1016,6 +1147,99 @@ function buildSensitivityWebResearchPlan(focuses: string[] | undefined, options:
           topics: ['operations', 'standards'],
           focus_hits: operationsHits,
           purpose: '补充调度策略、运行经验与节能方案，形成可执行的运行建议。',
+        },
+      },
+    },
+  } satisfies Record<string, unknown>;
+}
+
+function buildOptimizationWebResearchPlan(focuses: string[] | undefined, options: {
+  hasSnapshot: boolean;
+  includeRisk: boolean;
+  includeSuggestions: boolean;
+}) {
+  const evidenceHits = collectFocusHits(focuses, [
+    '联网增强分析',
+    '检索依据',
+    '方案解读',
+    '泵站节能调度',
+    '泵高效区运行',
+    '长输管道压力控制',
+    '公开资料',
+    '官方资料依据',
+  ]);
+  const operationsHits = collectFocusHits(focuses, [
+    '优化建议',
+    '结合本项目的改进建议',
+    '预期效果',
+    '节能',
+    '调度',
+    '泵高效区运行',
+    '单位输量能耗',
+    '分时调度',
+  ]);
+  const riskHits = collectFocusHits(focuses, [
+    '风险识别',
+    '风险分析',
+    '末站进站压头',
+    '末站压力',
+    '压力控制',
+    '泵效',
+    '高效区',
+    '运行边界',
+  ]);
+
+  return {
+    workflow: 'local_results_plus_web_evidence',
+    local_computation: {
+      mode: options.hasSnapshot ? 'reuse_existing_snapshot' : 'reuse_saved_history',
+      required: false,
+      completed: true,
+      reason: options.hasSnapshot
+        ? '泵站优化结果已在勾选报告前完成，本次直接复用既有本地结果。'
+        : '报告阶段只加载已保存的优化结果，不重新执行业务计算。',
+    },
+    web_research: {
+      enabled: true,
+      strategy: 'topic_scoped_official_search',
+      guardrails: [
+        '先复用本地优化结果，再按需联网补充行业经验与公开资料。',
+        '联网结果只用于方案解读、风险补充和优化建议，不替代泵组计算结果。',
+        '不要改写推荐泵组合、压头、能耗和成本等确定性结果。',
+      ],
+      topics: {
+        general: {
+          enabled: true,
+          focus_hits: [...new Set([...evidenceHits, ...operationsHits])],
+          purpose: '补充泵站节能调度、泵高效区运行、长输管道压力控制等方向的公开资料，用于方案解读、行业经验和优化建议。',
+        },
+        risk: {
+          enabled: options.includeRisk || riskHits.length > 0,
+          focus_hits: riskHits,
+          purpose: '补充末站压力边界、泵效偏离高效区和运行稳定性相关资料，对当前风险识别做经验校核。',
+        },
+      },
+      modules: {
+        evidenceBasis: {
+          title: '检索依据',
+          enabled: true,
+          topics: ['general'],
+          focus_hits: evidenceHits,
+          purpose: '说明本次联网主要参考泵站节能调度、泵高效区运行和长输管道压力控制等方向。',
+        },
+        industryPractice: {
+          title: '外部经验补充',
+          enabled: true,
+          topics: ['general'],
+          focus_hits: [...new Set([...evidenceHits, ...operationsHits])],
+          purpose: '补充行业上对类似泵站优化问题的常见处理方式、节能措施和运行经验。',
+        },
+        projectSuggestions: {
+          title: '结合本项目的改进建议',
+          enabled: options.includeSuggestions,
+          topics: options.includeRisk ? ['general', 'risk'] : ['general'],
+          focus_hits: [...new Set([...operationsHits, ...riskHits])],
+          purpose: '把外部经验与当前推荐方案、压力边界、能耗和成本结果结合，形成面向当前项目的优化建议与预期效果。',
         },
       },
     },
@@ -1547,7 +1771,9 @@ function buildOptimizationUserPrompt() {
     '3. 顶部推荐方案总览，重点突出推荐泵组、末站进站压头、总扬程、年能耗、总成本。',
     '4. 图表分析区固定三行：第一行左侧为推荐方案主卡，右侧为方案解读；第二行左侧为扬程分配图，右侧为水力可行性解读；第三行左侧为双指标概览卡（展示年能耗与总成本），右侧为经济性解读。',
     '5. 底部结论区固定左右双栏：左侧为风险识别，按对象、等级、原因、影响输出；右侧为优化建议，按建议、原因、预期效果输出。',
-    '6. 报告要重点回答三件事：为什么是这组泵、为什么这个方案可行、为什么这个方案相对更经济。',
+    '6. 在不改动页面现有输入参数、输出结果和图表内容的前提下，额外追加“联网增强分析”模块，按“检索依据、外部经验补充、结合本项目的改进建议”三块组织。',
+    '7. 联网检索只用于补充方案解读、风险说明、优化方法和参考依据，不允许改写推荐泵组合、末站进站压头、总压降、年能耗、总成本等本地计算结果。',
+    '8. 报告要重点回答三件事：为什么是这组泵、为什么这个方案可行、为什么这个方案相对更经济。',
     '只能依据输入数据分析，不允许编造不存在的数据；若数据不足，请明确说明“当前数据不足以支持进一步判断”。',
     `最核心的一句话请围绕这层意思展开：${OPTIMIZATION_REPORT_CORE_SENTENCE}`,
   ].join('');
@@ -2946,6 +3172,19 @@ type SensitivityRiskCardData = {
   source: string;
 };
 
+type SensitivityRiskDisplayItem = {
+  key: string;
+  target: string;
+  riskType: string;
+  level: string;
+  reason: string;
+  impact: string;
+  source?: string | null;
+  referenceTitle?: string | null;
+  referenceUrl?: string | null;
+  referencePublisher?: string | null;
+};
+
 type SensitivitySuggestionCardData = {
   title: string;
   target: string;
@@ -4172,9 +4411,7 @@ function buildSensitivityExpectedBenefitItems(context: SensitivityAnalysisContex
   return items;
 }
 
-void buildSensitivityRiskCards;
-
-function getSensitivityRiskItems(report: DynamicReportResponsePayload) {
+function getSensitivityOfficialRiskItems(report: DynamicReportResponsePayload) {
   const officialItems = getOfficialRiskItems(report);
   if (officialItems.length) {
     return officialItems;
@@ -4277,6 +4514,63 @@ function getSensitivityPriorityLabel(priority?: string | null) {
   return String(priority ?? '中优先级') || '中优先级';
 }
 
+function renderSensitivityRiskDisplayCard(item: SensitivityRiskDisplayItem) {
+  const cardTheme = getSensitivityRiskCardTheme(item.level);
+  return (
+    <Col xs={24} xl={12} key={item.key}>
+      <div
+        style={{
+          height: '100%',
+          borderRadius: 18,
+          padding: 18,
+          background: cardTheme.background,
+          border: `1px solid ${cardTheme.border}`,
+          boxShadow: cardTheme.shadow,
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <div>
+            <Text strong style={{ fontSize: 16, color: '#0f172a' }}>
+              {item.target || '当前对象'}
+            </Text>
+            <div style={{ marginTop: 4, color: cardTheme.accent, fontSize: 13 }}>
+              {item.riskType || '区间判断'}
+            </div>
+            {getSensitivityRiskSourceLabel(item.source) ? (
+              <div style={{ marginTop: 2, color: '#64748b', fontSize: 12 }}>
+                来源：{getSensitivityRiskSourceLabel(item.source)}
+                {item.referencePublisher ? ` · ${item.referencePublisher}` : ''}
+              </div>
+            ) : null}
+          </div>
+          <Tag color={getSensitivityLevelTagColor(item.level)} style={{ marginInlineEnd: 0 }}>
+            {item.level || '预警区'}
+          </Tag>
+        </div>
+        <Paragraph style={{ margin: '14px 0 8px', color: '#334155' }}>
+          <Text strong style={{ color: cardTheme.accent }}>
+            判断依据：
+          </Text>
+          {item.reason || '当前数据不足以支持进一步判断。'}
+        </Paragraph>
+        <Paragraph style={{ margin: 0, color: '#334155' }}>
+          <Text strong style={{ color: cardTheme.accent }}>
+            管理含义：
+          </Text>
+          {item.impact || '会对结果稳定性和运行边界判断带来额外扰动。'}
+        </Paragraph>
+        {item.referenceUrl ? (
+          <div style={{ marginTop: 10, fontSize: 12 }}>
+            <a href={item.referenceUrl} target="_blank" rel="noreferrer">
+              {item.referenceTitle || item.referencePublisher || '官方资料'}
+            </a>
+          </div>
+        ) : null}
+      </div>
+    </Col>
+  );
+}
+
 function renderSensitivityInsightCard(block: SensitivityInsightBlockData, accentColor: string) {
   return (
     <Card
@@ -4310,7 +4604,6 @@ function renderSensitivityNarrativeCard(
   title: string,
   lines: Array<string | null | undefined>,
   accentColor: string,
-  references: OfficialReference[] = [],
 ) {
   return (
     <Card
@@ -4335,7 +4628,6 @@ function renderSensitivityNarrativeCard(
         }}
       >
         {renderNarrativeLineList(lines, accentColor) ?? <Text type="secondary">当前数据不足以支持进一步判断。</Text>}
-        {renderOfficialEvidenceSources(references)}
       </div>
     </Card>
   );
@@ -4791,6 +5083,192 @@ function renderOptimizationInsightCard(block: OptimizationInsightBlockData, acce
         }}
       >
         <Paragraph style={{ margin: 0, color: '#334155', lineHeight: 1.8 }}>{block.content}</Paragraph>
+      </div>
+    </Card>
+  );
+}
+
+const OPTIMIZATION_WEB_RESEARCH_DEFAULT_DIRECTIONS = [
+  '泵站节能调度',
+  '泵高效区运行',
+  '长输管道压力控制',
+];
+
+type OptimizationWebEnhancedCardData = {
+  title: string;
+  summary: string;
+  items: string[];
+  references: OfficialReference[];
+  accentColor: string;
+};
+
+function getOfficialModuleFocusHits(report: DynamicReportResponsePayload, moduleId: string) {
+  const moduleEvidence = getOfficialModuleEvidence(report, moduleId);
+  if (!Array.isArray(moduleEvidence.focus_hits)) {
+    return [];
+  }
+  return moduleEvidence.focus_hits.map((item) => String(item || '').trim()).filter(Boolean);
+}
+
+function buildOptimizationProjectPriorityLine(metrics: {
+  isFeasible: boolean | null;
+  endStationInPressure: number | null;
+  totalEnergyConsumption: number | null;
+  totalCost: number | null;
+}) {
+  const priorities: string[] = [];
+
+  if (metrics.isFeasible === false || (metrics.endStationInPressure !== null && metrics.endStationInPressure < 10)) {
+    priorities.push('末站压力裕度与泵组切换边界');
+  }
+  if (metrics.totalEnergyConsumption !== null && metrics.totalEnergyConsumption >= 1000000) {
+    priorities.push('泵组高效区运行与单位输量能耗');
+  }
+  if (metrics.totalCost !== null && metrics.totalCost >= 800000) {
+    priorities.push('分时调度与年度运行成本控制');
+  }
+
+  if (!priorities.length) {
+    priorities.push('泵组组合复核、单耗跟踪和运行边界监测');
+  }
+
+  return `结合已检索到的行业经验，当前项目建议优先围绕${priorities.join('、')}开展持续优化。`;
+}
+
+function buildOptimizationResearchBasisCard(report: DynamicReportResponsePayload): OptimizationWebEnhancedCardData {
+  const moduleReferences = getOfficialModuleReferences(report, 'evidenceBasis');
+  const fallbackReferences = getOfficialReferences(report);
+  const references = moduleReferences.length ? moduleReferences : fallbackReferences;
+  const directions = getOfficialModuleFocusHits(report, 'evidenceBasis').length
+    ? getOfficialModuleFocusHits(report, 'evidenceBasis')
+    : OPTIMIZATION_WEB_RESEARCH_DEFAULT_DIRECTIONS;
+
+  return {
+    title: '检索依据',
+    summary: '本次联网重点补充行业公开资料和泵站节能运行经验，用于解释现有优化结果。',
+    items: references.length
+      ? [
+          `本次联网主要围绕 ${directions.join('、')} 三个方向补充公开资料与工程经验。`,
+          `已匹配 ${references.length} 条官方/公开资料，用于支撑方案解读、运行边界说明和优化建议补充。`,
+          '联网结果只用于补充解释和参考依据，不改写推荐泵组合、末站进站压头、总压降、年能耗和总成本等本地计算结果。',
+        ]
+      : buildOfficialEvidenceMissingItems(report, {
+          status: getOfficialModuleStatus(report, 'evidenceBasis') || getOfficialResearchStatus(report),
+          references,
+        }),
+    references,
+    accentColor: '#4e86f7',
+  };
+}
+
+function buildOptimizationIndustryPracticeCard(report: DynamicReportResponsePayload): OptimizationWebEnhancedCardData {
+  const rawOfficialConclusionItems = getOfficialConclusionItems(report);
+  const moduleReferences = getOfficialModuleReferences(report, 'industryPractice');
+  const fallbackReferences = getOfficialReferences(report);
+  const resolvedReferences = resolveMentionedOfficialReferences(
+    moduleReferences,
+    fallbackReferences,
+    rawOfficialConclusionItems,
+  );
+  const officialConclusionItems = filterSupportedOfficialConclusionItems(
+    rawOfficialConclusionItems,
+    resolvedReferences,
+  );
+  const items = officialConclusionItems.length
+    ? buildGroupedOfficialConclusionItems(officialConclusionItems, resolvedReferences)
+    : buildOfficialEvidenceMissingItems(report, {
+        status: getOfficialModuleStatus(report, 'industryPractice') || getOfficialResearchStatus(report),
+        references: resolvedReferences,
+      });
+
+  return {
+    title: '外部经验补充',
+    summary: '这一部分只补充行业上通常怎么处理类似泵站优化问题，不重新计算结果。',
+    items,
+    references: resolvedReferences,
+    accentColor: '#7c6cff',
+  };
+}
+
+function buildOptimizationProjectSuggestionCard(
+  report: DynamicReportResponsePayload,
+  suggestionItems: DynamicReportResponsePayload['suggestions'],
+  metrics: {
+    isFeasible: boolean | null;
+    endStationInPressure: number | null;
+    totalEnergyConsumption: number | null;
+    totalCost: number | null;
+  },
+): OptimizationWebEnhancedCardData {
+  const references = dedupeOfficialReferences([
+    ...getOfficialModuleReferences(report, 'projectSuggestions'),
+    ...getOfficialRiskReferences(report),
+  ]);
+  const moduleStatus = getOfficialModuleStatus(report, 'projectSuggestions');
+
+  if (!references.length) {
+    return {
+      title: '结合本项目的改进建议',
+      summary: '把外部经验落到当前项目数据上时，需要先有可采信的联网资料。',
+      items: buildOfficialEvidenceMissingItems(report, {
+        status: moduleStatus || getOfficialRiskResearchStatus(report) || getOfficialResearchStatus(report),
+        references,
+      }),
+      references,
+      accentColor: '#f59e0b',
+    };
+  }
+
+  const items = [
+    buildOptimizationProjectPriorityLine(metrics),
+    ...suggestionItems.slice(0, 3).map((item) =>
+      [item.text || item.action, item.reason ? `原因：${item.reason}` : null, item.expected ? `预期效果：${item.expected}` : null]
+        .filter((part): part is string => Boolean(part))
+        .join(' '),
+    ),
+  ].filter(Boolean);
+
+  return {
+    title: '结合本项目的改进建议',
+    summary: '在不改变原有计算结果的前提下，把外部经验转成面向当前项目的后续动作。',
+    items,
+    references,
+    accentColor: '#f59e0b',
+  };
+}
+
+function renderOptimizationWebEnhancedCard(block: OptimizationWebEnhancedCardData) {
+  return (
+    <Card
+      size="small"
+      title={block.title}
+      bodyStyle={{ padding: 20 }}
+      style={{
+        height: '100%',
+        borderRadius: 18,
+        border: '1px solid #e2e8f0',
+        boxShadow: '0 10px 24px rgba(15, 23, 42, 0.05)',
+        overflow: 'hidden',
+      }}
+    >
+      <div
+        style={{
+          height: '100%',
+          borderRadius: 14,
+          padding: 16,
+          background: `linear-gradient(180deg, ${block.accentColor}12 0%, rgba(255,255,255,0.98) 100%)`,
+          border: `1px solid ${block.accentColor}22`,
+        }}
+      >
+        <Text type="secondary" style={{ lineHeight: 1.7 }}>
+          {block.summary}
+        </Text>
+        {renderNarrativeLineList(block.items, block.accentColor) ?? (
+          <Text type="secondary" style={{ display: 'block', marginTop: 14 }}>
+            暂无内容
+          </Text>
+        )}
+        {renderOfficialEvidenceSources(block.references)}
       </div>
     </Card>
   );
@@ -6586,6 +7064,14 @@ function renderOptimizationAiReportContentV2(
   const displaySuggestionItems = suggestionItems.length
     ? suggestionItems
     : fallbackSuggestionItems.filter((item): item is (typeof report.suggestions)[number] => Boolean(item));
+  const optimizationResearchBasisCard = buildOptimizationResearchBasisCard(report);
+  const optimizationIndustryPracticeCard = buildOptimizationIndustryPracticeCard(report);
+  const optimizationProjectSuggestionCard = buildOptimizationProjectSuggestionCard(report, displaySuggestionItems, {
+    isFeasible,
+    endStationInPressure,
+    totalEnergyConsumption,
+    totalCost,
+  });
   const optimizationInputPanelItems = buildMetricPanelItems(optimizationInputCards);
   const optimizationOutputPanelItems = buildMetricPanelItems(optimizationOutputCards);
 
@@ -6795,6 +7281,25 @@ function renderOptimizationAiReportContentV2(
           </Card>
         </Col>
       </Row>
+
+      <Card
+        size="small"
+        title="联网增强分析"
+        bodyStyle={{ padding: 18 }}
+        extra={<Text type="secondary">只补充行业经验、优化方法和参考依据</Text>}
+      >
+        <Row gutter={[16, 16]}>
+          <Col xs={24} xl={8}>
+            {renderOptimizationWebEnhancedCard(optimizationResearchBasisCard)}
+          </Col>
+          <Col xs={24} xl={8}>
+            {renderOptimizationWebEnhancedCard(optimizationIndustryPracticeCard)}
+          </Col>
+          <Col xs={24} xl={8}>
+            {renderOptimizationWebEnhancedCard(optimizationProjectSuggestionCard)}
+          </Col>
+        </Row>
+      </Card>
     </Space>
   );
 }
@@ -7175,10 +7680,41 @@ function renderSensitivityAiReportContentV2(
   } = context;
 
   const suggestionCards = buildSensitivitySuggestionCards(context);
-  const riskItems = getSensitivityRiskItems(report);
+  const variableRiskCards = buildSensitivityRiskCards(context);
+  const officialRiskItems = getSensitivityOfficialRiskItems(report);
+  const variableRiskDisplayItems: SensitivityRiskDisplayItem[] = variableRiskCards.map((item, index) => ({
+    key: `variable-${item.target}-${item.title}-${index}`,
+    target: item.target || topVariableName || '当前变量',
+    riskType: item.title || '变量风险',
+    level: item.level || '预警区',
+    reason: item.reason,
+    impact: item.impact,
+    source: item.source,
+  }));
+  const officialRiskDisplayItems: SensitivityRiskDisplayItem[] = officialRiskItems.map((item, index) => ({
+    key: `official-${item.target}-${item.riskType}-${index}`,
+    target: item.target || '当前对象',
+    riskType: item.riskType || item.code || '区间判断',
+    level: item.level || '预警区',
+    reason: item.message || item.reason || '',
+    impact: item.impact || item.suggestion || '',
+    source: item.source,
+    referenceTitle: item.referenceTitle,
+    referenceUrl: item.referenceUrl,
+    referencePublisher: item.referencePublisher,
+  }));
+  const riskRecognitionItems = [...variableRiskDisplayItems, ...officialRiskDisplayItems]
+    .map((item) => {
+      const parts = [item.reason, item.impact].filter((part): part is string => Boolean(part && part.trim()));
+      if (!parts.length) {
+        return '';
+      }
+      return `${item.target || item.riskType}：${parts.join('')}`;
+    })
+    .filter(Boolean)
+    .filter((item, index, array) => array.indexOf(item) === index);
   const officialRiskReferences = getOfficialModuleReferences(report, 'riskAnalysis');
   const fallbackOfficialRiskReferences = getOfficialRiskReferences(report);
-  const officialRiskItems = riskItems;
   const officialRiskStatus = getOfficialModuleStatus(report, 'riskAnalysis') || getOfficialRiskResearchStatus(report);
   const resolvedOfficialRiskReferences = officialRiskReferences.length ? officialRiskReferences : fallbackOfficialRiskReferences;
   const officialRiskNarratives = buildOfficialRiskMissingItems(report, {
@@ -7200,7 +7736,7 @@ function renderSensitivityAiReportContentV2(
     resolvedOfficialReferences,
   );
   const overallConclusionItems = officialConclusionItems.length
-    ? officialConclusionItems
+    ? buildGroupedOfficialConclusionItems(officialConclusionItems, resolvedOfficialReferences)
     : buildOfficialEvidenceMissingItems(report, {
         status: officialConclusionStatus,
         references: resolvedOfficialReferences,
@@ -7227,6 +7763,16 @@ function renderSensitivityAiReportContentV2(
     ? getSensitivityInsightItems(report, 'tableConclusion')
     : buildSensitivityTrendTableNarrativeItems(context);
   const expectedBenefitItems = buildSensitivityExpectedBenefitItems(context);
+  const expectedBenefitReferences = dedupeOfficialReferences([
+    ...resolvedOfficialReferences,
+    ...mechanismReferences,
+    ...rankingReferences,
+    ...trendChartReferences,
+    ...impactReferences,
+    ...trendTableReferences,
+    ...resolvedOfficialRiskReferences,
+    ...suggestionReferences,
+  ]);
 
   const reportViewModel: SensitivitySmartReportPayload = {
     title:
@@ -7294,8 +7840,8 @@ function renderSensitivityAiReportContentV2(
     analysis: {
       resultSummary: [],
       keyChangeAnalysis: [],
-      riskRecognition: officialRiskItems.length
-        ? officialRiskItems.map((item) => `${item.message || item.reason}${item.impact || ''}`)
+      riskRecognition: riskRecognitionItems.length
+        ? riskRecognitionItems
         : ['当前数据不足以支持进一步判断。'],
       optimizationSuggestions: suggestionCards.length
         ? suggestionCards.map((item) => item.action)
@@ -7476,7 +8022,7 @@ function renderSensitivityAiReportContentV2(
           </Col>
 
           <Col xs={24} xl={8}>
-            {renderSensitivityNarrativeCard('仪表盘解读', rankingNarrativeItems, '#7c6cff', rankingReferences)}
+            {renderSensitivityNarrativeCard('仪表盘解读', rankingNarrativeItems, '#7c6cff')}
           </Col>
 
           <Col xs={24} xl={16}>
@@ -7486,7 +8032,7 @@ function renderSensitivityAiReportContentV2(
           </Col>
 
           <Col xs={24} xl={8}>
-            {renderSensitivityNarrativeCard('趋势图解读', trendChartNarrativeItems, '#12b981', trendChartReferences)}
+            {renderSensitivityNarrativeCard('趋势图解读', trendChartNarrativeItems, '#12b981')}
           </Col>
 
           {shouldShowImpactComparison ? (
@@ -7498,7 +8044,7 @@ function renderSensitivityAiReportContentV2(
               </Col>
 
               <Col xs={24} xl={8}>
-                {renderSensitivityNarrativeCard('影响幅度解读', impactNarrativeItems, '#f59e0b', impactReferences)}
+                {renderSensitivityNarrativeCard('影响幅度解读', impactNarrativeItems, '#f59e0b')}
               </Col>
             </>
           ) : null}
@@ -7516,7 +8062,7 @@ function renderSensitivityAiReportContentV2(
           </Col>
 
           <Col xs={24} xl={8}>
-            {renderSensitivityNarrativeCard('数据表解读', trendTableNarrativeItems, '#06b6d4', trendTableReferences)}
+            {renderSensitivityNarrativeCard('数据表解读', trendTableNarrativeItems, '#06b6d4')}
           </Col>
         </Row>
       </Card>
@@ -7534,14 +8080,12 @@ function renderSensitivityAiReportContentV2(
         {renderNarrativeLineList(overallConclusionItems, '#4e86f7') ?? (
           <Text type="secondary">当前数据不足以支持进一步判断。</Text>
         )}
-        {renderOfficialEvidenceSources(resolvedOfficialReferences)}
       </Card>
 
       <Card size="small" title="机理分析">
         {renderNarrativeLineList(mechanismItems, '#7c6cff') ?? (
           <Text type="secondary">当前数据不足以支持进一步判断。</Text>
         )}
-        {renderOfficialEvidenceSources(mechanismReferences)}
       </Card>
 
       <Card size="small" title="风险分析">
@@ -7620,7 +8164,6 @@ function renderSensitivityAiReportContentV2(
             )}
           </>
         )}
-        {renderOfficialEvidenceSources(resolvedOfficialRiskReferences)}
       </Card>
 
       <Card size="small" title="运行建议">
@@ -7720,7 +8263,6 @@ function renderSensitivityAiReportContentV2(
         ) : (
           <Text type="secondary">当前数据不足以支持进一步判断。</Text>
         )}
-        {renderOfficialEvidenceSources(suggestionReferences)}
       </Card>
 
       <Card size="small" title="预期收益">
@@ -7728,6 +8270,8 @@ function renderSensitivityAiReportContentV2(
           <Text type="secondary">当前数据不足以支持进一步判断。</Text>
         )}
       </Card>
+
+      {renderOfficialEvidenceSources(expectedBenefitReferences)}
     </Space>
   );
 }
@@ -9180,7 +9724,26 @@ export default function ReportPreview() {
         : preferredOptimizationComparisonSnapshot
           ? ['综合评分', '总成本', '年能耗', '末站进站压头', '总扬程', '可行性', '风险等级']
           : preferredOptimizationSnapshot
-            ? ['推荐泵组', '末站进站压头', '总扬程', '年能耗', '总成本', '方案解读', '水力可行性解读', '经济性解读', '风险识别', '优化建议']
+            ? [
+                '推荐泵组',
+                '末站进站压头',
+                '总扬程',
+                '年能耗',
+                '总成本',
+                '方案解读',
+                '水力可行性解读',
+                '经济性解读',
+                '风险识别',
+                '优化建议',
+                '联网增强分析',
+                '检索依据',
+                '外部经验补充',
+                '结合本项目的改进建议',
+                '泵站节能调度',
+                '泵高效区运行',
+                '长输管道压力控制',
+                '预期效果',
+              ]
             : preferredHydraulicSnapshot
               ? ['总扬程', '摩阻损失', '末站进站压头', '压头变化图', '扬程构成图', '风险识别', '运行建议']
               : undefined;
@@ -9195,6 +9758,12 @@ export default function ReportPreview() {
             includeSuggestions: true,
             includeConclusion: true,
           })
+        : preferredOptimizationSnapshot
+          ? buildOptimizationWebResearchPlan(activeFocuses, {
+              hasSnapshot: Boolean(preferredOptimizationSnapshot),
+              includeRisk: true,
+              includeSuggestions: true,
+            })
         : undefined;
       const result = await agentApi.generateDynamicReport({
         selected_project_ids: activeProjectIds,
